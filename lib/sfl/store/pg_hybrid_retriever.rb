@@ -97,9 +97,12 @@ module SFL
 
       # Same columns for both arms, so RRF merge sees identically-shaped
       # rows regardless of which arm(s) a clause_id came from. mood/tenor/
-      # process_type ride along for free here because both arms already
-      # join interpersonal_payloads/ideational_payloads to apply filters
-      # (see RetrievalResult's field-inlining decision).
+      # process_type/modality_weight/annotation_source ride along for free
+      # here because both arms already join interpersonal_payloads/
+      # ideational_payloads to apply filters (see RetrievalResult's
+      # field-inlining decision) — modality_weight/annotation_source were
+      # added so ContextSynthesizer never needs a second per-clause lookup
+      # to build its citable/fallback partition.
       private def result_columns
         [
           Sequel[:clauses][:external_id].as(:clause_id),
@@ -107,6 +110,8 @@ module SFL
           Sequel[:clauses][:document_id],
           Sequel[:interpersonal_payloads][:mood],
           Sequel[:interpersonal_payloads][:tenor],
+          Sequel[:interpersonal_payloads][:modality_weight],
+          Sequel[:interpersonal_payloads][:annotation_source],
           Sequel[:ideational_payloads][:process_type],
         ]
       end
@@ -144,7 +149,9 @@ module SFL
           keyword_rank: row[:keyword_rank],
           mood: row[:mood],
           tenor: row[:tenor],
-          process_type: row[:process_type]
+          process_type: row[:process_type],
+          modality_weight: row[:modality_weight],
+          annotation_source: row[:annotation_source]
         )
       end
       # rubocop:enable Metrics/MethodLength

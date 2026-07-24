@@ -31,6 +31,8 @@ module SFL
         attribute :mood, Types::MoodType.optional.default(nil)
         attribute :tenor, Types::TenorValue.optional.default(nil)
         attribute :process_type, Types::ProcessType.optional.default(nil)
+        attribute :modality_weight, Types::ModalityWeight.optional.default(nil)
+        attribute :annotation_source, Types::AnnotationSource.optional.default(nil)
       end
     end
   end

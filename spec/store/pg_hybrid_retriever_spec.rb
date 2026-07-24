@@ -16,13 +16,14 @@ RSpec.describe SFL::Store::PgHybridRetriever do
   # parameter maps straight to a column this spec's examples need to control.
   def seed_clause(
     external_id:, text:, document_id: "doc-1", mood: "declarative",
-    process_type: "material", source_type: "unspecified"
+    process_type: "material", source_type: "unspecified",
+    modality_weight: 0.5, annotation_source: "llm"
   )
     db[:clauses].insert(
       external_id:, text:, document_id:, sentence_index: 0, root_index: 0, source_type:
     )
     db[:ideational_payloads].insert(clause_id: external_id, process_type:)
-    db[:interpersonal_payloads].insert(clause_id: external_id, mood:)
+    db[:interpersonal_payloads].insert(clause_id: external_id, mood:, modality_weight:, annotation_source:)
   end
   # rubocop:enable Metrics/ParameterLists
 
@@ -178,6 +179,27 @@ RSpec.describe SFL::Store::PgHybridRetriever do
       results = retriever.retrieve(query)
 
       expect(results.map(&:clause_id)).to eq(["c-2"])
+    end
+  end
+
+  # ContextSynthesizer needs modality_weight/annotation_source inlined onto
+  # RetrievalResult the same way mood/tenor/process_type already are, so it
+  # never needs a second per-clause DB round-trip to partition citable vs
+  # fallback-sourced rows (see SFL::Retrieval::ContextSynthesizer).
+  describe "#retrieve inlines modality_weight and annotation_source (no second lookup needed)" do
+    subject(:retriever) { described_class.new(db:, embedder: SFL::Core::Ports::Null::Embedder.new) }
+
+    before do
+      seed_clause(external_id: "c-1", text: "widget widget widget", modality_weight: 0.75, annotation_source: "human")
+    end
+
+    it "returns the stored modality_weight and annotation_source on the ranked row" do
+      query = SFL::Core::Types::RetrievalQuery.new(query: "widget")
+
+      results = retriever.retrieve(query)
+
+      expect(results.first.modality_weight).to eq(0.75)
+      expect(results.first.annotation_source).to eq("human")
     end
   end
 end
