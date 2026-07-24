@@ -7,9 +7,9 @@ RSpec.describe SFL::Analysis::TenorTracker do
     it "leaves the first turn's tenor_shift nil (no predecessor to diff against)" do
       turns = [build_turn(turn_id: 1, avg_tenor: 0.4), build_turn(turn_id: 2, avg_tenor: 0.6)]
 
-      described_class.new(turns).calculate_shifts
+      result = described_class.new(turns).calculate_shifts
 
-      expect(turns.first.tenor_shift).to be_nil
+      expect(result.first.tenor_shift).to be_nil
     end
 
     it "sets each subsequent turn's tenor_shift to the delta from the previous turn's avg_tenor" do
@@ -19,19 +19,27 @@ RSpec.describe SFL::Analysis::TenorTracker do
         build_turn(turn_id: 3, avg_tenor: 0.5),
 ]
 
-      described_class.new(turns).calculate_shifts
+      result = described_class.new(turns).calculate_shifts
 
-      expect(turns[1].tenor_shift).to be_within(1e-9).of(0.2)
-      expect(turns[2].tenor_shift).to be_within(1e-9).of(-0.1)
+      expect(result[1].tenor_shift).to be_within(1e-9).of(0.2)
+      expect(result[2].tenor_shift).to be_within(1e-9).of(-0.1)
     end
 
-    it "mutates the turns array in place" do
+    it "is a pure function: it does not mutate the array or structs passed in" do
       turns = [build_turn(turn_id: 1, avg_tenor: 0.4), build_turn(turn_id: 2, avg_tenor: 0.6)]
+      original_second_turn = turns[1]
       tracker = described_class.new(turns)
 
-      tracker.calculate_shifts
+      result = tracker.calculate_shifts
 
-      expect(tracker.turns[1].tenor_shift).to be_within(1e-9).of(0.2)
+      expect(turns[1]).to equal(original_second_turn)
+      expect(turns[1].tenor_shift).to be_nil
+      expect(tracker.turns[1].tenor_shift).to be_nil
+      expect(result[1].tenor_shift).to be_within(1e-9).of(0.2)
+    end
+
+    it "returns an empty array when given no turns" do
+      expect(described_class.new([]).calculate_shifts).to eq([])
     end
   end
 
@@ -91,19 +99,28 @@ RSpec.describe SFL::Analysis::TenorTracker do
       expect(turns[1].tenor_shift).to eq(0.0)
     end
 
-    # Pins today's F5 quirk (a separate later card bullet fixes this, not this slice): from_tenor
-    # is looked up via turns[turn.turn_id - 2] — a position-dependent index into the CURRENT
-    # turns array, not a turn_id-keyed lookup. When turn_id doesn't line up with array position
-    # (e.g. turns filtered/reordered upstream) from_tenor silently resolves to the wrong turn.
-    it "F5 quirk: from_tenor is looked up by turns[turn_id - 2] position, not by matching turn_id" do
+    it "finds the true immediately-preceding turn by array position, not by turn_id arithmetic, " \
+      "when turn_id has gaps" do
       # turn_id 1 and 3 only — array positions are [0]=turn_id 1, [1]=turn_id 3.
+      # The old buggy lookup (turns[turn_id - 2]) would resolve turn_id 3's "from" as
+      # turns[1] (itself, avg_tenor 0.9) instead of the true predecessor turns[0] (avg_tenor 0.1).
       turns = [build_turn(turn_id: 1, avg_tenor: 0.1), build_turn(turn_id: 3, avg_tenor: 0.9)]
 
       shift = described_class.new(turns, threshold: 0.15).detect_significant_shifts.first
 
-      # turn_id - 2 == 1, so it indexes turns[1] (the turn itself, avg_tenor 0.9) as "from_tenor"
-      # instead of the true predecessor turns[0] (avg_tenor 0.1) — the quirk, pinned faithfully.
-      expect(shift[:from_tenor]).to eq(0.9)
+      expect(shift[:from_tenor]).to eq(0.1)
+    end
+
+    it "finds the true immediately-preceding turn by array position when turns are reverse-ordered " \
+      "(turn_id descending through the array)" do
+      # array order is turn_id 3 then turn_id 1 — turn_id arithmetic (turns[turn_id - 2]) would be
+      # nonsensical here (turns[-1] for turn_id 1, turns[1] for turn_id 3); array adjacency must win.
+      turns = [build_turn(turn_id: 3, avg_tenor: 0.1), build_turn(turn_id: 1, avg_tenor: 0.9)]
+
+      shift = described_class.new(turns, threshold: 0.15).detect_significant_shifts.first
+
+      expect(shift[:turn_id]).to eq(1)
+      expect(shift[:from_tenor]).to eq(0.1)
     end
   end
 end

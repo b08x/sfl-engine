@@ -96,7 +96,7 @@ module SFL
       # plus one AnalysisResult literal assembling every cross-turn derivation this class exists
       # to compute once instead of N times; splitting the literal further would only relocate it.
       def build_result(turns, source:, label:, total:, interrupted: false, topic_labels: nil, topic_shifts: [])
-        TenorTracker.new(turns).calculate_shifts
+        turns = TenorTracker.new(turns).calculate_shifts
         turns = CohesionAnalyzer.new.analyze(turns)
         profiles = SpeakerProfiler.build_profiles(turns)
         correlations = CorrelationAnalyzer.new(turns).correlate_process_tenor
