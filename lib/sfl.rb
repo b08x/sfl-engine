@@ -16,6 +16,14 @@ module SFL
     "llm" => "LLM",
     "trusted_annotation_sources" => "TRUSTED_ANNOTATION_SOURCES",
     "kb_content_type" => "KBContentType",
+    "csv_formatter" => "CSVFormatter",
+    "json_formatter" => "JSONFormatter",
+    "kb_report_writer" => "KBReportWriter",
+    "kb_csv_formatter" => "KBCsvFormatter",
+    "kb_json_formatter" => "KBJsonFormatter",
+    "kb_markdown_formatter" => "KBMarkdownFormatter",
+    "kb_annotated_doc_writer" => "KBAnnotatedDocWriter",
+    "kb_annotated_doc_formatter" => "KBAnnotatedDocFormatter",
   }.freeze
   private_constant :INFLECTIONS
 
