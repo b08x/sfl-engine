@@ -6,3 +6,4 @@
 .env
 /.codemap/
 /spec/examples.txt
+/.sfl-python/

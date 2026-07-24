@@ -8,6 +8,7 @@ source "https://rubygems.org"
 
 # Core loading & typing (track decision 1: single app, no gemspec)
 gem "amatch", "~> 0.4" # Jaro-Winkler fuzzy matching for ClassificationRegistry
+gem "dotenv", "~> 3.2" # .env loading — read only by SFL::Boot (track decision 4), never at require time
 gem "dry-monads", "~> 1.6"
 gem "dry-struct", "~> 1.6"
 gem "dry-types", "~> 1.7"

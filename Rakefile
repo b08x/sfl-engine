@@ -27,28 +27,17 @@ namespace :embeddings do
   task :redrive do
     require_relative "lib/sfl"
 
-    # No real (non-Null/Fake) Core::Ports::Embedder adapter exists in this
-    # codebase yet — lib/sfl/llm/ only has Pass 2 annotation chat/prompt
-    # code (Engine/ChatFactory/Config), no embedding adapter (confirmed via
-    # grep before writing this task). Rather than invent one out of scope
-    # for this slice, or silently no-op/fake success, this task fails
-    # loudly and points at exactly where a real adapter belongs — the same
-    # honesty this app's other Phase-4-deferred seams (see LLM::Config's
-    # "Config value objects now, ENV-reading Boot later" pattern) already
-    # commit to. Once a real Embedder adapter exists under lib/sfl/llm/,
-    # this task's TODO becomes one line: build/inject it here instead of
-    # raising.
-    raise "SFL::Store::EmbeddingRedriver has no real Core::Ports::Embedder to run with yet — " \
-      "lib/sfl/llm/ has no embedding adapter (only Pass 2 annotation chat/prompt code). " \
-      "Add one under lib/sfl/llm/ (e.g. an Ollama/embeddinggemma adapter implementing " \
-      "Core::Ports::Embedder#embed/#embed_batch) before wiring this task for real."
-
-    # db = SFL::Store::Database.connect
-    # embedder = SFL::LLM::???.new(...) # TODO: real Embedder adapter, once one exists
-    # embedding_store = SFL::Store::PgEmbeddingStore.new(db)
-    # summary = SFL::Store::EmbeddingRedriver.new(db:, embedder:, embedding_store:).call
-    # puts "documents_processed=#{summary[:documents_processed]} " \
-    #   "redriven=#{summary[:redriven]} still_failed=#{summary[:still_failed]}"
-    # db.disconnect
+    # SFL::LLM::Embedder (Ollama-backed, Core::Ports::Embedder-compliant)
+    # now exists — SFL::Boot resolves and injects it the same way it does
+    # every other collaborator (track decision 4: ENV read only at Boot).
+    # No migrations run here (SFL::Boot.connect_db deliberately never
+    # migrates — see Store::Database's own comment); run `rake db:migrate`
+    # first if this is a fresh database.
+    ctx = SFL::Boot.call(require_tracing: false)
+    embedding_store = SFL::Store::PgEmbeddingStore.new(ctx.db)
+    summary = SFL::Store::EmbeddingRedriver.new(db: ctx.db, embedder: ctx.embedder, embedding_store:).call
+    puts "documents_processed=#{summary[:documents_processed]} " \
+      "redriven=#{summary[:redriven]} still_failed=#{summary[:still_failed]}"
+    ctx.db.disconnect
   end
 end

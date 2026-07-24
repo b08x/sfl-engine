@@ -1,0 +1,132 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Provisions a self-contained Python environment (spaCy + a model) under
+# this app's own tree, so Pass 1's SpacySidecarParser
+# (lib/sfl/core/pass_one/spacy_sidecar_parser.rb) has a subprocess to
+# shell out to without anyone hand-installing spaCy globally.
+#
+# Run this once, ahead of time: `bin/setup-python`. It is idempotent —
+# re-running it is a fast no-op once .sfl-python/.installed exists,
+# unless SFL_FORCE_PYTHON_VENDOR=1 is set.
+
+require "English"
+require "fileutils"
+
+APP_ROOT = File.expand_path("..", __dir__)
+VENDOR_DIR = File.join(APP_ROOT, ".sfl-python")
+PYTHON_TARGET_DIR = File.join(VENDOR_DIR, "python")
+UV_VENDOR_DIR = File.join(VENDOR_DIR, "uv")
+MARKER_FILE = File.join(VENDOR_DIR, ".installed")
+# Read by Boot at runtime to point SpacySidecarParser at this exact
+# interpreter instead of whatever `python3` the host resolves to.
+INTERPRETER_FILE = File.join(VENDOR_DIR, "interpreter_path")
+
+# uv provisions its own standalone CPython builds on demand, so we pin
+# an exact, known-good version instead of inheriting whatever `python3`
+# the host resolves to. This is what broke on a Python 3.14 host: no
+# prebuilt wheels existed yet for spaCy's native deps (blis/thinc),
+# forcing a from-source Cython build that failed outright.
+PYTHON_VERSION = ENV["SFL_PYTHON_VERSION"] || "3.12"
+SPACY_REQUIREMENT = ENV["SFL_SPACY_REQUIREMENT"] || "spacy"
+SPACY_MODEL = ENV["SPACY_MODEL"] || "en_core_web_sm"
+
+def run!(*cmd, env: {})
+  puts "-> #{cmd.join(' ')}"
+  return if system(env, *cmd)
+
+  abort "[setup-python] command failed (#{$CHILD_STATUS.exitstatus}): #{cmd.join(' ')}"
+end
+
+def capture!(*cmd)
+  output = IO.popen(cmd, &:read)
+  abort "[setup-python] command failed (#{$CHILD_STATUS.exitstatus}): #{cmd.join(' ')}" unless $CHILD_STATUS.success?
+
+  output.strip
+end
+
+def uv_available?
+  system("uv", "--version", out: File::NULL, err: File::NULL)
+end
+
+def ensure_curl_available!
+  return if system("curl", "--version", out: File::NULL, err: File::NULL)
+
+  abort <<~MSG
+    [setup-python] 'uv' is not on PATH and 'curl' is not available to install it.
+    Install uv yourself (see https://docs.astral.sh/uv/getting-started/installation/)
+    and re-run bin/setup-python.
+  MSG
+end
+
+# Installs uv into .sfl-python/uv (not the host's ~/.local/bin) via the
+# official installer, so a host with neither Python nor uv ends up with
+# everything this app needs self-contained under its own directory.
+def bootstrap_uv!
+  ensure_curl_available!
+
+  puts "[setup-python] 'uv' not found on PATH; installing to #{UV_VENDOR_DIR} via the official " \
+    "installer (https://astral.sh/uv/install.sh)"
+  FileUtils.mkdir_p(UV_VENDOR_DIR)
+
+  installer_env = { "UV_INSTALL_DIR" => UV_VENDOR_DIR, "UV_NO_MODIFY_PATH" => "1" }
+  run!("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh", env: installer_env)
+
+  uv_bin = File.join(UV_VENDOR_DIR, "uv")
+  abort "[setup-python] uv installer ran but #{uv_bin} was not produced" unless File.executable?(uv_bin)
+
+  uv_bin
+end
+
+def install_spacy!(uv_bin, python)
+  # --target keeps every installed package self-contained under
+  # .sfl-python/python inside this app's own directory: nothing touches
+  # the system or user Python site-packages.
+  #
+  # "click" is forced explicitly: spaCy's CLI (spacy/cli/_util.py)
+  # imports it directly, but recent typer releases (0.16+) dropped
+  # click as a hard dependency, so an unpinned `spacy` install can
+  # silently omit it and fail at `spacy download`/`spacy info` time.
+  #
+  # "numpy<2" is forced explicitly: this pin came from legacy's
+  # PyCall/ruby-spacy in-process design (numpy 2.0 removed
+  # `numpy.chararray`, which the Ruby `numpy` gem hardcoded against) — v2
+  # never loads a Ruby numpy gem at all, spaCy runs purely inside this
+  # subprocess sidecar (see sidecar/spacy_sidecar.py), so PyCall.init
+  # never runs here. Kept anyway because spaCy 3.x's own native deps
+  # (blis/thinc) have their own NumPy 2.x compatibility gaps independent
+  # of PyCall; drop this pin once spaCy's upstream constraints allow it.
+  run!(uv_bin, "pip", "install", "--python", python, "--target", PYTHON_TARGET_DIR,
+    SPACY_REQUIREMENT, "click", "numpy<2")
+
+  # Delegate model selection to spaCy's own downloader rather than
+  # hardcoding a model wheel version/URL: spaCy resolves the model
+  # release that's actually compatible with whatever spaCy version was
+  # just installed, avoiding a hardcoded pin drifting out of sync.
+  # PYTHONPATH makes the vendored spaCy importable; extra args after
+  # the model name are forwarded by spaCy straight to `pip install`.
+  run!(python, "-m", "spacy", "download", SPACY_MODEL, "--target", PYTHON_TARGET_DIR,
+    env: { "PYTHONPATH" => PYTHON_TARGET_DIR })
+
+  File.write(MARKER_FILE, "python==#{PYTHON_VERSION} #{SPACY_REQUIREMENT} #{SPACY_MODEL}\n")
+end
+
+uv = uv_available? ? "uv" : bootstrap_uv!
+
+FileUtils.mkdir_p(PYTHON_TARGET_DIR)
+
+# Idempotent and near-instant once installed (uv just checks its cache),
+# so this runs every time to keep INTERPRETER_FILE accurate even when the
+# pip install below is skipped.
+run!(uv, "python", "install", PYTHON_VERSION)
+
+python = capture!(uv, "python", "find", PYTHON_VERSION)
+abort "[setup-python] uv could not locate a Python #{PYTHON_VERSION} interpreter" if python.empty?
+File.write(INTERPRETER_FILE, "#{python}\n")
+
+if File.exist?(MARKER_FILE) && ENV["SFL_FORCE_PYTHON_VENDOR"] != "1"
+  puts "[setup-python] vendored Python deps already present at #{PYTHON_TARGET_DIR}, skipping " \
+    "(set SFL_FORCE_PYTHON_VENDOR=1 to reinstall)"
+else
+  install_spacy!(uv, python)
+end
