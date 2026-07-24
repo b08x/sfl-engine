@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "stringio"
 
 # Spawns the real sidecar subprocess (python3 + spacy, verified present in
 # this environment) rather than mocking the transport — the whole point of
@@ -51,5 +52,27 @@ RSpec.describe SFL::Core::PassOne::SpacySidecarParser do
     result = parser.parse("It still works.")
 
     expect(result.first.text).to eq("It still works.")
+  end
+
+  describe "logging" do
+    subject(:parser) { described_class.new(model: "en_core_web_sm", logger:) }
+
+    let(:io) { StringIO.new }
+    let(:logger) { SFL::Core::Ports::StandardLogger.new(io:, level: Logger::DEBUG) }
+
+    it "logs info on a successful startup handshake" do
+      parser # trigger the memoized subject's instantiation (nothing else in this example touches it)
+
+      expect(io.string).to include("sidecar ready")
+    end
+
+    it "logs a warning when a crash forces a restart" do
+      pid = parser.__send__(:wait_thread).pid
+      Process.kill("KILL", pid)
+
+      parser.parse("It still works.")
+
+      expect(io.string).to include("restarting and retrying once")
+    end
   end
 end

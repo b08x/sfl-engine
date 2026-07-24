@@ -69,3 +69,9 @@ RSpec.describe SFL::Core::Ports::Null::ProgressSink do
 
   it_behaves_like "a progress sink port"
 end
+
+RSpec.describe SFL::Core::Ports::Null::Logger do
+  subject { described_class.new }
+
+  it_behaves_like "a logger port"
+end

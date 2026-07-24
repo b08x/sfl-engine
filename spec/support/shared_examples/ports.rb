@@ -113,3 +113,21 @@ RSpec.shared_examples "a progress sink port" do
     expect { subject.finish }.not_to raise_error
   end
 end
+
+RSpec.shared_examples "a logger port" do
+  it "accepts a message argument at every severity without raising" do
+    expect { subject.debug("d") }.not_to raise_error
+    expect { subject.info("i") }.not_to raise_error
+    expect { subject.warn("w") }.not_to raise_error
+    expect { subject.error("e") }.not_to raise_error
+    expect { subject.fatal("f") }.not_to raise_error
+  end
+
+  it "accepts a block form at every severity without raising" do
+    expect { subject.debug { "d" } }.not_to raise_error
+    expect { subject.info { "i" } }.not_to raise_error
+    expect { subject.warn { "w" } }.not_to raise_error
+    expect { subject.error { "e" } }.not_to raise_error
+    expect { subject.fatal { "f" } }.not_to raise_error
+  end
+end

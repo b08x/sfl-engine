@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "stringio"
 
 RSpec.describe SFL::Core::PassOne::Engine do
   describe "with the real SpacySidecarParser" do
@@ -64,6 +65,29 @@ RSpec.describe SFL::Core::PassOne::Engine do
       allow(failing_parser).to receive(:parse).and_raise(SFL::Core::PassOne::SidecarError, "sidecar down")
 
       expect { engine.process("text") }.to raise_error(SFL::Core::PassOne::SidecarError, "sidecar down")
+    end
+  end
+
+  describe "logging" do
+    let(:io) { StringIO.new }
+    let(:logger) { SFL::Core::Ports::StandardLogger.new(io:, level: Logger::DEBUG) }
+
+    it "logs a debug line on start and an info line on completion" do
+      engine = described_class.new(parser: SFL::Core::Ports::Null::SyntacticParser.new, logger:)
+
+      engine.process("Some text.", document_id: "doc-1")
+
+      expect(io.string).to include("pass_one started")
+      expect(io.string).to include("pass_one completed")
+    end
+
+    it "logs an error line when the parser fails" do
+      failing_parser = instance_double(SFL::Core::Ports::Null::SyntacticParser)
+      allow(failing_parser).to receive(:parse).and_raise(StandardError, "boom")
+      engine = described_class.new(parser: failing_parser, logger:)
+
+      expect { engine.process("text") }.to raise_error(SFL::Core::PassOne::Error)
+      expect(io.string).to include("pass_one failed")
     end
   end
 end

@@ -21,9 +21,10 @@ module SFL
         DEFAULT_SCRIPT_PATH = File.expand_path("../../../../sidecar/spacy_sidecar.py", __dir__)
         STARTUP_TIMEOUT_SECONDS = 30
 
-        def initialize(model:, command: nil)
+        def initialize(model:, command: nil, logger: Ports::Null::Logger.new)
           @model = model
           @command = command || ["python3", DEFAULT_SCRIPT_PATH, "--model", model]
+          @logger = logger
           @mutex = Mutex.new
           start_process
         end
@@ -37,15 +38,20 @@ module SFL
 
         # @return [void]
         def close
-          @mutex.synchronize { stop_process }
+          @mutex.synchronize do
+            logger.debug { "closing sidecar (pid=#{wait_thread&.pid})" }
+            stop_process
+          end
         end
 
-        attr_reader :stdin, :stdout, :wait_thread
-        private :stdin, :stdout, :wait_thread
+        attr_reader :stdin, :stdout, :wait_thread, :logger
+        private :stdin, :stdout, :wait_thread, :logger
 
         private def start_process
+          logger.debug { "spawning sidecar: #{@command.join(' ')}" }
           @stdin, @stdout, @wait_thread = Open3.popen2(*@command)
           await_ready
+          logger.info { "sidecar ready (model=#{@model}, pid=#{wait_thread.pid})" }
         end
 
         private def await_ready
@@ -72,8 +78,16 @@ module SFL
 
           build_clauses(response.fetch("clauses"))
         rescue Errno::EPIPE, IOError, SidecarError => e
-          raise SidecarError, "sidecar transport failed: #{e.message}" if retried
+          fail_or_retry(text, document_id, e, retried:)
+        end
 
+        private def fail_or_retry(text, document_id, error, retried:)
+          if retried
+            logger.error { "sidecar transport failed permanently: #{error.message}" }
+            raise SidecarError, "sidecar transport failed: #{error.message}"
+          end
+
+          logger.warn { "sidecar transport failed (#{error.message}), restarting and retrying once" }
           restart_process
           request(text, document_id, retried: true)
         end
