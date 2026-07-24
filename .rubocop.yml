@@ -18,6 +18,32 @@ AllCops:
 Style/Documentation:
   Enabled: false
 
+# Round-trip and port-contract specs legitimately assert several things
+# about one behavior (e.g. "every field survives a JSON round trip") —
+# splitting them into one-expectation-per-it would fragment a single
+# scenario across unrelated-looking examples, which is worse for
+# readability than the cop's default budget assumes.
+RSpec/MultipleExpectations:
+  Max: 10
+
+RSpec/ExampleLength:
+  Max: 20
+
+# Shared role-test files (spec/support/shared_examples/*) intentionally
+# hold several small example groups, one per port — that's the point of
+# a shared-examples file, not something to split further.
+RSpec/MultipleDescribes:
+  Enabled: false
+
+RSpec/SpecFilePathFormat:
+  Enabled: false
+
+RSpec/NamedSubject:
+  Enabled: false
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 10
+
 
 Layout/ArgumentAlignment:
   Enabled: true

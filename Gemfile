@@ -7,6 +7,7 @@ source "https://rubygems.org"
 # via asdf/rbenv, so a Gemfile-level pin would block `bundle install` for local dev entirely.
 
 # Core loading & typing (track decision 1: single app, no gemspec)
+gem "amatch", "~> 0.4" # Jaro-Winkler fuzzy matching for ClassificationRegistry
 gem "dry-monads", "~> 1.6"
 gem "dry-struct", "~> 1.6"
 gem "dry-types", "~> 1.7"
