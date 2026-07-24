@@ -1,0 +1,44 @@
+[
+  {
+    "uuid": "convo-1",
+    "name": "Debugging a flaky test",
+    "created_at": "2026-06-01T10:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "msg-1",
+        "sender": "human",
+        "text": "Why does this test fail intermittently?",
+        "created_at": "2026-06-01T10:00:00Z"
+      },
+      {
+        "uuid": "msg-2",
+        "sender": "assistant",
+        "text": "fallback text",
+        "created_at": "2026-06-01T10:00:05Z",
+        "content": [
+          { "type": "text", "text": "It's a race condition in the setup block." },
+          { "type": "tool_use", "id": "art-1", "name": "artifacts", "input": { "id": "art-1", "type": "code", "language": "ruby", "title": "fix.rb", "content": "def fixed; end" } }
+        ]
+      }
+    ]
+  },
+  {
+    "uuid": "convo-2",
+    "name": null,
+    "created_at": "2026-06-02T08:00:00Z",
+    "chat_messages": [
+      {
+        "uuid": "msg-3",
+        "sender": "human",
+        "text": "   ",
+        "created_at": "2026-06-02T08:00:00Z"
+      },
+      {
+        "uuid": "msg-4",
+        "sender": "assistant",
+        "text": "Empty human turn above should be skipped.",
+        "created_at": "2026-06-02T08:00:05Z"
+      }
+    ]
+  }
+]

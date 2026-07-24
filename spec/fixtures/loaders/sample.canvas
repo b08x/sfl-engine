@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    { "id": "node-1", "type": "text", "x": 0, "y": 0, "width": 250, "height": 60, "text": "The committee approved the annual budget after extensive review." },
+    { "id": "node-2", "type": "text", "x": 300, "y": 0, "width": 250, "height": 60, "text": "ok" },
+    { "id": "node-3", "type": "group", "x": 0, "y": 100, "width": 400, "height": 400, "label": "Layout group" },
+    { "id": "node-4", "type": "file", "x": 400, "y": 100, "width": 250, "height": 60, "file": "other-note.md" },
+    { "id": "node-5", "type": "link", "x": 700, "y": 100, "width": 250, "height": 60, "url": "https://example.com" }
+  ],
+  "edges": []
+}

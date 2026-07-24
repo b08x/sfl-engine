@@ -22,6 +22,14 @@ gem "opentelemetry-exporter-otlp", "~> 0.34"
 gem "opentelemetry-instrumentation-ruby_llm", "~> 0.7"
 gem "opentelemetry-sdk", "~> 1.12"
 
+# Loaders (Phase 1 backlog item: markdown/pdf/subtitle/canvas/image/export/csv/json Source ducks)
+gem "csv", "~> 3.3" # no longer a default gem as of Ruby 3.4, for CsvSource
+gem "inkmark", "~> 0.1" # markdown -> HTML AST, for MarkdownSource
+gem "json_canvas", "~> 0.1" # Obsidian .canvas node-graph parsing, for CanvasSource
+gem "kreuzberg", "~> 4.10" # PDF text + sentence-aware chunking, for PdfSource
+gem "pragmatic_tokenizer", "~> 3.2" # prose normalisation, for MarkdownSource
+gem "yajl-ruby", "~> 1.4", require: "yajl" # JSON/JSONL parsing, for the export/JSON Sources
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"

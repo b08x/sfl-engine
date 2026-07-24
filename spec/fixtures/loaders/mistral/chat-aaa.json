@@ -1,0 +1,22 @@
+[
+  {
+    "id": "msg-1",
+    "chatId": "aaa",
+    "content": "Roast my Ansible playbooks.",
+    "contentChunks": null,
+    "role": "user",
+    "createdAt": "2026-06-10T09:00:00.000Z",
+    "canvas": [],
+    "files": []
+  },
+  {
+    "id": "msg-2",
+    "chatId": "aaa",
+    "content": "They're so idempotent they're afraid of change.",
+    "contentChunks": [{ "text": "They're so idempotent they're afraid of change.", "type": "text" }],
+    "role": "assistant",
+    "createdAt": "2026-06-10T09:00:05.000Z",
+    "canvas": [],
+    "files": [{ "type": "document", "name": "playbook.yml" }]
+  }
+]

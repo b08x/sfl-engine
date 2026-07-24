@@ -1,0 +1,5 @@
+[
+  { "id": "rec-1", "speaker": "Alice", "text": "The committee approved the annual budget after extensive review." },
+  { "id": "rec-2", "speaker": "Bob", "text": "" },
+  { "id": "rec-3", "speaker": "Carol", "text": "Quarterly revenue exceeded projections by twelve percent." }
+]

@@ -1,0 +1,58 @@
+[
+  {
+    "id": "convo-1",
+    "title": "Explaining RRF",
+    "create_time": 1780000000,
+    "mapping": {
+      "root": {
+        "id": "root",
+        "message": null,
+        "parent": null,
+        "children": ["system-1"]
+      },
+      "system-1": {
+        "id": "system-1",
+        "message": {
+          "author": { "role": "system" },
+          "content": { "parts": [""] },
+          "create_time": null
+        },
+        "parent": "root",
+        "children": ["user-1"]
+      },
+      "user-1": {
+        "id": "user-1",
+        "message": {
+          "author": { "role": "user" },
+          "content": { "parts": ["What is reciprocal rank fusion?"] },
+          "create_time": 1780000001
+        },
+        "parent": "system-1",
+        "children": ["assistant-1"]
+      },
+      "assistant-1": {
+        "id": "assistant-1",
+        "message": {
+          "author": { "role": "assistant" },
+          "content": { "parts": ["RRF merges ranked lists by summing 1/(k+rank)."] },
+          "create_time": 1780000005
+        },
+        "parent": "user-1",
+        "children": []
+      }
+    }
+  },
+  {
+    "id": "convo-2",
+    "title": "Empty conversation",
+    "create_time": 1780000100,
+    "mapping": {
+      "root": {
+        "id": "root",
+        "message": null,
+        "parent": null,
+        "children": []
+      }
+    }
+  }
+]

@@ -1,0 +1,16 @@
+WEBVTT
+
+NOTE
+This is a comment block that should be skipped.
+
+STYLE
+::cue { color: yellow; }
+
+00:00:01.000 --> 00:00:04.000
+<v Roger Bingham>Hello world.
+
+00:00:05.000 --> 00:00:08.000
+<v Roger Bingham>Second cue continues here.
+
+00:00:09.000 --> 00:00:12.000
+<v Guest>A different speaker now.
