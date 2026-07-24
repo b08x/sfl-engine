@@ -115,6 +115,20 @@ RSpec.describe SFL::Store::PgClauseStore do
 
       expect(db[:clauses].where(document_id: "doc-1").count).to eq(0)
     end
+
+    # F11: clause_row (see PgClauseStore) never sets embedding_status —
+    # every newly-inserted clause must pick up the column's own DB-level
+    # default ("pending", db/migrations/008) via multi_insert, not a Ruby-
+    # side literal. Live-verified rather than assumed, per this codebase's
+    # own precedent of not trusting a Sequel/pg driver default without a
+    # real round trip (see Store::Database's UTC timezone comment).
+    it "defaults embedding_status to pending via the DB column default, not clause_row (F11)" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1")])
+
+      row = db[:clauses].where(external_id: "c-1").first
+      expect(row[:embedding_status]).to eq("pending")
+      expect(row[:embedding_error]).to be_nil
+    end
   end
 
   describe "#find_by_document" do

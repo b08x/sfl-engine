@@ -49,5 +49,34 @@ RSpec.describe SFL::Store::PgEmbeddingStore do
       row = db[:embeddings].where(clause_id: "c-1", model: "test-model").first
       expect(Pgvector.decode(row[:embedding])).to eq(vector)
     end
+
+    it "marks a clause with a real vector as embedded (F11)" do
+      store.replace_document("doc-1", { "c-1" => Array.new(768, 0.1) })
+
+      row = db[:clauses].where(external_id: "c-1").first
+      expect(row[:embedding_status]).to eq("embedded")
+      expect(row[:embedding_error]).to be_nil
+    end
+
+    it "does not insert an embeddings row for a nil/empty vector, and marks that clause failed instead " \
+      "without aborting the rest of the document's write (F11)" do
+      store.replace_document("doc-1", { "c-1" => Array.new(768, 0.1), "c-2" => [] })
+
+      expect(db[:embeddings].where(clause_id: "c-2").count).to eq(0)
+      failed_row = db[:clauses].where(external_id: "c-2").first
+      expect(failed_row[:embedding_status]).to eq("failed")
+      expect(failed_row[:embedding_error]).not_to be_nil
+
+      succeeded_row = db[:clauses].where(external_id: "c-1").first
+      expect(succeeded_row[:embedding_status]).to eq("embedded")
+      expect(db[:embeddings].where(clause_id: "c-1", model: "test-model").count).to eq(1)
+    end
+
+    it "treats a nil vector the same as an empty vector (marks the clause failed, no row inserted)" do
+      store.replace_document("doc-1", { "c-1" => nil })
+
+      expect(db[:embeddings].where(clause_id: "c-1").count).to eq(0)
+      expect(db[:clauses].where(external_id: "c-1").first[:embedding_status]).to eq("failed")
+    end
   end
 end

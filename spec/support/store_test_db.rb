@@ -41,7 +41,11 @@ module SFL
       # ideational/interpersonal/embeddings rows too, but TRUNCATE lists
       # every table explicitly for clarity rather than relying on cascade.
       def self.clean!
-        db.run("TRUNCATE clauses, ideational_payloads, interpersonal_payloads, embeddings RESTART IDENTITY CASCADE")
+        db.run(<<~SQL)
+          TRUNCATE clauses, ideational_payloads, interpersonal_payloads, embeddings,
+                   annotation_reviews, review_queue
+          RESTART IDENTITY CASCADE
+        SQL
       end
     end
   end
