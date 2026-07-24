@@ -1,0 +1,23 @@
+Analyze the interpersonal and textual metafunctions of this clause using Systemic Functional Linguistics (SFL).
+
+Interpersonal: mood type, modality weight (certainty), tenor (formality), speaker attitude.
+Textual: Theme/Rheme structure — Theme is the starting point of the message.
+
+Note: process type and participants below are from Pass 1 Ideational analysis, given for
+context only — do not re-analyze them, they are not part of this task's output.
+
+Text: <%= text %>
+
+Root verb: <%= root_verb %>
+Process type: <%= process_type %>
+Participants: <%= participants %>
+POS tags: <%= pos_tags %>
+Dependencies: <%= dependencies %>
+<% if semantic_coherence_score -%>
+Semantic coherence score of the parent turn relative to the conversation baseline (0.0-1.0,
+lower means more anomalous/off-topic): <%= semantic_coherence_score %>
+<% end -%>
+
+For every interpersonal/textual value you report, cite the specific tokens, POS tags, or
+dependency relations from above that support it (as premises), and name the SFL rule that
+maps those premises to your conclusion (as inference_rule).

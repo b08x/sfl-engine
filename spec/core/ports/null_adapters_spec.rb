@@ -14,12 +14,17 @@ RSpec.describe SFL::Core::Ports::Null::Annotator do
   it_behaves_like "an annotator port"
 
   it "labels its output annotation_source as stub, not llm" do
-    payload = subject.annotate(
-      SFL::Core::Types::SyntacticClause.new(
-        id: "c-1", text: "x", tokens: [], root_index: 0, sentence_index: 0, document_id: nil
-      )
+    clause = SFL::Core::Types::SyntacticClause.new(
+      id: "c-1", text: "x", tokens: [], root_index: 0, sentence_index: 0, document_id: nil
     )
-    expect(payload.annotation_source).to eq("stub")
+    ideational = SFL::Core::Types::IdeationalPayload.new(
+      clause_id: "c-1", process_type: "material",
+      participants: [], circumstances: [], raw_transitivity: {}
+    )
+
+    result = subject.annotate(clause, ideational)
+
+    expect(result.interpersonal.annotation_source).to eq("stub")
   end
 end
 

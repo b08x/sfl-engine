@@ -26,14 +26,21 @@ RSpec.shared_examples "an annotator port" do
     )
   end
 
-  it "returns an InterpersonalPayload from #annotate" do
-    expect(subject.annotate(clause)).to be_a(SFL::Core::Types::InterpersonalPayload)
+  let(:ideational) do
+    SFL::Core::Types::IdeationalPayload.new(
+      clause_id: "c-1", process_type: "material",
+      participants: [], circumstances: [], raw_transitivity: {}
+    )
   end
 
-  it "returns one InterpersonalPayload per clause from #annotate_batch" do
-    result = subject.annotate_batch([clause, clause])
+  it "returns an AnnotationResult from #annotate" do
+    expect(subject.annotate(clause, ideational)).to be_a(SFL::Core::Types::AnnotationResult)
+  end
+
+  it "returns one AnnotationResult per pair from #annotate_batch" do
+    result = subject.annotate_batch([[clause, ideational], [clause, ideational]])
     expect(result.size).to eq(2)
-    expect(result).to all(be_a(SFL::Core::Types::InterpersonalPayload))
+    expect(result).to all(be_a(SFL::Core::Types::AnnotationResult))
   end
 end
 

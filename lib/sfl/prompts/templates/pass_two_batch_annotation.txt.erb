@@ -1,0 +1,25 @@
+Analyze the interpersonal and textual metafunctions of EACH numbered clause below using
+Systemic Functional Linguistics (SFL).
+
+Interpersonal: mood, modality, tenor, speaker attitude.
+Textual: Theme/Rheme structure.
+
+Note: process type and participants are from Pass 1 Ideational analysis, given for context
+only — do not re-analyze them, they are not part of this task's output. Processes
+(material, mental, relational, etc.) are Ideational, handled elsewhere.
+
+Return exactly one annotation per clause below, carrying over its index.
+
+For every interpersonal/textual value you report, cite the specific tokens, POS tags, or
+dependency relations from that clause's context that support it (as premises), and name the
+SFL rule that maps those premises to your conclusion (as inference_rule).
+<% clauses.each do |clause| -%>
+
+### Clause <%= clause[:index] %>
+Text: <%= clause[:text] %>
+Root verb: <%= clause[:root_verb] %>
+Process type: <%= clause[:process_type] %>
+Participants: <%= clause[:participants] %>
+POS tags: <%= clause[:pos_tags] %>
+Dependencies: <%= clause[:dependencies] %>
+<% end -%>

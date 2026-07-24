@@ -13,6 +13,10 @@ gem "dry-struct", "~> 1.6"
 gem "dry-types", "~> 1.7"
 gem "zeitwerk", "~> 2.6"
 
+# Pass 2 LLM annotation (track decision 7: replaces DSPy)
+gem "ruby_llm", "~> 1.16"
+gem "ruby_llm-schema", "~> 0.4"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"
