@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Running from a repo checkout (no gemspec — track decision 1 — so
+# bundler doesn't add this app's lib/ to the load path on its own).
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
+
+# Progress lines are sparse; without sync they sit in the block buffer
+# for minutes when stdout is redirected to a file or pipe.
+$stdout.sync = true
+
+require_relative "../lib/sfl"
+
+exit SFL::CLI.run(ARGV)
