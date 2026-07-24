@@ -1,0 +1,4 @@
+{"chat_metadata":{"integrity":"abc123"},"chat_id_hash":42}
+{"name":"Alice","is_user":true,"send_date":"June 10, 2026 2:30pm","mes":"Hi there."}
+not valid json at all {{{
+{"name":"Bob","is_user":false,"send_date":"June 10, 2026 2:31pm","mes":"Hello!"}

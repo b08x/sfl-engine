@@ -30,6 +30,14 @@ gem "kreuzberg", "~> 4.10" # PDF text + sentence-aware chunking, for PdfSource
 gem "pragmatic_tokenizer", "~> 3.2" # prose normalisation, for MarkdownSource
 gem "yajl-ruby", "~> 1.4", require: "yajl" # JSON/JSONL parsing, for the export/JSON Sources
 
+# Phase 3 analysis (lib/sfl/analysis): topic modeling pre-pass, shared by
+# every Analysis::Source. Legacy's gemspec pinned "~> 0.3"; only 0.6.2 is
+# available in this sandbox and its Ruby-level LDA/HDP API (documented
+# kwargs, #add_doc/#make_doc/#infer/#train/#topic_words/#burn_in=) matches
+# what legacy's TopicModeler calls, verified by reading the installed gem's
+# source directly (lib/tomoto/{lda,hdp}.rb) rather than assumed from memory.
+gem "tomoto", "~> 0.6"
+
 # Phase 2 storage (lib/sfl/store): Postgres-backed ClauseStore/EmbeddingStore adapters.
 # Versions match what legacy sfl-compiler pins/locks (pg 1.6.3, pgvector 0.3.3, sequel
 # 5.106.0 already installed locally) — verified compatible with this toolchain rather

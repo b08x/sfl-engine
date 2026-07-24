@@ -63,18 +63,30 @@ module SFL
       # @param embed [Boolean] compute and persist embeddings (requires document_id)
       # @param resume [Boolean] serve Pass 2 results from Cache where available (requires document_id)
       # @param semantic_coherence_score [Float, nil] forwarded to Pass 2 as extra context
+      # @param pass_one_only [Boolean] skip Pass 2 entirely and stub every clause's
+      #   interpersonal/textual payloads via Ports::Null::Annotator instead (mood:
+      #   "declarative", modality_weight/tenor: 0.5, annotation_source: "stub"). This is the
+      #   single, structural fix for the documentation golden-master bug (see
+      #   spec/fixtures/golden_master/README.md): legacy had two independently-maintained
+      #   copies of "should I run Pass 2 or stub it" — ConversationAnalyzer branched on it,
+      #   DocumentationAnalyzer silently didn't — and the second one drifted. Living here
+      #   instead of in Analysis::Engine/per-Source means there is exactly one implementation
+      #   for every future caller to inherit correctly, not N.
       # @return [Dry::Monads::Result] Success(Array<Types::AnnotatedClause>) or
       #   Failure([:pass_one_failed, message])
       # rubocop:disable Metrics/ParameterLists, Metrics/AbcSize -- mirrors the legacy
-      # Pipeline#compile's own options exactly (store/embed/resume/semantic_coherence_score);
-      # the five-stage bind chain is the ladder itself, not something to fragment further.
-      def compile(text, document_id: nil, store: true, embed: true, resume: false, semantic_coherence_score: nil)
+      # Pipeline#compile's own options exactly (store/embed/resume/semantic_coherence_score),
+      # plus pass_one_only (see above); the five-stage bind chain is the ladder itself, not
+      # something to fragment further.
+      def compile(text, document_id: nil, store: true, embed: true, resume: false, semantic_coherence_score: nil,
+        pass_one_only: false
+      )
         logger.debug { "pipeline started (document_id=#{document_id.inspect}, text_length=#{text.length})" }
         started_at = now
 
         result = parse(text, document_id)
           .bind { |clauses| Success(pair_with_ideational(clauses)) }
-          .bind { |pairs| annotate(pairs, document_id, resume, semantic_coherence_score) }
+          .bind { |pairs| annotate(pairs, document_id, resume, semantic_coherence_score, pass_one_only) }
           .bind { |annotated| persist(annotated, document_id, store) }
           .bind { |annotated| embed_all(annotated, document_id, embed) }
 
@@ -99,10 +111,21 @@ module SFL
         clauses.map { |clause| [clause, ideational_extractor.extract(clause)] }
       end
 
-      private def annotate(pairs, document_id, resume, semantic_coherence_score)
+      private def annotate(pairs, document_id, resume, semantic_coherence_score, pass_one_only)
+        return Success(stub_annotate_all(pairs)) if pass_one_only
         return Success(annotate_all(pairs, semantic_coherence_score)) unless resume && document_id
 
         Success(annotate_with_cache(pairs, document_id, semantic_coherence_score))
+      end
+
+      # Reuses Ports::Null::Annotator rather than re-literalizing its stub
+      # InterpersonalPayload/TextualPayload values here — one source of
+      # truth for "what does a stubbed annotation look like" whether it's
+      # reached via pass_one_only: true or via DI-ing Null::Annotator in
+      # directly as pass_two.
+      private def stub_annotate_all(pairs)
+        results = Ports::Null::Annotator.new.annotate_batch(pairs)
+        pairs.zip(results).map { |(clause, ideational), result| build_annotated_clause(clause, ideational, result) }
       end
 
       private def annotate_all(pairs, semantic_coherence_score)

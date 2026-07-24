@@ -132,6 +132,33 @@ RSpec.describe SFL::Core::Pipeline do
       end
     end
 
+    context "with pass_one_only" do
+      it "stubs interpersonal/textual payloads and never calls the annotator" do
+        result = pipeline.compile("text", document_id: "doc-1", store: false, embed: false, pass_one_only: true)
+
+        expect(result).to be_success
+        annotated = result.value!.first
+        expect(annotated.interpersonal.mood).to eq("declarative")
+        expect(annotated.interpersonal.modality_weight).to eq(0.5)
+        expect(annotated.interpersonal.tenor).to eq(0.5)
+        expect(annotated.interpersonal.annotation_source).to eq("stub")
+        expect(annotated.textual.topical_theme).to be_nil
+        expect(pass_two).not_to have_received(:annotate_batch)
+      end
+
+      it "ignores resume: true — no cache lookup for stubbed annotations" do
+        cached_pipeline = described_class.new(
+          pass_one:, pass_two:, ideational_extractor:, cache: SFL::Core::Ports::Fake::Cache.new
+        )
+
+        result = cached_pipeline.compile("text", document_id: "doc-1", resume: true, pass_one_only: true, store: false,
+          embed: false)
+
+        expect(result.value!.first.interpersonal.annotation_source).to eq("stub")
+        expect(pass_two).not_to have_received(:annotate_batch)
+      end
+    end
+
     context "with cache resume" do
       subject(:pipeline) do
         described_class.new(pass_one:, pass_two:, ideational_extractor:, cache:)
