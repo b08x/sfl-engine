@@ -15,6 +15,7 @@ module SFL
     "gui" => "GUI",
     "llm" => "LLM",
     "trusted_annotation_sources" => "TRUSTED_ANNOTATION_SOURCES",
+    "kb_content_type" => "KBContentType",
   }.freeze
   private_constant :INFLECTIONS
 
