@@ -1,0 +1,6 @@
+turn_id,speaker,timestamp,message_preview,avg_tenor,avg_modality,dominant_mood,process_counts,participants,tenor_shift,semantic_coherence_score
+1,Alice,2026-06-10 14:30,"Hey, I'm running into a weird issue with the auth ...",0.5,0.5,declarative,material:1,I,"",""
+2,Bob,2026-06-10 14:31,"Hmm, that's strange. Are you seeing any patterns i...",0.5,0.5,declarative,relational:1 mental:1,that strange you patterns,0.00,""
+3,Alice,2026-06-10 14:33,"Yeah, it seems to be happening with refresh tokens...",0.5,0.5,declarative,relational:1,it happening,0.00,1.00
+4,Bob,2026-06-10 14:35,I think I know what's going on. Let me check the t...,0.5,0.5,declarative,mental:1 material:1,I know what going me check logic,0.00,1.00
+5,Alice,2026-06-10 14:37,Thanks! That would be really helpful.,0.5,0.5,declarative,material:1 relational:1,That helpful,0.00,1.00

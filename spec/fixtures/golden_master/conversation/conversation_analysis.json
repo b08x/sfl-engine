@@ -1,0 +1,299 @@
+{
+  "metadata": {
+    "conversation_id": "sample",
+    "source_file": "spec/fixtures/conversations/sample.jsonl",
+    "turn_count": 5,
+    "speakers": [
+      "Alice",
+      "Bob"
+    ],
+    "analyzed_at": "2026-07-24T00:25:49-04:00",
+    "topics_enabled": true,
+    "interrupted": false,
+    "total": 5,
+    "annotation_coverage": {
+      "total_clauses": 8,
+      "llm": 0,
+      "human": 0,
+      "fallback": 0,
+      "stub": 8,
+      "defaulted_pct": 100.0
+    }
+  },
+  "turns": [
+    {
+      "turn_id": 1,
+      "speaker": "Alice",
+      "timestamp": "2026-06-10T14:30:00-04:00",
+      "preview": "Hey, I'm running into a weird issue with the auth flow.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5,
+      "dominant_mood": "declarative",
+      "tenor_shift": null,
+      "clause_count": 1,
+      "defaulted_count": 1,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": null,
+      "clauses": [
+        {
+          "id": "sample#turn-1-clause-1",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        }
+      ]
+    },
+    {
+      "turn_id": 2,
+      "speaker": "Bob",
+      "timestamp": "2026-06-10T14:31:00-04:00",
+      "preview": "Hmm, that's strange. Are you seeing any patterns in the logs?",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 2,
+      "defaulted_count": 2,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": null,
+      "clauses": [
+        {
+          "id": "sample#turn-2-clause-1",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        },
+        {
+          "id": "sample#turn-2-clause-2",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        }
+      ]
+    },
+    {
+      "turn_id": 3,
+      "speaker": "Alice",
+      "timestamp": "2026-06-10T14:33:00-04:00",
+      "preview": "Yeah, it seems to be happening with refresh tokens specifically.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 1,
+      "defaulted_count": 1,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": 1.0,
+      "clauses": [
+        {
+          "id": "sample#turn-3-clause-1",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        }
+      ]
+    },
+    {
+      "turn_id": 4,
+      "speaker": "Bob",
+      "timestamp": "2026-06-10T14:35:00-04:00",
+      "preview": "I think I know what's going on. Let me check the token expiry logic.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 2,
+      "defaulted_count": 2,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": 1.0,
+      "clauses": [
+        {
+          "id": "sample#turn-4-clause-1",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        },
+        {
+          "id": "sample#turn-4-clause-2",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        }
+      ]
+    },
+    {
+      "turn_id": 5,
+      "speaker": "Alice",
+      "timestamp": "2026-06-10T14:37:00-04:00",
+      "preview": "Thanks! That would be really helpful.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 2,
+      "defaulted_count": 2,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": 1.0,
+      "clauses": [
+        {
+          "id": "sample#turn-5-clause-1",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        },
+        {
+          "id": "sample#turn-5-clause-2",
+          "annotation_source": "stub",
+          "reasoning_trace": null
+        }
+      ]
+    }
+  ],
+  "tenor_timeline": [
+    {
+      "turn_id": 1,
+      "timestamp": "2026-06-10T14:30:00-04:00",
+      "speaker": "Alice",
+      "tenor": 0.5,
+      "tenor_shift": null
+    },
+    {
+      "turn_id": 2,
+      "timestamp": "2026-06-10T14:31:00-04:00",
+      "speaker": "Bob",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    },
+    {
+      "turn_id": 3,
+      "timestamp": "2026-06-10T14:33:00-04:00",
+      "speaker": "Alice",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    },
+    {
+      "turn_id": 4,
+      "timestamp": "2026-06-10T14:35:00-04:00",
+      "speaker": "Bob",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    },
+    {
+      "turn_id": 5,
+      "timestamp": "2026-06-10T14:37:00-04:00",
+      "speaker": "Alice",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    }
+  ],
+  "field_evolution": [
+    {
+      "turn_id": 1,
+      "timestamp": "2026-06-10T14:30:00-04:00",
+      "dominant_process": "material"
+    },
+    {
+      "turn_id": 2,
+      "timestamp": "2026-06-10T14:31:00-04:00",
+      "dominant_process": "relational"
+    },
+    {
+      "turn_id": 3,
+      "timestamp": "2026-06-10T14:33:00-04:00",
+      "dominant_process": "relational"
+    },
+    {
+      "turn_id": 4,
+      "timestamp": "2026-06-10T14:35:00-04:00",
+      "dominant_process": "mental"
+    },
+    {
+      "turn_id": 5,
+      "timestamp": "2026-06-10T14:37:00-04:00",
+      "dominant_process": "material"
+    }
+  ],
+  "correlations": {
+    "material": {
+      "count": 3,
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5
+    },
+    "relational": {
+      "count": 3,
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5
+    },
+    "mental": {
+      "count": 2,
+      "avg_tenor": 0.5,
+      "avg_modality": 0.5
+    }
+  },
+  "insights": [
+    "Alice contributed 3 of 5 turns",
+    "3 topics identified across the conversation"
+  ],
+  "topic_labels": {
+    "0": [],
+    "1": [],
+    "2": []
+  },
+  "topic_evolution": [],
+  "key_moments": [],
+  "speaker_profiles": {
+    "Alice": {
+      "turn_count": 3,
+      "avg_tenor": 0.5,
+      "tenor_range": [
+        0.5,
+        0.5
+      ],
+      "tenor_variance": 0.0,
+      "avg_modality": 0.5,
+      "mood_distribution": {
+        "declarative": 1.0
+      },
+      "dominant_processes": {
+        "material": 2,
+        "relational": 2
+      }
+    },
+    "Bob": {
+      "turn_count": 2,
+      "avg_tenor": 0.5,
+      "tenor_range": [
+        0.5,
+        0.5
+      ],
+      "tenor_variance": 0.0,
+      "avg_modality": 0.5,
+      "mood_distribution": {
+        "declarative": 1.0
+      },
+      "dominant_processes": {
+        "relational": 1,
+        "mental": 2,
+        "material": 1
+      }
+    }
+  }
+}

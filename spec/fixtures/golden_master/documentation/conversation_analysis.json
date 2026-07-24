@@ -1,0 +1,431 @@
+{
+  "metadata": {
+    "document_id": "sample",
+    "source_file": "spec/fixtures/docs/sample.md",
+    "section_count": 3,
+    "headings": [
+      "Introduction",
+      "Usage",
+      "Advanced Topics"
+    ],
+    "analyzed_at": "2026-07-24T00:26:33-04:00",
+    "unit_label": "Section",
+    "actor_label": "Section",
+    "actors_list_label": "Headings",
+    "id_label": "document_id",
+    "topics_enabled": true,
+    "interrupted": false,
+    "total": 3,
+    "clause_count": 6,
+    "low_confidence": true,
+    "low_confidence_threshold": 30,
+    "annotation_coverage": {
+      "total_clauses": 6,
+      "llm": 6,
+      "human": 0,
+      "fallback": 0,
+      "stub": 0,
+      "defaulted_pct": 0.0
+    }
+  },
+  "turns": [
+    {
+      "turn_id": 1,
+      "speaker": "Introduction",
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "preview": "This document introduces the main concepts of the system.\n\nIt provides an overview of the architecture and the key components.",
+      "avg_tenor": 0.5,
+      "avg_modality": 1.0,
+      "dominant_mood": "declarative",
+      "tenor_shift": null,
+      "clause_count": 2,
+      "defaulted_count": 0,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": null,
+      "clauses": [
+        {
+          "id": "1d0bdff5-c5b6-4b6f-9cc4-7359028c5ca8",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "linguistic",
+                "source": "mood",
+                "value": "declarative",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "modality",
+                "value": "1.0",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "tenor",
+                "value": "0.5",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "theme",
+                "value": "This document",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "rheme",
+                "value": "introduces the main concepts of the system",
+                "weight": 1.0
+              }
+            ],
+            "inference_rule": "unknown",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 1.0,
+              "tenor": 0.5,
+              "speaker_attitude": null
+            },
+            "confidence": 0.5,
+            "derivation_hash": "03d16326137e100de8fa78da3f0c545b6792860117b16a73d93e868438f7705b",
+            "generated_at": "2026-07-24T00:26:17-04:00"
+          }
+        },
+        {
+          "id": "84d58fd6-5d04-49c7-bb7d-e74b1f476552",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "linguistic",
+                "source": "mood",
+                "value": "declarative",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "modality",
+                "value": "1.0",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "tenor",
+                "value": "0.5",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "theme",
+                "value": "It",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "rheme",
+                "value": "provides an overview of the architecture and the key components",
+                "weight": 1.0
+              }
+            ],
+            "inference_rule": "unknown",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 1.0,
+              "tenor": 0.5,
+              "speaker_attitude": null
+            },
+            "confidence": 0.5,
+            "derivation_hash": "a0ffaf863d15440b9646892af256567c013f6f9d10db7866b7ddf2f7fabe5228",
+            "generated_at": "2026-07-24T00:26:17-04:00"
+          }
+        }
+      ]
+    },
+    {
+      "turn_id": 2,
+      "speaker": "Usage",
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "preview": "Users can invoke the command-line interface to analyze text.\n\nThe tool produces structured linguistic annotations for each sentence.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.9,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 2,
+      "defaulted_count": 0,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": null,
+      "clauses": [
+        {
+          "id": "9904e8e1-3b02-4358-9940-e83334a21243",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "linguistic",
+                "source": "mood",
+                "value": "declarative",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "modality",
+                "value": "can",
+                "weight": 0.8
+              },
+              {
+                "type": "linguistic",
+                "source": "tenor",
+                "value": "neutral",
+                "weight": 0.5
+              },
+              {
+                "type": "linguistic",
+                "source": "theme",
+                "value": "Users",
+                "weight": 1.0
+              }
+            ],
+            "inference_rule": "default",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 0.8,
+              "tenor": 0.5,
+              "speaker_attitude": "neutral"
+            },
+            "confidence": 0.5,
+            "derivation_hash": "1d230008c8f187b1654cff6760e780b6e4d2f49df0536a514aafb640b69369d8",
+            "generated_at": "2026-07-24T00:26:27-04:00"
+          }
+        },
+        {
+          "id": "5fb4bce9-3d03-4aca-818b-fcd90fa319a3",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "linguistic",
+                "source": "mood",
+                "value": "declarative",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "modality",
+                "value": "none",
+                "weight": 1.0
+              },
+              {
+                "type": "linguistic",
+                "source": "tenor",
+                "value": "neutral",
+                "weight": 0.5
+              },
+              {
+                "type": "linguistic",
+                "source": "theme",
+                "value": "The tool",
+                "weight": 1.0
+              }
+            ],
+            "inference_rule": "default",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 1.0,
+              "tenor": 0.5,
+              "speaker_attitude": "neutral"
+            },
+            "confidence": 0.5,
+            "derivation_hash": "27a20ebee10f1acb3b441364a123e3329c01c71ee9feee8cadfbaf2762dcc271",
+            "generated_at": "2026-07-24T00:26:27-04:00"
+          }
+        }
+      ]
+    },
+    {
+      "turn_id": 3,
+      "speaker": "Advanced Topics",
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "preview": "The pipeline supports custom models and batch processing.\n\nOperators may configure concurrency and batch size via environment variables.",
+      "avg_tenor": 0.5,
+      "avg_modality": 0.9,
+      "dominant_mood": "declarative",
+      "tenor_shift": 0.0,
+      "clause_count": 2,
+      "defaulted_count": 0,
+      "dominant_topic": null,
+      "topic_distribution": {
+        "0": 0.3333,
+        "1": 0.3333,
+        "2": 0.3333
+      },
+      "semantic_coherence_score": 1.0,
+      "clauses": [
+        {
+          "id": "273d33bc-b1cd-41bf-a5b5-f7a94f554907",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "fact",
+                "source": "clause",
+                "value": "The pipeline supports custom models and batch processing",
+                "weight": 1.0
+              }
+            ],
+            "inference_rule": "unknown",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 1.0,
+              "tenor": 0.5,
+              "speaker_attitude": null
+            },
+            "confidence": 0.5,
+            "derivation_hash": "f06199e4d0595c127b5c5f112f0aa2e101893c32e008adbb499c64cda6e12abc",
+            "generated_at": "2026-07-24T00:26:33-04:00"
+          }
+        },
+        {
+          "id": "53506ffb-b4ee-487c-b50e-b069b20e0c95",
+          "annotation_source": "llm",
+          "reasoning_trace": {
+            "premises": [
+              {
+                "type": "fact",
+                "source": "clause",
+                "value": "Operators may configure concurrency and batch size via environment variables",
+                "weight": 0.8
+              }
+            ],
+            "inference_rule": "unknown",
+            "conclusion": {
+              "mood": "declarative",
+              "modality_weight": 0.8,
+              "tenor": 0.5,
+              "speaker_attitude": null
+            },
+            "confidence": 0.5,
+            "derivation_hash": "7d20698c21a4d622fc74cd171a63750c0b3935ad5be891850f13ed26960c70e1",
+            "generated_at": "2026-07-24T00:26:33-04:00"
+          }
+        }
+      ]
+    }
+  ],
+  "tenor_timeline": [
+    {
+      "turn_id": 1,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "speaker": "Introduction",
+      "tenor": 0.5,
+      "tenor_shift": null
+    },
+    {
+      "turn_id": 2,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "speaker": "Usage",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    },
+    {
+      "turn_id": 3,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "speaker": "Advanced Topics",
+      "tenor": 0.5,
+      "tenor_shift": 0.0
+    }
+  ],
+  "field_evolution": [
+    {
+      "turn_id": 1,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "dominant_process": "material"
+    },
+    {
+      "turn_id": 2,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "dominant_process": "material"
+    },
+    {
+      "turn_id": 3,
+      "timestamp": "2026-07-03T14:14:06-04:00",
+      "dominant_process": "material"
+    }
+  ],
+  "correlations": {
+    "material": {
+      "count": 6,
+      "avg_tenor": 0.5,
+      "avg_modality": 0.933
+    }
+  },
+  "insights": [
+    "3 topics identified across the document"
+  ],
+  "topic_labels": {
+    "0": [],
+    "1": [],
+    "2": []
+  },
+  "topic_evolution": [],
+  "key_moments": [],
+  "section_profiles": {
+    "Introduction": {
+      "turn_count": 1,
+      "avg_tenor": 0.5,
+      "tenor_range": [
+        0.5,
+        0.5
+      ],
+      "tenor_variance": 0.0,
+      "avg_modality": 1.0,
+      "mood_distribution": {
+        "declarative": 1.0
+      },
+      "dominant_processes": {
+        "material": 2
+      }
+    },
+    "Usage": {
+      "turn_count": 1,
+      "avg_tenor": 0.5,
+      "tenor_range": [
+        0.5,
+        0.5
+      ],
+      "tenor_variance": 0.0,
+      "avg_modality": 0.9,
+      "mood_distribution": {
+        "declarative": 1.0
+      },
+      "dominant_processes": {
+        "material": 2
+      }
+    },
+    "Advanced Topics": {
+      "turn_count": 1,
+      "avg_tenor": 0.5,
+      "tenor_range": [
+        0.5,
+        0.5
+      ],
+      "tenor_variance": 0.0,
+      "avg_modality": 0.9,
+      "mood_distribution": {
+        "declarative": 1.0
+      },
+      "dominant_processes": {
+        "material": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+---
+label: legacy-baseline
+recorded_at: '2026-07-24T04:32:53Z'
+repo: "/home/b08x/WorkspaceV3/sfl-compiler"
+subcommand: conversation
+input: spec/fixtures/conversations/sample.jsonl
+pass1_only: true
+elapsed_seconds: 2.73
+peak_rss_mb: 284.8
+clause_count: 8
+clauses_per_min: 175.8
+llm_calls: 0
+note: small fixture -- fixed process-boot cost (Ruby + spaCy/PyCall model load) dominates
+  elapsed time here; clauses_per_min is NOT a steady-state throughput number until
+  this is re-run against a production-shaped corpus per blueprint §4.1

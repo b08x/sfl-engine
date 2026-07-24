@@ -1,0 +1,8 @@
+/coverage/
+/.bundle/
+/log/
+/tmp/
+*.gem
+.env
+/.codemap/
+/spec/examples.txt

@@ -1,0 +1,4 @@
+turn_id,speaker,timestamp,message_preview,avg_tenor,avg_modality,dominant_mood,process_counts,participants,tenor_shift,semantic_coherence_score
+1,Introduction,2026-07-03 14:14,This document introduces the main concepts of the ...,0.5,1.0,declarative,material:2,document concepts It overview components,"",""
+2,Usage,2026-07-03 14:14,Users can invoke the command-line interface to ana...,0.5,0.9,declarative,material:2,Users interface text tool annotations,0.00,""
+3,Advanced Topics,2026-07-03 14:14,The pipeline supports custom models and batch proc...,0.5,0.9,declarative,material:2,pipeline models processing Operators batch size,0.00,1.00

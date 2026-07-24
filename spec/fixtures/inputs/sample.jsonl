@@ -1,0 +1,5 @@
+{"name":"Alice","is_user":true,"send_date":"June 10, 2026 2:30pm","mes":"Hey, I'm running into a weird issue with the auth flow.","extra":{"token_count":15}}
+{"name":"Bob","is_user":false,"send_date":"June 10, 2026 2:31pm","mes":"Hmm, that's strange. Are you seeing any patterns in the logs?","extra":{"token_count":14}}
+{"name":"Alice","is_user":true,"send_date":"June 10, 2026 2:33pm","mes":"Yeah, it seems to be happening with refresh tokens specifically.","extra":{"token_count":12}}
+{"name":"Bob","is_user":false,"send_date":"June 10, 2026 2:35pm","mes":"I think I know what's going on. Let me check the token expiry logic.","extra":{"token_count":16}}
+{"name":"Alice","is_user":true,"send_date":"June 10, 2026 2:37pm","mes":"Thanks! That would be really helpful.","extra":{"token_count":8}}
