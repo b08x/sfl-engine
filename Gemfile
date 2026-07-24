@@ -17,6 +17,11 @@ gem "zeitwerk", "~> 2.6"
 gem "ruby_llm", "~> 1.16"
 gem "ruby_llm-schema", "~> 0.4"
 
+# Tracing continuity to Langfuse via OTel (track decision 7), replacing dspy-o11y-langfuse
+gem "opentelemetry-exporter-otlp", "~> 0.34"
+gem "opentelemetry-instrumentation-ruby_llm", "~> 0.7"
+gem "opentelemetry-sdk", "~> 1.12"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"

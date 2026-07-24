@@ -50,6 +50,14 @@ GEM
       net-http (~> 0.5)
     faraday-retry (2.4.0)
       faraday (~> 2.0)
+    google-protobuf (4.35.1)
+      bigdecimal
+      rake (~> 13.3)
+    google-protobuf (4.35.1-x86_64-linux-gnu)
+      bigdecimal
+      rake (~> 13.3)
+    googleapis-common-protos-types (1.23.0)
+      google-protobuf (~> 4.26)
     ice_nine (0.11.2)
     io-console (0.8.2)
     json (2.21.1)
@@ -63,6 +71,34 @@ GEM
     multipart-post (2.4.1)
     net-http (0.9.1)
       uri (>= 0.11.1)
+    opentelemetry-api (1.11.0)
+      logger
+    opentelemetry-common (0.25.1)
+      opentelemetry-api (~> 1.0)
+    opentelemetry-exporter-otlp (0.34.1)
+      google-protobuf (>= 3.18)
+      googleapis-common-protos-types (~> 1.3)
+      opentelemetry-api (~> 1.1)
+      opentelemetry-common (~> 0.20)
+      opentelemetry-sdk (~> 1.10)
+      opentelemetry-semantic_conventions
+    opentelemetry-instrumentation-base (0.26.1)
+      opentelemetry-api (~> 1.7)
+      opentelemetry-common (~> 0.21)
+      opentelemetry-registry (~> 0.1)
+    opentelemetry-instrumentation-ruby_llm (0.7.0)
+      opentelemetry-api (~> 1.0)
+      opentelemetry-instrumentation-base (~> 0.23)
+    opentelemetry-registry (0.6.3)
+      opentelemetry-api (~> 1.1)
+    opentelemetry-sdk (1.13.0)
+      logger
+      opentelemetry-api (~> 1.1)
+      opentelemetry-common (~> 0.20)
+      opentelemetry-registry (~> 0.2)
+      opentelemetry-semantic_conventions
+    opentelemetry-semantic_conventions (1.43.0)
+      opentelemetry-api (~> 1.0)
     parallel (2.1.0)
     parser (3.3.12.0)
       ast (~> 2.4.1)
@@ -180,6 +216,9 @@ DEPENDENCIES
   dry-struct (~> 1.6)
   dry-types (~> 1.7)
   memory_profiler
+  opentelemetry-exporter-otlp (~> 0.34)
+  opentelemetry-instrumentation-ruby_llm (~> 0.7)
+  opentelemetry-sdk (~> 1.12)
   pry
   pry-byebug
   rack-test
@@ -220,6 +259,9 @@ CHECKSUMS
   faraday-multipart (1.2.0) sha256=7d89a949693714176f612323ca13746a2ded204031a6ba528adee788694ef757
   faraday-net_http (3.4.4) sha256=0e78af151747ed1b00f33e25973b4bc220d7f16c00c39676817c8b12331eb588
   faraday-retry (2.4.0) sha256=7b79c48fb7e56526faf247b12d94a680071ff40c9fda7cf1ec1549439ad11ebe
+  google-protobuf (4.35.1) sha256=a3a6471331d918f58dfa4d014a8f6286f0af2cf4840216bde52fcf2ea3fe3726
+  google-protobuf (4.35.1-x86_64-linux-gnu) sha256=c786439087512a3fbd199e9897d265b855f951d4027e218ea55e858d45969edd
+  googleapis-common-protos-types (1.23.0) sha256=992e740a523794d9fc5f29a504465d8fc737aaa16c930fe7228e3346860faf0a
   ice_nine (0.11.2) sha256=5d506a7d2723d5592dc121b9928e4931742730131f22a1a37649df1c1e2e63db
   io-console (0.8.2) sha256=d6e3ae7a7cc7574f4b8893b4fca2162e57a825b223a177b7afa236c5ef9814cc
   json (2.21.1) sha256=13a43df75d95641443f5702dff350f237164a9d811ff0f2c2800d4d980220583
@@ -232,6 +274,14 @@ CHECKSUMS
   mize (0.6.1) sha256=4031558979ff5426fda24c75a149b4e4c0faf4cacf2fae8938f83866ab94b780
   multipart-post (2.4.1) sha256=9872d03a8e552020ca096adadbf5e3cb1cd1cdd6acd3c161136b8a5737cdb4a8
   net-http (0.9.1) sha256=25ba0b67c63e89df626ed8fac771d0ad24ad151a858af2cc8e6a716ca4336996
+  opentelemetry-api (1.11.0) sha256=218c840170fa473974756668b32b6989570de07c7d3864627960209f189247e2
+  opentelemetry-common (0.25.1) sha256=38fe87c751e4e13fcd47a8290b4ad67bbedf76c4ed89aeced5ea5c620e66bfb1
+  opentelemetry-exporter-otlp (0.34.1) sha256=4697d81e03aff80ea6fbcc741b1c3c700d3624eddea14b453602ee23275450ca
+  opentelemetry-instrumentation-base (0.26.1) sha256=49e8d35d565e1a13b4a6b794a4cca4ed8c590d9b33bda5244249bd98c8673775
+  opentelemetry-instrumentation-ruby_llm (0.7.0) sha256=ba266e22523ee49900e03b22608301b83079207384c3f382ba269729db7f0eb6
+  opentelemetry-registry (0.6.3) sha256=568fa8eaea94394f29f4fce3f0339ab10c3bf6d6c8beed6b3cfee6fd37fcc608
+  opentelemetry-sdk (1.13.0) sha256=eea4ab625eb901ecfe1083049862d4853fd16d94029f3cdd16526c81332f0fff
+  opentelemetry-semantic_conventions (1.43.0) sha256=d96eb7da3bc89335786ea676b448701f566cf241a7ca56ae1e814b83816922af
   parallel (2.1.0) sha256=b35258865c2e31134c5ecb708beaaf6772adf9d5efae28e93e99260877b09356
   parser (3.3.12.0) sha256=21a6d7f755d5a24dfbdc6e6b772e4e879a52e7631a88bc5a3a134606052c9828
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
