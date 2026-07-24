@@ -96,6 +96,7 @@ module SFL
       # plus one AnalysisResult literal assembling every cross-turn derivation this class exists
       # to compute once instead of N times; splitting the literal further would only relocate it.
       def build_result(turns, source:, label:, total:, interrupted: false, topic_labels: nil, topic_shifts: [])
+        turns = apply_chunk_artifacts(source, turns)
         turns = TenorTracker.new(turns).calculate_shifts
         turns = CohesionAnalyzer.new.analyze(turns)
         profiles = SpeakerProfiler.build_profiles(turns)
@@ -119,6 +120,65 @@ module SFL
 
       private def topic_shift_moments(topic_shifts)
         topic_shifts.map { |s| Core::Types::KeyMoment.new(**s.slice(:turn_id, :type, :magnitude, :description)) }
+      end
+
+      # The third optional Source hook, alongside #review_entry and
+      # #extra_metadata (see those methods' docs on ConversationSource/
+      # DocumentationSource for the established pattern this follows): a
+      # source that implements #chunk_boundaries(turns) is answering "at
+      # which flat clause-array indices do two of my units meet that
+      # shouldn't be trusted as a real sentence boundary" — DocumentationSource
+      # is the only current implementer (PDF chunk splits); ConversationSource
+      # doesn't respond to it and this is a no-op for it. Everything here is
+      # generic over "boundary indices in a flat clause array" — no PDF- or
+      # source-specific knowledge lives in Engine.
+      private def apply_chunk_artifacts(source, turns)
+        return turns unless source.respond_to?(:chunk_boundaries)
+
+        boundaries = source.chunk_boundaries(turns)
+        return turns if boundaries.empty?
+
+        affected = ChunkArtifactDetector.detect(turns.flat_map(&:clauses), boundaries)
+        return turns if affected.empty?
+
+        rebuild_turns_with_chunk_artifacts(turns, affected)
+      end
+
+      # Rewrites only the turns containing a flagged clause, overriding
+      # each flagged clause's annotation_source and excluding it from
+      # that turn's avg_tenor/avg_modality (a fallback 0.5 from an
+      # ambiguous fragment shouldn't drag a real average toward the
+      # midpoint).
+      private def rebuild_turns_with_chunk_artifacts(turns, affected_flat_indices)
+        offset = 0
+
+        turns.map do |turn|
+          local_affected = (0...(turn.clauses.size)).select { |i| affected_flat_indices.include?(offset + i) }
+          offset += turn.clauses.size
+          next turn if local_affected.empty?
+
+          rebuilt_turn(turn, local_affected)
+        end
+      end
+
+      private def rebuilt_turn(turn, local_affected)
+        new_clauses = turn.clauses.each_with_index.map do |clause, i|
+          local_affected.include?(i) ? mark_chunk_artifact(clause) : clause
+        end
+
+        turn.new(clauses: new_clauses, **reliable_averages(new_clauses))
+      end
+
+      private def reliable_averages(clauses)
+        reliable = clauses.reject { |c| c.interpersonal.annotation_source == "chunk_artifact" }
+        {
+          avg_tenor: mean(reliable.map { |c| c.interpersonal.tenor }),
+          avg_modality: mean(reliable.map { |c| c.interpersonal.modality_weight }),
+        }
+      end
+
+      private def mark_chunk_artifact(clause)
+        clause.new(interpersonal: clause.interpersonal.new(annotation_source: "chunk_artifact"))
       end
 
       # rubocop:disable Metrics/ParameterLists -- forwards #build_result's own five options

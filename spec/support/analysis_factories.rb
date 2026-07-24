@@ -69,6 +69,20 @@ module AnalysisFactories
     )
   end
   # rubocop:enable Metrics/ParameterLists
+
+  # rubocop:disable Metrics/ParameterLists -- one flat AnalysisResult builder covering every
+  # field NarrativeGenerator::Digest reads off it; splitting it would just relocate the kwargs.
+  def build_analysis_result(
+    metadata: {}, turns: [], speaker_profiles: {}, tenor_timeline: [], field_evolution: [],
+    correlations: {}, insights: [], key_moments: [], example_passages: [], topic_labels: nil,
+    topic_evolution: []
+  )
+    SFL::Core::Types::AnalysisResult.new(
+      metadata:, turns:, speaker_profiles:, tenor_timeline:, field_evolution:, correlations:,
+      insights:, key_moments:, example_passages:, topic_labels:, topic_evolution:
+    )
+  end
+  # rubocop:enable Metrics/ParameterLists
 end
 
 RSpec.configure do |config|

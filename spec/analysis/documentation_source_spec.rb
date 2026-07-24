@@ -37,6 +37,55 @@ RSpec.describe SFL::Analysis::DocumentationSource do
     end
   end
 
+  describe "#chunk_boundaries" do
+    it "returns [] when #each_unit has yielded fewer than two units" do
+      source = described_class.new("spec/fixtures/inputs/sample.md")
+
+      expect(source.chunk_boundaries([])).to eq([])
+    end
+
+    it "returns [] for a pure-markdown run — no pdf_chunk pair is ever recorded, by construction" do
+      source = described_class.new("spec/fixtures/inputs/sample.md")
+      turns = source.units.map { |_u| build_turn(clauses: [build_annotated_clause]) }
+
+      expect(source.chunk_boundaries(turns)).to eq([])
+    end
+
+    it "returns the flat clause-index boundary between two contiguous same-file PDF chunk units" do
+      unit_a = SFL::Core::Types::Unit.new(document_id: "doc#a", text: "a", metadata: { "file_id" => "doc" })
+      unit_b = SFL::Core::Types::Unit.new(document_id: "doc#b", text: "b", metadata: { "file_id" => "doc" })
+      pdf_loader = instance_double(SFL::Core::Loaders::PdfSource)
+      allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
+      allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
+
+      source = described_class.new("doc.pdf")
+      turns = [
+        build_turn(clauses: [build_annotated_clause(id: "c1"), build_annotated_clause(id: "c2")]),
+        build_turn(clauses: [build_annotated_clause(id: "c3")]),
+      ]
+      source.units
+
+      expect(source.chunk_boundaries(turns)).to eq([2])
+    end
+
+    it "does not treat two PDF-chunk units from different files as contiguous" do
+      unit_a = SFL::Core::Types::Unit.new(document_id: "a#1", text: "a", metadata: { "file_id" => "doc-a" })
+      unit_b = SFL::Core::Types::Unit.new(document_id: "b#1", text: "b", metadata: { "file_id" => "doc-b" })
+      pdf_loader = instance_double(SFL::Core::Loaders::PdfSource)
+      allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
+      allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
+
+      source = described_class.new("doc.pdf")
+      turns = [
+        build_turn(clauses: [build_annotated_clause(id: "c1")]),
+        build_turn(clauses: [build_annotated_clause(id: "c2")]),
+      ]
+      source.units
+
+      expect(source.chunk_boundaries(turns)).to eq([])
+    end
+  end
+
   describe "#review_entry" do
     it "returns nil when every clause is trusted (llm/human annotation_source)" do
       clauses = [build_annotated_clause(annotation_source: "llm"), build_annotated_clause(annotation_source: "human")]

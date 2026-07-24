@@ -25,6 +25,77 @@ RSpec.describe SFL::Analysis::Engine do
   let(:engine) { described_class.new(pipeline:) }
   let(:no_op_source) { FakeAnalysisSource.new([], extra: {}) }
 
+  describe "#build_result -> apply_chunk_artifacts (the third optional Source hook)" do
+    # Boundary at flat index 2: clause[1] ("The system was", tenor 0.5) has no terminal
+    # punctuation and clause[2] ("designed for scale.", tenor 0.5) starts lowercase — a
+    # real mid-sentence PDF chunk split, per ChunkArtifactDetector's own heuristic.
+    let(:turn_before_split) do
+      build_turn(turn_id: 1, avg_tenor: 0.65, avg_modality: 0.65, clauses: [
+        build_annotated_clause(id: "c1", text: "Solid opener.", tenor: 0.8, modality: 0.8),
+        build_annotated_clause(id: "c2", text: "The system was", tenor: 0.5, modality: 0.5),
+      ])
+    end
+    let(:turn_after_split) do
+      build_turn(turn_id: 2, avg_tenor: 0.35, avg_modality: 0.55, clauses: [
+        build_annotated_clause(id: "c3", text: "designed for scale.", tenor: 0.5, modality: 0.5),
+        build_annotated_clause(id: "c4", text: "Solid closer.", tenor: 0.2, modality: 0.6),
+      ])
+    end
+    let(:chunk_boundary_source) do
+      source = FakeAnalysisSource.new([], extra: {})
+      def source.chunk_boundaries(_turns) = [2]
+      source
+    end
+
+    it "leaves turns untouched when the source doesn't implement #chunk_boundaries" do
+      turns = [build_turn(turn_id: 1, clauses: [build_annotated_clause])]
+
+      result = engine.build_result(turns, source: no_op_source, label: "x", total: 1)
+
+      expect(result.turns.first.clauses.first.interpersonal.annotation_source).to eq("llm")
+    end
+
+    it "leaves turns untouched when #chunk_boundaries returns []" do
+      source = FakeAnalysisSource.new([], extra: {})
+      def source.chunk_boundaries(_turns) = []
+      turns = [build_turn(turn_id: 1, clauses: [build_annotated_clause])]
+
+      result = engine.build_result(turns, source:, label: "x", total: 1)
+
+      expect(result.turns.first.clauses.first.interpersonal.annotation_source).to eq("llm")
+    end
+
+    it "marks the flagged clauses chunk_artifact and excludes them from that turn's " \
+      "avg_tenor/avg_modality, without touching turns the boundary doesn't reach" do
+      result = engine.build_result(
+        [turn_before_split, turn_after_split], source: chunk_boundary_source, label: "x", total: 2
+      )
+
+      rebuilt1, rebuilt2 = result.turns
+      expect(rebuilt1.clauses.map { |c| c.interpersonal.annotation_source }).to eq(%w[llm chunk_artifact])
+      expect(rebuilt2.clauses.map { |c| c.interpersonal.annotation_source }).to eq(%w[chunk_artifact llm])
+      expect(rebuilt1.avg_tenor).to eq(0.8)
+      expect(rebuilt1.avg_modality).to eq(0.8)
+      expect(rebuilt2.avg_tenor).to eq(0.2)
+      expect(rebuilt2.avg_modality).to eq(0.6)
+    end
+
+    it "a real DocumentationSource over pure-markdown input never marks any clause chunk_artifact " \
+      "(chunk_boundaries returns [] by construction — see documentation_source_spec.rb)" do
+      source = SFL::Analysis::DocumentationSource.new("spec/fixtures/inputs/sample.md")
+      source.units # populate the source's internal unit-tracking before the hook is queried
+      turns = [
+        build_turn(turn_id: 1, clauses: [build_annotated_clause(id: "c1")]),
+        build_turn(turn_id: 2, clauses: [build_annotated_clause(id: "c2")]),
+      ]
+
+      result = engine.build_result(turns, source:, label: "x", total: 2)
+
+      annotation_sources = result.turns.flat_map(&:clauses).map { |c| c.interpersonal.annotation_source }
+      expect(annotation_sources).to eq(%w[llm llm])
+    end
+  end
+
   describe "#build_result -> detect_key_moments" do
     it "emits a tenor_shift moment when the consecutive-turn delta exceeds 0.15" do
       turns = [build_turn(turn_id: 1, avg_tenor: 0.2), build_turn(turn_id: 2, avg_tenor: 0.4)]
