@@ -30,6 +30,15 @@ gem "kreuzberg", "~> 4.10" # PDF text + sentence-aware chunking, for PdfSource
 gem "pragmatic_tokenizer", "~> 3.2" # prose normalisation, for MarkdownSource
 gem "yajl-ruby", "~> 1.4", require: "yajl" # JSON/JSONL parsing, for the export/JSON Sources
 
+# Phase 2 storage (lib/sfl/store): Postgres-backed ClauseStore/EmbeddingStore adapters.
+# Versions match what legacy sfl-compiler pins/locks (pg 1.6.3, pgvector 0.3.3, sequel
+# 5.106.0 already installed locally) — verified compatible with this toolchain rather
+# than assumed from memory (Context7 + local gem source read for both sequel's
+# foreign_key key: option and pgvector-ruby's Pgvector.encode).
+gem "pg", "~> 1.5"
+gem "pgvector", "~> 0.3"
+gem "sequel", "~> 5.88"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"

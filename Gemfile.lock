@@ -108,6 +108,8 @@ GEM
     parser (3.3.12.0)
       ast (~> 2.4.1)
       racc
+    pg (1.6.3-x86_64-linux)
+    pgvector (0.3.3)
     pragmatic_tokenizer (3.2.1)
     prism (1.9.0)
     pry (0.16.0)
@@ -196,6 +198,8 @@ GEM
       ruby_llm-schema (~> 0)
       zeitwerk (~> 2)
     ruby_llm-schema (0.4.0)
+    sequel (5.106.0)
+      bigdecimal
     simplecov (1.0.2)
     sorbet-runtime (0.6.13359)
     stackprof (0.2.28)
@@ -230,6 +234,8 @@ DEPENDENCIES
   opentelemetry-exporter-otlp (~> 0.34)
   opentelemetry-instrumentation-ruby_llm (~> 0.7)
   opentelemetry-sdk (~> 1.12)
+  pg (~> 1.5)
+  pgvector (~> 0.3)
   pragmatic_tokenizer (~> 3.2)
   pry
   pry-byebug
@@ -246,6 +252,7 @@ DEPENDENCIES
   ruby-lsp
   ruby_llm (~> 1.16)
   ruby_llm-schema (~> 0.4)
+  sequel (~> 5.88)
   simplecov
   stackprof
   yajl-ruby (~> 1.4)
@@ -301,6 +308,8 @@ CHECKSUMS
   opentelemetry-semantic_conventions (1.43.0) sha256=d96eb7da3bc89335786ea676b448701f566cf241a7ca56ae1e814b83816922af
   parallel (2.1.0) sha256=b35258865c2e31134c5ecb708beaaf6772adf9d5efae28e93e99260877b09356
   parser (3.3.12.0) sha256=21a6d7f755d5a24dfbdc6e6b772e4e879a52e7631a88bc5a3a134606052c9828
+  pg (1.6.3-x86_64-linux) sha256=5d9e188c8f7a0295d162b7b88a768d8452a899977d44f3274d1946d67920ae8d
+  pgvector (0.3.3) sha256=9cad4b69487110b2dc26d57e6ba9ff2cbe72421c09e6d17397bb29e1551d1872
   pragmatic_tokenizer (3.2.1) sha256=92bc6609506d486893fb78e1be874ada6c6eb4db7e6dc3968afbaff9968d9cbe
   prism (1.9.0) sha256=7b530c6a9f92c24300014919c9dcbc055bf4cdf51ec30aed099b06cd6674ef85
   pry (0.16.0) sha256=d76c69065698ed1f85e717bd33d7942c38a50868f6b0673c636192b3d1b6054e
@@ -331,6 +340,7 @@ CHECKSUMS
   ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
   ruby_llm (1.16.0) sha256=26bd5310cf2ce55f74a60f8aae0b0d0327b586ff4532c84828103c3b2b905a18
   ruby_llm-schema (0.4.0) sha256=e930f5a5316f9301bff3fb7fe572e44727d05bb8e50621001bbb49a47d63b8da
+  sequel (5.106.0) sha256=0e6677f230e724ecbc9b4d5fc95ef9a69997cfb24c60fff84268185e0bb254cd
   simplecov (1.0.2) sha256=c6459434efe4b948b46477cc2df2faa73ab365f83a33c7c17f81262f4f7f1244
   sorbet-runtime (0.6.13359) sha256=5edcd198c678d69f07ec2758b9d0f277bce2e322efd7d5bd902a34c1056a2e5a
   stackprof (0.2.28) sha256=4ec2ace02f386012b40ca20ef80c030ad711831f59511da12e83b34efb0f9a04
