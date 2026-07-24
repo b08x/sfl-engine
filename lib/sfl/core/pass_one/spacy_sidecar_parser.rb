@@ -1,0 +1,137 @@
+# frozen_string_literal: true
+
+require "open3"
+require "json"
+require "securerandom"
+require "timeout"
+
+module SFL
+  module Core
+    module PassOne
+      # SyntacticParser port adapter that talks to sidecar/spacy_sidecar.py
+      # over NDJSON on stdin/stdout (track decision 2: Pass 1 never shares
+      # the Ruby process). `command` defaults to a local `python3`
+      # invocation but accepts anything that speaks the same protocol —
+      # e.g. `["docker", "run", "-i", "--rm", "sfl-spacy-sidecar"]` — since
+      # the transport is "a subprocess with stdin/stdout pipes," not
+      # specifically Python-on-this-host.
+      class SpacySidecarParser
+        include Ports::SyntacticParser
+
+        DEFAULT_SCRIPT_PATH = File.expand_path("../../../../sidecar/spacy_sidecar.py", __dir__)
+        STARTUP_TIMEOUT_SECONDS = 30
+
+        def initialize(model:, command: nil)
+          @model = model
+          @command = command || ["python3", DEFAULT_SCRIPT_PATH, "--model", model]
+          @mutex = Mutex.new
+          start_process
+        end
+
+        # @param text [String]
+        # @param document_id [String, nil]
+        # @return [Array<SFL::Core::Types::SyntacticClause>]
+        def parse(text, document_id: nil)
+          @mutex.synchronize { request(text, document_id) }
+        end
+
+        # @return [void]
+        def close
+          @mutex.synchronize { stop_process }
+        end
+
+        attr_reader :stdin, :stdout, :wait_thread
+        private :stdin, :stdout, :wait_thread
+
+        private def start_process
+          @stdin, @stdout, @wait_thread = Open3.popen2(*@command)
+          await_ready
+        end
+
+        private def await_ready
+          line = Timeout.timeout(STARTUP_TIMEOUT_SECONDS) { stdout.gets }
+          raise SidecarError, "sidecar exited before signaling ready" if line.nil?
+
+          ready = JSON.parse(line)
+          return if ready["type"] == "ready"
+
+          raise SidecarError, "unexpected startup message: #{line.inspect}"
+        rescue Timeout::Error
+          raise SidecarError, "sidecar did not signal ready within #{STARTUP_TIMEOUT_SECONDS}s"
+        end
+
+        # A single crash-and-retry: transport failures restart the
+        # subprocess exactly once and replay the request, so one dead
+        # sidecar doesn't permanently wedge the parser, but a
+        # persistently broken sidecar still surfaces as an error instead
+        # of looping forever.
+        private def request(text, document_id, retried: false)
+          write_line(id: SecureRandom.uuid, text:, document_id:)
+          response = read_response
+          raise SidecarError, response["error"] if response["error"]
+
+          build_clauses(response.fetch("clauses"))
+        rescue Errno::EPIPE, IOError, SidecarError => e
+          raise SidecarError, "sidecar transport failed: #{e.message}" if retried
+
+          restart_process
+          request(text, document_id, retried: true)
+        end
+
+        private def read_response
+          line = stdout.gets
+          raise SidecarError, "sidecar closed the pipe" if line.nil?
+
+          JSON.parse(line)
+        end
+
+        private def write_line(payload)
+          stdin.puts(JSON.generate(payload))
+        rescue Errno::EPIPE, IOError => e
+          raise SidecarError, "failed writing to sidecar: #{e.message}"
+        end
+
+        private def restart_process
+          stop_process
+          start_process
+        end
+
+        private def stop_process
+          stdin&.close
+          stdout&.close
+          wait_thread&.value
+        rescue IOError
+          nil
+        end
+
+        private def build_clauses(clause_hashes)
+          clause_hashes.map { |clause_hash| build_clause(clause_hash) }
+        end
+
+        private def build_clause(clause_hash)
+          Types::SyntacticClause.new(
+            id: clause_hash.fetch("id"),
+            text: clause_hash.fetch("text"),
+            tokens: clause_hash.fetch("tokens").map { |token_hash| build_token(token_hash) },
+            root_index: clause_hash.fetch("root_index"),
+            sentence_index: clause_hash.fetch("sentence_index"),
+            document_id: clause_hash["document_id"]
+          )
+        end
+
+        private def build_token(token_hash)
+          Types::SyntacticToken.new(
+            text: token_hash.fetch("text"),
+            lemma: token_hash.fetch("lemma"),
+            pos: token_hash.fetch("pos"),
+            tag: token_hash.fetch("tag"),
+            dep: token_hash.fetch("dep"),
+            head_index: token_hash.fetch("head_index"),
+            morphology: token_hash.fetch("morphology"),
+            index: token_hash.fetch("index")
+          )
+        end
+      end
+    end
+  end
+end
