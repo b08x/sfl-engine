@@ -87,6 +87,12 @@ RSpec.shared_examples "a clause store port" do
   end
 end
 
+RSpec.shared_examples "an embedding store port" do
+  it "accepts #replace_document without raising" do
+    expect { subject.replace_document("doc-1", { "ann-1" => [0.1, 0.2] }) }.not_to raise_error
+  end
+end
+
 RSpec.shared_examples "a cache port" do
   it "returns [hits, misses] from #partition, covering every key exactly once" do
     hits, misses = subject.partition(%w[a b c])

@@ -48,3 +48,15 @@ RSpec.describe SFL::Core::Ports::Fake::Cache do
     expect(misses).to eq(["b"])
   end
 end
+
+RSpec.describe SFL::Core::Ports::Fake::EmbeddingStore do
+  subject { described_class.new }
+
+  it_behaves_like "an embedding store port"
+
+  it "returns exactly what was written for a document_id" do
+    subject.replace_document("doc-1", { "ann-1" => [0.1, 0.2] })
+
+    expect(subject.find_by_document("doc-1")).to eq({ "ann-1" => [0.1, 0.2] })
+  end
+end

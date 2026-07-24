@@ -80,3 +80,9 @@ RSpec.describe SFL::Core::Ports::Null::Logger do
 
   it_behaves_like "a logger port"
 end
+
+RSpec.describe SFL::Core::Ports::Null::EmbeddingStore do
+  subject { described_class.new }
+
+  it_behaves_like "an embedding store port"
+end
