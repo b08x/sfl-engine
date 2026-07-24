@@ -86,3 +86,14 @@ RSpec.describe SFL::Core::Ports::Null::EmbeddingStore do
 
   it_behaves_like "an embedding store port"
 end
+
+RSpec.describe SFL::Core::Ports::Null::Retriever do
+  subject { described_class.new }
+
+  it_behaves_like "a retriever port"
+
+  it "always returns an empty Array from #retrieve" do
+    query = SFL::Core::Types::RetrievalQuery.new(query: "anything")
+    expect(subject.retrieve(query)).to eq([])
+  end
+end
