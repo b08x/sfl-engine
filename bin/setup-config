@@ -1,0 +1,205 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Interactive .env setup wizard — walks through the ENV vars Boot.call
+# actually reads (verified against lib/sfl/boot.rb, not transcribed from an
+# existing .env, which may carry dead vars from the legacy repo: DSPY_PROVIDER,
+# VISION_MODEL, SFL_BATCH_SIZE, SFL_CHUNK_TIMEOUT, SFL_FALLBACK_PROVIDERS,
+# SFL_TEMPERATURE/TOP_P/TOP_K, LOG_LEVEL, OPENAI_BASE_URI are all present in a
+# carried-over .env but read nowhere in this codebase — this wizard does not
+# ask about them and leaves any existing lines for them untouched.
+#
+# Run: bin/setup-config. Merges into .env in place — existing lines for keys
+# this wizard doesn't manage are preserved verbatim; existing values for keys
+# it does manage are offered back as defaults.
+#
+# Provider choice always writes explicit SFL_TASK_<NAME>_PROVIDER/_MODEL
+# pairs rather than relying on code defaults: pass_two_batch_annotation
+# resolves its own provider/model independently of pass_two_annotation (only
+# context_synthesis cascades from it — see Boot.build_llm_config), so a
+# provider pick that only set pass_two_annotation would silently leave batch
+# annotation on the old default provider while sending it a model string
+# meant for a different one.
+
+require "tty-prompt"
+
+APP_ROOT = File.expand_path("..", __dir__)
+ENV_PATH = File.join(APP_ROOT, ".env")
+
+# nil key_env = no API key required (:ollama — see Boot::REQUIRED_KEY_ENV_BY_PROVIDER's
+# own comment for why).
+PROVIDER_KEY_ENV = {
+  "openrouter" => "OPENROUTER_API_KEY",
+  "anthropic" => "ANTHROPIC_API_KEY",
+  "openai" => "OPENAI_API_KEY",
+  "gemini" => "GOOGLE_API_KEY",
+  "mistral" => "MISTRAL_API_KEY",
+  "ollama" => nil,
+}.freeze
+
+# Curated starting points, not an exhaustive/authoritative catalog — model
+# lineups change constantly, so every provider's list below ends with a
+# "custom" escape hatch rather than forcing a pick from this menu. Curated
+# 2026-08-02: the anthropic entries are corroborated by this assistant's own
+# first-party model-ID context (high confidence); the openai/gemini entries
+# were sourced from third-party pricing-aggregator search results, not
+# official docs (lower confidence); mistral's "-latest" aliases and ollama's
+# long-established family tags are Mistral's/Ollama's own stable-alias
+# conventions, not dated release names, so lower drift risk than the others
+# — verify current pricing/availability before relying on any of these for
+# a production run. "Fast/cheap" is the better fit for Pass 2's per-clause
+# bulk annotation calls; "quality" is the better fit for context_synthesis's
+# fewer, higher-stakes calls.
+MODEL_CHOICES = {
+  "openrouter" => {
+    "Fast/cheap — mistralai/mistral-small-3.2-24b-instruct (this project's current default)" =>
+      "mistralai/mistral-small-3.2-24b-instruct",
+    "Fast/cheap — anthropic/claude-haiku-4.5" => "anthropic/claude-haiku-4.5",
+    "Quality — anthropic/claude-sonnet-5" => "anthropic/claude-sonnet-5",
+    "Quality — openai/gpt-5.4" => "openai/gpt-5.4",
+  },
+  "anthropic" => {
+    "Fast/cheap — claude-haiku-4-5-20251001" => "claude-haiku-4-5-20251001",
+    "Quality — claude-sonnet-5" => "claude-sonnet-5",
+    "Quality (highest) — claude-opus-5" => "claude-opus-5",
+  },
+  "openai" => {
+    "Fast/cheap — gpt-5.4-nano" => "gpt-5.4-nano",
+    "Fast/cheap — gpt-5.4-mini" => "gpt-5.4-mini",
+    "Quality — gpt-5.4" => "gpt-5.4",
+  },
+  "gemini" => {
+    "Fast/cheap — gemini-3.5-flash-lite" => "gemini-3.5-flash-lite",
+    "Quality — gemini-3.1-pro" => "gemini-3.1-pro",
+  },
+  "mistral" => {
+    "Fast/cheap — mistral-small-latest" => "mistral-small-latest",
+    "Quality — mistral-large-latest" => "mistral-large-latest",
+  },
+  "ollama" => {
+    "Fast/cheap — qwen2.5" => "qwen2.5",
+    "Quality — llama3.1" => "llama3.1",
+  },
+}.freeze
+CUSTOM_MODEL_LABEL = "Custom — enter a model ID"
+
+# Embedding provider support is deliberately narrower than the full chat
+# provider list above — ollama (this project's default) and mistral are
+# the two providers actually asked for here; the others aren't offered as
+# embedding choices without separately verifying ruby_llm embed support
+# for each.
+EMBEDDING_MODEL_CHOICES = {
+  "ollama" => "embeddinggemma:latest",
+  "mistral" => "mistral-embed",
+}.freeze
+
+def existing_env
+  return {} unless File.exist?(ENV_PATH)
+
+  File.readlines(ENV_PATH).each_with_object({}) do |line, h|
+    match = line.match(/\A([A-Z_][A-Z0-9_]*)=(.*)\z/)
+    next unless match
+
+    h[match[1]] = match[2]
+  end
+end
+
+# Updates matching KEY= lines in place, appends anything new, and leaves
+# every other existing line (including unmanaged legacy vars) untouched.
+# rubocop:disable Metrics/AbcSize -- one flat read/rewrite-matching-lines/append-new/write
+# sequence; each line does exactly one of those four things.
+def write_env(values)
+  existing_lines = File.exist?(ENV_PATH) ? File.readlines(ENV_PATH) : []
+  seen = {}
+
+  updated = existing_lines.map do |line|
+    match = line.match(/\A([A-Z_][A-Z0-9_]*)=/)
+    next line unless match && values.key?(match[1])
+
+    seen[match[1]] = true
+    "#{match[1]}=#{values[match[1]]}\n"
+  end
+
+  updated += (values.keys - seen.keys).map { |k| "#{k}=#{values[k]}\n" }
+  File.write(ENV_PATH, updated.join)
+end
+# rubocop:enable Metrics/AbcSize
+
+def ask_provider(prompt, label, current)
+  default = PROVIDER_KEY_ENV.keys.find { |p| current.key?(PROVIDER_KEY_ENV[p]) } || "openrouter"
+  prompt.select(label, PROVIDER_KEY_ENV.keys, default:)
+end
+
+# Prompts for the provider's API key (skipped for :ollama, which needs
+# none) and remembers it in `collected_keys` so a later step reusing the
+# same provider (e.g. picking mistral for both annotation and embedding)
+# doesn't ask twice.
+def ask_api_key(prompt, provider, current, collected_keys)
+  key_env = PROVIDER_KEY_ENV.fetch(provider)
+  return nil unless key_env
+  return collected_keys[key_env] if collected_keys.key?(key_env)
+
+  collected_keys[key_env] = prompt.mask("#{key_env}:", default: current[key_env])
+end
+
+def ask_model(prompt, provider, current_model)
+  choices = MODEL_CHOICES.fetch(provider, {}).keys + [CUSTOM_MODEL_LABEL]
+  picked = prompt.select("Model for #{provider}:", choices, default: choices.first)
+  return prompt.ask("Model ID:", default: current_model) if picked == CUSTOM_MODEL_LABEL
+
+  MODEL_CHOICES.fetch(provider).fetch(picked)
+end
+
+prompt = TTY::Prompt.new
+current = existing_env
+values = {}
+collected_keys = {}
+
+puts "SFL Engine setup — configuring .env (#{ENV_PATH})"
+puts "Press Enter to keep an existing/default value shown in parentheses.\n\n"
+
+values["DATABASE_URL"] = prompt.ask(
+  "Postgres connection URL:", required: true,
+  default: current["DATABASE_URL"] || "postgresql://localhost/sfl_engine_dev"
+)
+
+# Pass 2 annotation + batch annotation: both explicitly set (see file-top
+# comment for why batch can't just inherit annotation's pick).
+provider = ask_provider(prompt, "Primary LLM provider (Pass 2 annotation):", current)
+key = ask_api_key(prompt, provider, current, collected_keys)
+values[PROVIDER_KEY_ENV.fetch(provider)] = key if key
+model = ask_model(prompt, provider, current["SFL_TASK_PASS_TWO_ANNOTATION_MODEL"])
+
+values["SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER"] = provider
+values["SFL_TASK_PASS_TWO_ANNOTATION_MODEL"] = model
+values["SFL_TASK_PASS_TWO_BATCH_ANNOTATION_PROVIDER"] = provider
+values["SFL_TASK_PASS_TWO_BATCH_ANNOTATION_MODEL"] = model
+
+values["SPACY_MODEL"] = prompt.ask("spaCy model (Pass 1):", default: current["SPACY_MODEL"] || "en_core_web_sm")
+
+values["OLLAMA_BASE_URL"] = prompt.ask("Ollama base URL:",
+  default: current["OLLAMA_BASE_URL"] || "http://localhost:11434")
+
+embedding_provider = prompt.select("Embedding provider:", EMBEDDING_MODEL_CHOICES.keys,
+  default: current.key?("SFL_TASK_EMBEDDING_PROVIDER") ? current["SFL_TASK_EMBEDDING_PROVIDER"] : "ollama")
+embedding_key = ask_api_key(prompt, embedding_provider, current, collected_keys)
+values[PROVIDER_KEY_ENV.fetch(embedding_provider)] = embedding_key if embedding_key
+embedding_model = prompt.ask("Embedding model:",
+  default: current["SFL_TASK_EMBEDDING_MODEL"] || current["EMBEDDING_MODEL"] ||
+    EMBEDDING_MODEL_CHOICES.fetch(embedding_provider))
+
+# Only pin the override when it differs from the ollama default — matches
+# DEFAULT_EMBEDDING_PROVIDER (Boot.rb) so an ollama choice here doesn't
+# clutter .env with a redundant explicit line.
+values["SFL_TASK_EMBEDDING_PROVIDER"] = embedding_provider if embedding_provider != "ollama"
+values["SFL_TASK_EMBEDDING_MODEL"] = embedding_model
+
+if prompt.yes?("Configure Langfuse tracing?", default: current.key?("LANGFUSE_HOST"))
+  values["LANGFUSE_HOST"] = prompt.ask("Langfuse host:", default: current["LANGFUSE_HOST"])
+  values["LANGFUSE_PUBLIC_KEY"] = prompt.ask("Langfuse public key:", default: current["LANGFUSE_PUBLIC_KEY"])
+  values["LANGFUSE_SECRET_KEY"] = prompt.mask("Langfuse secret key:", default: current["LANGFUSE_SECRET_KEY"])
+end
+
+write_env(values)
+puts "\nWrote #{values.size} value(s) to #{ENV_PATH}"
+puts "Next: bin/setup-python (if not already run), then bundle exec exe/sfl-analyze --help"
