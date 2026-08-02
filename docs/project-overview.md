@@ -161,8 +161,8 @@ depend on each other:
   knowledge-management use cases with no dialogue angle at all.
 - **A demo-ready subject for a browser UI** — every capability above already has
   an HTTP route; a frontend is the natural next artifact, and one already has a
-  design brief drafted (see the prior Claude Design prompt covering a Corpus
-  Browser, both review queues, and a Query Console).
+  design brief drafted (`docs/claude-design-ui-prompt.md`, covering a Corpus
+  Browser, both review queues, a Query Console, and an ad-hoc compile form).
 
 Point any of these framings at this document for grounding rather than
 re-deriving the project's capabilities from scratch each time.
