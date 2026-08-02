@@ -47,6 +47,22 @@ module SFL
         nil
       end
 
+      # Updates only the interpersonal payload for one already-stored clause
+      # — the single-clause re-annotation write path (human-in-the-loop
+      # "re_annotated" review decision re-runs Pass 2 only, not the whole
+      # document through Pipeline#compile). Deliberately narrower than
+      # #replace_document: this never touches the clauses/ideational_payloads
+      # rows, so syntactic structure and process_type/participants survive
+      # untouched.
+      #
+      # @param clause_id [String] AnnotatedClause#id (interpersonal_payloads.clause_id)
+      # @param interpersonal [Core::Types::InterpersonalPayload]
+      # @return [void]
+      def update_interpersonal(clause_id, interpersonal)
+        @db[:interpersonal_payloads].where(clause_id:).update(interpersonal_row_for_update(interpersonal))
+        nil
+      end
+
       # @param document_id [String]
       # @return [Array<Core::Types::AnnotatedClause>]
       def find_by_document(document_id)
@@ -56,6 +72,57 @@ module SFL
           .all
 
         rows.map { |row| reconstruct(row) }
+      end
+
+      # @param external_id [String] AnnotatedClause#id
+      # @return [Core::Types::AnnotatedClause, nil]
+      def find(external_id)
+        row = @db[:clauses].where(external_id:).first
+        return nil unless row
+
+        reconstruct(row)
+      end
+
+      # Corpus-Browser-style filtered, paginated listing across the full
+      # clauses/ideational_payloads/interpersonal_payloads join — the API's
+      # GET /clauses (v1's ClauseRepository#find_all). `document_id` and
+      # `annotation_source` aren't RetrievalFilters attributes (that struct
+      # is scoped to Ports::Retriever#retrieve's scalar-stance filters), so
+      # they're applied directly rather than routed through ClauseFilters.
+      #
+      # @param document_id [String, nil]
+      # @param annotation_source [String, nil]
+      # @param filters [Core::Types::RetrievalFilters] mood/process_type/source_type/
+      #   min_modality/max_modality/min_tenor/max_tenor
+      # @param limit [Integer]
+      # @param offset [Integer]
+      # @return [Hash] :clauses (Array<AnnotatedClause>), :total (Integer)
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat build-scope/
+      # apply-filters/count/paginate/reconstruct sequence.
+      def find_all(document_id: nil, annotation_source: nil, filters: Core::Types::RetrievalFilters.new,
+        limit: 50, offset: 0
+      )
+        scope = joined_scope
+        scope = scope.where(Sequel[:clauses][:document_id] => document_id) if document_id
+        if annotation_source
+          scope = scope.where(Sequel[:interpersonal_payloads][:annotation_source] => annotation_source)
+        end
+        scope = Store::ClauseFilters.apply(scope, filters)
+
+        total = scope.count
+        rows = scope.select(Sequel[:clauses].*)
+          .order(Sequel[:clauses][:sentence_index], Sequel[:clauses][:id])
+          .limit(limit, offset)
+          .all
+
+        { clauses: rows.map { |row| reconstruct(row) }, total: }
+      end
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+
+      private def joined_scope
+        @db[:clauses]
+          .join(:ideational_payloads, clause_id: Sequel[:clauses][:external_id])
+          .join(:interpersonal_payloads, clause_id: Sequel[:clauses][:external_id])
       end
 
       private def insert_all(clauses)
@@ -107,6 +174,21 @@ module SFL
         }
       end
       # rubocop:enable Metrics/MethodLength
+
+      # Same column mapping as #interpersonal_row, minus clause_id (the
+      # #update where-key, not a settable column) and created_at (an
+      # update must not overwrite the original compile timestamp).
+      private def interpersonal_row_for_update(interpersonal)
+        {
+          mood: interpersonal.mood,
+          modality_weight: interpersonal.modality_weight,
+          tenor: interpersonal.tenor,
+          speaker_attitude: interpersonal.speaker_attitude,
+          reasoning: interpersonal.reasoning,
+          annotation_source: interpersonal.annotation_source,
+          reasoning_trace: reasoning_trace_jsonb(interpersonal.reasoning_trace),
+        }
+      end
 
       # nil stays SQL NULL, not a stored JSON "null" — most annotation
       # sources (fallback/stub/human) carry no derivation to show.

@@ -155,6 +155,108 @@ RSpec.describe SFL::Store::PgClauseStore do
     end
   end
 
+  describe "#find" do
+    it "returns the clause matching the given external_id" do
+      clause = build_clause(id: "c-1", document_id: "doc-1")
+      store.replace_document("doc-1", [clause])
+
+      expect(store.find("c-1")).to eq(clause)
+    end
+
+    it "returns nil for an unknown external_id" do
+      expect(store.find("missing-id")).to be_nil
+    end
+  end
+
+  describe "#find_all" do
+    it "returns every clause across documents with a total count, paginated" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1", sentence_index: 0)])
+      store.replace_document("doc-2", [build_clause(id: "c-2", document_id: "doc-2", sentence_index: 0)])
+
+      result = store.find_all
+
+      expect(result[:total]).to eq(2)
+      expect(result[:clauses].map(&:id)).to contain_exactly("c-1", "c-2")
+    end
+
+    it "filters by document_id" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1")])
+      store.replace_document("doc-2", [build_clause(id: "c-2", document_id: "doc-2")])
+
+      result = store.find_all(document_id: "doc-1")
+
+      expect(result[:clauses].map(&:id)).to eq(["c-1"])
+      expect(result[:total]).to eq(1)
+    end
+
+    it "filters by annotation_source" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1")])
+
+      matched = store.find_all(annotation_source: "llm")
+      unmatched = store.find_all(annotation_source: "human")
+
+      expect(matched[:clauses].map(&:id)).to eq(["c-1"])
+      expect(unmatched[:clauses]).to eq([])
+    end
+
+    it "applies RetrievalFilters scalar filters (mood/process_type/source_type/modality/tenor)" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1", mood: "declarative")])
+      store.replace_document("doc-2", [build_clause(id: "c-2", document_id: "doc-2", mood: "interrogative")])
+
+      result = store.find_all(filters: SFL::Core::Types::RetrievalFilters.new(mood: "interrogative"))
+
+      expect(result[:clauses].map(&:id)).to eq(["c-2"])
+    end
+
+    it "paginates with limit and offset while total reflects the full filtered count" do
+      3.times { |i| store.replace_document("doc-#{i}", [build_clause(id: "c-#{i}", document_id: "doc-#{i}")]) }
+
+      result = store.find_all(limit: 1, offset: 1)
+
+      expect(result[:clauses].size).to eq(1)
+      expect(result[:total]).to eq(3)
+    end
+
+    it "returns an empty result set when nothing matches" do
+      result = store.find_all(document_id: "missing-doc")
+
+      expect(result).to eq(clauses: [], total: 0)
+    end
+  end
+
+  describe "#update_interpersonal" do
+    it "overwrites only the interpersonal payload, leaving syntactic/ideational untouched" do
+      clause = build_clause(id: "c-1", document_id: "doc-1", mood: "declarative")
+      store.replace_document("doc-1", [clause])
+
+      new_interpersonal = SFL::Core::Types::InterpersonalPayload.new(
+        clause_id: "c-1", mood: "interrogative", modality_weight: 0.2, tenor: 0.9,
+        speaker_attitude: "curious", reasoning: "re-annotated", annotation_source: "llm",
+        reasoning_trace: nil
+      )
+
+      store.update_interpersonal("c-1", new_interpersonal)
+      found = store.find("c-1")
+
+      expect(found.interpersonal.mood).to eq("interrogative")
+      expect(found.interpersonal.reasoning).to eq("re-annotated")
+      expect(found.syntactic).to eq(clause.syntactic)
+      expect(found.ideational).to eq(clause.ideational)
+    end
+
+    it "does not affect other clauses' interpersonal rows" do
+      store.replace_document("doc-1", [build_clause(id: "c-1", document_id: "doc-1", mood: "declarative")])
+      store.replace_document("doc-2", [build_clause(id: "c-2", document_id: "doc-2", mood: "declarative")])
+
+      store.update_interpersonal("c-1", SFL::Core::Types::InterpersonalPayload.new(
+        clause_id: "c-1", mood: "imperative", modality_weight: 0.5, tenor: 0.5,
+        speaker_attitude: "neutral", reasoning: "x", annotation_source: "llm", reasoning_trace: nil
+      ))
+
+      expect(store.find("c-2").interpersonal.mood).to eq("declarative")
+    end
+  end
+
   describe "foreign key cascade" do
     it "deletes ideational, interpersonal, and embedding rows when a clauses row is deleted directly (D5)" do
       clause = build_clause(id: "c-1", document_id: "doc-1")

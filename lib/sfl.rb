@@ -11,6 +11,7 @@ module SFL
   # lib/sfl/core/types/trusted_annotation_sources.rb).
   INFLECTIONS = {
     "sfl" => "SFL",
+    "api" => "API",
     "cli" => "CLI",
     "gui" => "GUI",
     "llm" => "LLM",
