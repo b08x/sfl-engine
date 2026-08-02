@@ -20,10 +20,11 @@ RSpec.describe SFL::API::Server do
   let(:review_queue_repo) { instance_double(SFL::Store::PgReviewQueueRepository) }
   let(:annotation_review_repo) { instance_double(SFL::Store::PgAnnotationReviewRepository) }
   let(:pass_two) { instance_double(SFL::LLM::Engine) }
+  let(:clause_review_service) { instance_double(SFL::API::ClauseReviewService) }
 
   let(:ctx) do
     SFL::API::Context.new(pipeline:, retriever:, synthesizer:, clause_store:, review_queue_repo:,
-      annotation_review_repo:, pass_two:)
+      annotation_review_repo:, pass_two:, clause_review_service:)
   end
 
   def app
@@ -249,49 +250,28 @@ RSpec.describe SFL::API::Server do
       expect(last_response.status).to eq(400)
     end
 
-    it "returns 404 when the clause doesn't exist" do
-      allow(clause_store).to receive(:find).with("missing").and_return(nil)
+    it "returns 404 when the clause doesn't exist (ClauseReviewService#review returns nil)" do
+      allow(clause_review_service).to receive(:review)
+        .with(clause_id: "missing", decision: "accepted", reviewer: nil, notes: nil).and_return(nil)
 
       post "/clauses/missing/review", JSON.dump({ decision: "accepted" }), "CONTENT_TYPE" => "application/json"
 
       expect(last_response.status).to eq(404)
     end
 
-    it "accepted: records the audit row without touching the clause" do
-      clause = build_clause
-      allow(clause_store).to receive(:find).with("c-1").and_return(clause)
+    it "delegates to ClauseReviewService#review and returns the resulting AnnotationReview" do
       review = SFL::Core::Types::AnnotationReview.new(
         clause_id: "c-1", decision: "accepted", original_annotation_source: "llm"
       )
-      allow(annotation_review_repo).to receive(:record_review)
-        .with(clause_id: "c-1", decision: "accepted", original_annotation_source: "llm", reviewer: nil, notes: nil)
+      allow(clause_review_service).to receive(:review)
+        .with(clause_id: "c-1", decision: "accepted", reviewer: "alice", notes: "looks fine")
         .and_return(review)
-      allow(clause_store).to receive(:update_interpersonal)
 
-      post "/clauses/c-1/review", JSON.dump({ decision: "accepted" }), "CONTENT_TYPE" => "application/json"
+      post "/clauses/c-1/review", JSON.dump({ decision: "accepted", reviewer: "alice", notes: "looks fine" }),
+        "CONTENT_TYPE" => "application/json"
 
       expect(last_response.status).to eq(200)
       expect(JSON.parse(last_response.body)["decision"]).to eq("accepted")
-      expect(clause_store).not_to have_received(:update_interpersonal)
-    end
-
-    it "re_annotated: re-runs Pass 2 only, writes the new interpersonal payload, then records the audit row" do
-      clause = build_clause
-      allow(clause_store).to receive(:find).with("c-1").and_return(clause)
-      new_interpersonal = clause.interpersonal.new(mood: "interrogative")
-      allow(pass_two).to receive(:annotate)
-        .with(clause.syntactic, clause.ideational)
-        .and_return(SFL::Core::Types::AnnotationResult.new(interpersonal: new_interpersonal))
-      allow(clause_store).to receive(:update_interpersonal).with("c-1", new_interpersonal)
-      review = SFL::Core::Types::AnnotationReview.new(
-        clause_id: "c-1", decision: "re_annotated", original_annotation_source: "llm"
-      )
-      allow(annotation_review_repo).to receive(:record_review).and_return(review)
-
-      post "/clauses/c-1/review", JSON.dump({ decision: "re_annotated" }), "CONTENT_TYPE" => "application/json"
-
-      expect(last_response.status).to eq(200)
-      expect(clause_store).to have_received(:update_interpersonal).with("c-1", new_interpersonal)
     end
   end
 

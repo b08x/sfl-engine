@@ -20,10 +20,12 @@ module SFL
     #   (clause-review audit trail: GET /clauses/review-queue, POST
     #   /clauses/:id/review's accepted/rejected/re_annotated branches).
     # - `pass_two`: Core::Ports::Annotator, for the single-clause re_annotated
-    #   path (Pass 2 only, no full Pipeline#compile — see Server#reannotate_clause).
+    #   path (Pass 2 only, no full Pipeline#compile — see ClauseReviewService#reannotate).
+    # - `clause_review_service`: ClauseReviewService, for POST /clauses/:id/review
+    #   (issue #2 — re-annotation write + audit record in one transaction).
     Context = Struct.new(
       :pipeline, :retriever, :synthesizer, :clause_store, :review_queue_repo,
-      :annotation_review_repo, :pass_two,
+      :annotation_review_repo, :pass_two, :clause_review_service,
       keyword_init: true
     )
 
@@ -45,6 +47,8 @@ module SFL
       pass_two = LLM::EngineBuilder.call(
         config: boot_result.llm_config, chat_factory: boot_result.chat_factory, breaker:, instrumenter:, logger:
       )
+      clause_store = Store::PgClauseStore.new(boot_result.db)
+      annotation_review_repo = Store::PgAnnotationReviewRepository.new(boot_result.db)
 
       Context.new(
         pipeline:,
@@ -53,10 +57,12 @@ module SFL
           retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
           chat: boot_result.chat_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
         ),
-        clause_store: Store::PgClauseStore.new(boot_result.db),
+        clause_store:,
         review_queue_repo: Store::PgReviewQueueRepository.new(boot_result.db),
-        annotation_review_repo: Store::PgAnnotationReviewRepository.new(boot_result.db),
-        pass_two:
+        annotation_review_repo:,
+        pass_two:,
+        clause_review_service: ClauseReviewService.new(db: boot_result.db, clause_store:, annotation_review_repo:,
+          pass_two:)
       )
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength

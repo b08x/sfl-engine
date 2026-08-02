@@ -218,9 +218,8 @@ module SFL
       #                        dropped -- legacy's own ReannotateClauseJob comment
       #                        already noted Pass 2 "could run inline," it just kept
       #                        job-consistency instead; there's no longer a job to be
-      #                        consistent with.
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat validate/find/
-      # (maybe re-annotate)/record/respond sequence.
+      #                        consistent with. # -- one flat validate/delegate/respond sequence; the
+      # find/(maybe re-annotate)/record transaction itself lives in ClauseReviewService (#2).
       private def review_clause(clause_id, req)
         body = parse_body(req)
         decision = body["decision"]
@@ -228,27 +227,13 @@ module SFL
           raise ArgumentError, "decision must be one of #{REVIEW_DECISIONS.join(', ')}"
         end
 
-        clause = ctx.clause_store.find(clause_id)
-        return json(404, { error: "clause not found", id: clause_id }) unless clause
-
-        reviewer = body["reviewer"]
-        notes = body["notes"]
-        original_source = clause.interpersonal.annotation_source
-
-        reannotate_clause(clause) if decision == "re_annotated"
-
-        review = ctx.annotation_review_repo.record_review(
-          clause_id:, decision:, original_annotation_source: original_source, reviewer:, notes:
+        review = ctx.clause_review_service.review(
+          clause_id:, decision:, reviewer: body["reviewer"], notes: body["notes"]
         )
+        return json(404, { error: "clause not found", id: clause_id }) unless review
+
         json(200, Core::Wire.dump(review))
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
-      private def reannotate_clause(clause)
-        annotated = ctx.pass_two.annotate(clause.syntactic, clause.ideational)
-        ctx.clause_store.update_interpersonal(clause.id, annotated.interpersonal)
-      end
-
       # GET /review-queue
       #
       # Query params: modality (optional filter), limit (default 50), offset (default 0).
