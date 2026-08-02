@@ -3,6 +3,7 @@
 require "spec_helper"
 require "ruby_llm"
 require "tmpdir"
+require "fileutils"
 
 RSpec.describe SFL::CLI do
   let(:boot_result) do
@@ -70,6 +71,40 @@ RSpec.describe SFL::CLI do
       Dir.mktmpdir do |dir|
         expect { described_class.run_conversation(dir, base_options) }
           .to raise_error(SFL::CLI::UsageError, /No \.jsonl/)
+      end
+    end
+
+    it "surfaces a clean UsageError instead of an unhandled Core::Loaders::Error backtrace " \
+      "for a non-export .json file (live-verified gap: Core::Loaders::Error, raised during " \
+      "gather_conversation_files, used to be caught by neither run_conversation's per-file " \
+      "rescue -- this runs before that loop -- nor CLI.run's top-level rescue list)" do
+      expect do
+        described_class.run_conversation("spec/fixtures/loaders/sample.json", base_options)
+      end.to raise_error(SFL::CLI::UsageError, /No \.jsonl/)
+    end
+
+    it "surfaces a clean UsageError instead of a backtrace for a malformed (unparseable) .json file" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "broken.json")
+        File.write(path, "{ not valid json")
+
+        expect { described_class.run_conversation(path, base_options) }
+          .to raise_error(SFL::CLI::UsageError, /No \.jsonl/)
+      end
+    end
+
+    it "skips a malformed export in a directory batch instead of aborting gathering the rest " \
+      "(F11 partial-failure isolation), warning which file failed" do
+      Dir.mktmpdir do |dir|
+        FileUtils.cp("spec/fixtures/loaders/chatgpt_conversations.json", File.join(dir, "good.json"))
+        File.write(File.join(dir, "bad.json"), "{ not valid json")
+        output_dir = File.join(dir, "out")
+
+        expect { described_class.run_conversation(dir, base_options.merge(output_dir:)) }
+          .to output(a_string_including("[ERROR]").and(a_string_including("bad.json"))).to_stderr
+
+        expect(SFL::Analysis::ConversationSource).to have_received(:new)
+          .with(a_string_matching(%r{_expanded/explaining-rrf}), source_type: "chat_chatgpt")
       end
     end
 

@@ -31,14 +31,25 @@ module SFL
     module ChatExportExpander
       # @param path [String] raw export .json path
       # @return [Symbol, nil] :chatgpt, :claude, or nil if neither shape matches
+      # @raise [Core::Loaders::Error] the file is not valid JSON — with path context, since a
+      #   bare JSON::ParserError gives no indication which file in a batch failed (live-verified
+      #   gap, 2026-08-02: this used to propagate unwrapped past every rescue clause in the CLI).
       module_function def detect_format(path)
-        first = JSON.parse(File.read(path)).first
+        parsed = parse_json_with_context(path)
+        parsed = parsed["conversations"] if parsed.is_a?(Hash) && parsed["conversations"].is_a?(Array)
+        first = parsed.first if parsed.respond_to?(:first)
         return nil unless first.is_a?(Hash)
 
         return :chatgpt if first.key?("mapping")
         return :claude if first.key?("chat_messages")
 
         nil
+      end
+
+      module_function def parse_json_with_context(path)
+        JSON.parse(File.read(path))
+      rescue JSON::ParserError => e
+        raise Core::Loaders::Error, "#{path}: invalid JSON (#{e.message})"
       end
 
       # @param path [String] raw export .json path

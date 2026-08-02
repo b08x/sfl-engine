@@ -22,6 +22,45 @@ RSpec.describe SFL::Analysis::ChatExportExpander do
         expect(described_class.detect_format(path)).to be_nil
       end
     end
+
+    it "raises Core::Loaders::Error with the file path when the JSON is malformed, instead of " \
+      "a bare JSON::ParserError with no indication of which file in a batch failed" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "broken.json")
+        File.write(path, "{ not valid json")
+
+        expect { described_class.detect_format(path) }
+          .to raise_error(SFL::Core::Loaders::Error, /#{Regexp.escape(path)}.*invalid JSON/)
+      end
+    end
+
+    it "descends into a {\"conversations\": [...]} envelope before inspecting the first element " \
+      "(the Claude web-export wrapper shape, not just a bare top-level array)" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "enveloped.json")
+        File.write(path, JSON.dump({ "conversations" => [{ "chat_messages" => [] }] }))
+
+        expect(described_class.detect_format(path)).to eq(:claude)
+      end
+    end
+
+    it "returns nil instead of raising for a non-array, non-conversations-envelope JSON root" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "scalar.json")
+        File.write(path, JSON.dump("just a string"))
+
+        expect(described_class.detect_format(path)).to be_nil
+      end
+    end
+
+    it "returns nil instead of raising when the root array's first element is not a hash" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "not_hash_first.json")
+        File.write(path, JSON.dump([1, 2, 3]))
+
+        expect(described_class.detect_format(path)).to be_nil
+      end
+    end
   end
 
   describe ".expand" do

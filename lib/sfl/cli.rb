@@ -266,8 +266,10 @@ module SFL
     #   actually parsed them. A raw export .json file skipped format validation entirely as a
     #   single-file argument before this method existed (only directory-glob mode filtered by
     #   extension) — live-verified gap, 2026-08-02: see ChatExportExpander's own comment.
-    # rubocop:disable Metrics/AbcSize -- one flat gather-native/gather-and-expand-exports/
-    # combine sequence; splitting further would only relocate, not reduce, this.
+    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength -- one
+    # flat gather-native/gather-and-expand-exports/combine sequence, plus the per-export-path
+    # rescue for F11 partial-failure isolation; splitting further would only relocate, not
+    # reduce, this.
     module_function def gather_conversation_files(input, options)
       native_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.{jsonl,srt,vtt,ass}")) : [input]
       native = native_paths.reject { |p| File.extname(p).casecmp(".json").zero? }
@@ -275,13 +277,21 @@ module SFL
 
       export_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.json")) : [input]
       export_paths = export_paths.select { |p| File.extname(p).casecmp(".json").zero? }
+      # A malformed/unrecognized export must not abort gathering the rest of a directory's
+      # files (F11 partial-failure isolation, same principle as run_conversation's per-file
+      # rescue) — Core::Loaders::Error here used to propagate straight past both that rescue
+      # (this runs before it) and CLI.run's top-level rescue list (which never listed
+      # Core::Loaders::Error at all), producing a raw backtrace instead of a clean message.
       expanded = export_paths.flat_map do |p|
         Analysis::ChatExportExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"))
+      rescue Core::Loaders::Error => e
+        warn "[ERROR] #{p}: #{e.message}"
+        []
       end
 
       native + expanded
     end
-    # rubocop:enable Metrics/AbcSize
+    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
 
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/compile/report
     # sequence, ported verbatim from legacy's own run_documentation; every step is already its
