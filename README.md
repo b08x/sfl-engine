@@ -114,10 +114,34 @@ rake db:migrate               # apply Sequel migrations (manual — no auto-migr
 bundle exec rake              # full verification (spec + rubocop)
 
 # Analyze
-bundle exec sfl-analyze conversation input.jsonl --store
-bundle exec sfl-analyze documentation ./docs/ --store
-bundle exec sfl-analyze context "what happened?" --limit 10
+bundle exec exe/sfl-analyze conversation input.jsonl --store
+bundle exec exe/sfl-analyze documentation ./docs/ --store
+bundle exec exe/sfl-analyze context "what happened?" --limit 10
 ```
+
+Not `bundle exec sfl-analyze` (a bare command name) — this is a non-gem
+application (no gemspec/`executables` list, see Key Design Decisions), so
+there is no Bundler-generated binstub to resolve that name to. Run the
+`exe/` script directly.
+
+### Server
+
+```bash
+bundle exec exe/sfl-api                 # Falcon on 0.0.0.0:3001 (default)
+PORT=3002 bundle exec exe/sfl-api       # custom port
+HOST=localhost bundle exec exe/sfl-api  # bare-metal-only, loopback bind
+```
+
+Or containerized (see `docs/dockerization-strategy.md`):
+
+```bash
+docker compose --profile app build api
+docker compose --profile app up -d api        # api service
+docker compose --profile app run --rm migrate # one-shot db:migrate
+```
+
+`api`/`migrate` sit behind the `"app"` Compose profile — plain `docker
+compose up -d` (no `--profile`) still starts only postgres/redis, unchanged.
 
 ## CLI
 
@@ -137,6 +161,8 @@ Options:
   --disable-tracing          Skip OpenTelemetry/Langfuse setup
   --narrative                Also generate narrative_report.md
 ```
+
+Invoke as `bundle exec exe/sfl-analyze ...` (see note above).
 
 ## LLM Configuration
 
@@ -159,15 +185,11 @@ Per-task provider/model via ENV:
 
 ## Current status
 
-Phases 0–5 of the rebuild blueprint are implemented: the two-pass pipeline, Postgres/pgvector storage, hybrid retrieval, unified analysis engine, formatters, boot composition root, embedder, CLI, and HTTP API. The system design has been assessed with the SIFT protocol at **78/100**: suitable for continued development and controlled internal use, but not yet an unconditional production-ready system.
+Phases 0–5 of the rebuild blueprint are implemented: the two-pass pipeline, Postgres/pgvector storage, hybrid retrieval, unified analysis engine, formatters, boot composition root, embedder, CLI, and HTTP API. The system design was assessed with the SIFT protocol at **78/100** (suitable for continued development and controlled internal use, not yet an unconditional production-ready system) — see [SIFT System Design Assessment](docs/sift-system-design-assessment.md).
 
-The assessment identified three immediate hardening concerns:
+All P0 (blocking/security/data-integrity) issues from that assessment are now fixed and closed: clause re-annotation and review-audit recording are transactionally atomic (`API::ClauseReviewService`), unexpected API errors are sanitized before reaching clients (a generic response + logged `request_id`, raw detail opt-in only via `SFL_API_DEBUG_ERRORS`), the toolchain is pinned and reproducible (Ruby 4.0.1 via `.tool-versions`), Docker Compose auto-start is opt-in (`SFL_AUTO_START_DOCKER=1`) rather than unconditional, the API binds `0.0.0.0` and its CORS origins are env-configurable for containerized deployment, and `sfl-api` now runs as a proper container (`docker/api.Dockerfile`, spaCy baked in) — see `docs/dockerization-strategy.md`.
 
-- make clause re-annotation and review-audit recording transactionally atomic;
-- sanitize unexpected API errors so internal exception messages are not returned to clients;
-- resolve the Bundler `~> 2.6` toolchain mismatch and rerun executable verification.
-
-Additional recommendations cover extracting API route orchestration into application services, decomposing `SFL::Boot` configuration policy, adding architecture-level dependency tests, reusing the API hybrid retriever, and moving migration-history commentary into decision records. See [SIFT System Design Assessment](docs/sift-system-design-assessment.md) and the [GitHub issue backlog](https://github.com/b08x/sfl-engine/issues).
+Remaining recommendations from the assessment cover extracting API route orchestration into application services, decomposing `SFL::Boot` configuration policy, adding architecture-level dependency tests, reusing the API hybrid retriever, and moving migration-history commentary into decision records. See the [GitHub issue backlog](https://github.com/b08x/sfl-engine/issues).
 
 This remains infrastructure and a research-oriented engineering artifact, not a validated outcome study. No external corpus has yet established that stance filtering improves LLM reasoning outcomes or adversarial robustness.
 
