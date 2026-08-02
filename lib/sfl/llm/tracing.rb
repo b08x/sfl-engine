@@ -22,9 +22,12 @@ module SFL
     # first successful call, mirroring the guard legacy Bootstrap needed
     # around dspy-o11y-langfuse's own one-shot configuration.
     class Tracing
-      # https://langfuse.com/docs/opentelemetry: POST {host}/api/public/otel,
-      # Basic-authenticated with public_key:secret_key.
-      OTLP_PATH = "/api/public/otel"
+      # https://langfuse.com/docs/opentelemetry: POST {host}/api/public/otel/v1/traces,
+      # Basic-authenticated with public_key:secret_key. The /v1/traces suffix is the
+      # OTLP/HTTP signal-specific path required by the spec — the exporter does NOT
+      # append it automatically when an explicit endpoint: is passed (only its nil/env
+      # fallback path does), so it must be included here.
+      OTLP_PATH = "/api/public/otel/v1/traces"
 
       class << self
         # rubocop:disable Naming/PredicateMethod -- named to mirror OpenTelemetry::SDK.configure,

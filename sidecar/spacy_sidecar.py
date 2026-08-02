@@ -88,19 +88,25 @@ def main():
 
     emit({"type": "ready", "model": args.model})
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
 
-        request_id = None
-        try:
-            request = json.loads(line)
-            request_id = request.get("id")
-            clauses = parse_text(nlp, request.get("text", ""), request.get("document_id"))
-            emit({"id": request_id, "clauses": clauses})
-        except Exception as exc:  # a malformed/unparseable request must not crash the server
-            emit({"id": request_id, "error": str(exc)})
+            request_id = None
+            try:
+                request = json.loads(line)
+                request_id = request.get("id")
+                clauses = parse_text(nlp, request.get("text", ""), request.get("document_id"))
+                emit({"id": request_id, "clauses": clauses})
+            except Exception as exc:  # a malformed/unparseable request must not crash the server
+                emit({"id": request_id, "error": str(exc)})
+    except KeyboardInterrupt:
+        # Caller (SpacySidecarParser) closes our stdin/stdout to shut us down;
+        # a stray SIGINT reaching us directly (e.g. no process-group isolation)
+        # should still exit quietly rather than an unhandled traceback.
+        pass
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ RSpec.describe SFL::Core::PassOne::SpacySidecarParser do
       described_class.new(model: "en_core_web_sm", env: fake_env).close
 
       expect(Open3).to have_received(:popen2).with(
-        fake_env, "python3", described_class::DEFAULT_SCRIPT_PATH, "--model", "en_core_web_sm"
+        fake_env, "python3", described_class::DEFAULT_SCRIPT_PATH, "--model", "en_core_web_sm", pgroup: true
       )
     end
   end

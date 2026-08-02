@@ -54,7 +54,12 @@ module SFL
 
         private def start_process
           logger.debug { "spawning sidecar: #{@command.join(' ')}" }
-          @stdin, @stdout, @wait_thread = Open3.popen2(@env, *@command)
+          # pgroup: true puts the sidecar in its own process group so a
+          # terminal Ctrl+C (SIGINT to the foreground process group) hits
+          # only the Ruby process, not this child. CLI.install_interrupt_trap
+          # relies on that isolation to finish the in-flight turn (which
+          # needs a live sidecar) before shutting down cleanly.
+          @stdin, @stdout, @wait_thread = Open3.popen2(@env, *@command, pgroup: true)
           await_ready
           logger.info { "sidecar ready (model=#{@model}, pid=#{wait_thread.pid})" }
         end

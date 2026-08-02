@@ -26,7 +26,7 @@ RSpec.describe SFL::LLM::Tracing do
       exporter_class:, span_processor_class:)
 
     expect(exporter_class).to have_received(:new).with(
-      endpoint: "https://cloud.langfuse.com/api/public/otel",
+      endpoint: "https://cloud.langfuse.com/api/public/otel/v1/traces",
       headers: { "Authorization" => "Basic #{Base64.strict_encode64('pk:sk')}" }
     )
   end
