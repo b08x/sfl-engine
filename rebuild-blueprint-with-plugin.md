@@ -1,4 +1,4 @@
-# SFL Compiler — Rebuild Blueprint
+# SFL Engine — Rebuild Blueprint
 
 **Target:** `/home/b08x/WorkspaceV3/sfl-compiler` (sfl-compiler v0.1.0, Ruby >= 3.4)
 **Method:** ruby-dev pipeline — `sift` (audit) → `analyse` (diagnosis) → architecture per `ood-principles.md` → `perf` (measurement plan) → phased backlog.
@@ -417,12 +417,42 @@ Phases are ordered so every phase ends green: characterization tests first, core
 - [ ] Python provisioning: `sfl setup-python` command replacing `ext/` extconf entirely; delete `spec.extensions` (S5) [1d]
 
 ### Phase 5 — Optional surfaces: keep, extract, or delete (≈ 1 week for the "keep" set)
-Explicit decisions, not drift:
-- [ ] **sfl-jobs (keep, extracted):** Gush/Sidekiq fan-out is legitimate for large corpora even post-sidecar (multi-core). Worker boots once (DB + sidecar + LM), jobs call `Engine#compile_unit` (F9, F4); `-c 1` requirement disappears with PyCall (D1) [3d]
-- [ ] **sfl-api (fix-or-drop decision gate):** if kept — async path uses the owned `Turn` constructor (fixes F2 mechanically), tmp-file cleanup, CORS/config injected; if no consumer exists, delete and keep `config.ru` out of the core [2d or 0]
-- [ ] **sfl-tui (keep, thin):** post-sidecar the TUI can host analysis in-process; `WorkflowPoller` remains only for the jobs gem [2d]
-- [ ] **Delete to `experiments/`:** `question_graph`, `cognitive_gas` (or keep solely as a `Breaker` adapter if the budget idea is still wanted), `convergence_detector`, `derivation_hash` + reasoning-trace hashing, GEB sprint jobs/workflow + `--sprint-id` flag, `narrative_self_analyzer`, `chat/`, `review_gui/` (glimmer), `theme_rheme_extractor`, `langfuse_reachability` (obsoleted by Phase 4), `api_boot`/`canvas_loader` if unowned (D8) [1d]
-- [ ] **Delete outright:** `SafeOpenAIClientProxy`/`SafeChatProxy`/`SafeCompletionsProxy` chain + `apply_request_timeout`/`apply_generation_params` reflection (superseded by adapter config or upstream PR — I1); hand-built `define_singleton_method` breaker (I2); `scripts/parse_metacognitive_coprocessor.rb` hardcoded-path script (replaced by the CLI) [—]
+Explicit decisions, not drift. Decided 2026-08-02:
+- [ ] **sfl-jobs — DROP.** No current large-corpus workload that needs Gush/Sidekiq
+  fan-out; the serial CLI path through `Engine#compile_unit` is the only invocation
+  path for now. Revisit only if a real corpus-size need shows up. [0d]
+- [x] **sfl-api — FIX AND KEEP. Done 2026-08-02.** Ported to `lib/sfl/api/`
+  (Context + Server) with all 9 v1 routes at parity, minus the Gush/Sidekiq-
+  dependent async branches (dropped along with sfl-jobs — this doubles as the
+  F2 fix, by deletion rather than patching). `POST /clauses/:id/review`'s
+  `re_annotated` decision now runs Pass 2 inline instead of dispatching a job
+  (legacy's own `ReannotateClauseJob` comment already noted this was always
+  viable). Required backfilling three PgClauseStore methods that didn't exist
+  yet: `find`, `find_all` (filtered/paginated listing — reuses the existing
+  `Store::ClauseFilters`), and `update_interpersonal` (single-clause rewrite
+  for `re_annotated`). Added `rack`+`falcon` gems, `config.ru`, `exe/sfl-api`.
+  26 new request-level specs (`spec/api/server_spec.rb`) + 8 new store specs;
+  full suite 655 examples/0 failures, RuboCop clean.
+- [ ] **sfl-tui — DROP.** `exe/sfl-analyze` (scriptable CLI) is already the
+  interface; a TUI adds surface area without adding to the "deploy and operate
+  this" story. [0d]
+- [x] **Delete to `experiments/` — N/A, verified 2026-08-02.** `question_graph`,
+  `cognitive_gas`, `convergence_detector`, `narrative_self_analyzer`,
+  `theme_rheme_extractor`, `api_boot`/`canvas_loader`, GEB sprint jobs/workflow +
+  `--sprint-id` flag: none exist anywhere in the v2 tree (`grep -r` across
+  `lib/exe/bin` came back empty for all of them) — never ported, nothing to
+  delete. `chat/`, `gui/` (`review_gui`) are empty `.keep`-only stubs, consistent
+  with the sfl-tui DROP decision above. **Exception: `derivation_hash` is now a
+  real, wired-through feature** (SHA256 over premises/inference_rule/conclusion
+  in `ReasoningTrace`, used in `PgClauseStore`, `MarkdownFormatter`,
+  `LLM::Engine`) — this became legitimate during the Phase 3.5/4 rebuild, not
+  leftover cruft from v1's reasoning-trace hashing. Keep it.
+- [x] **Delete outright — already done.** `boot.rb` already documents
+  `SafeOpenAIClientProxy`/`SafeChatProxy`/`SafeCompletionsProxy` and
+  `apply_request_timeout`/`apply_generation_params` as "not ported at all...
+  superseded by TaskConfig#params," and already wires
+  `Core::Ports::TimeoutBreaker` in their place. `scripts/parse_metacognitive_coprocessor.rb`
+  doesn't exist in v2 either.
 
 ### Phase 6 — Hardening (≈ 3-4 days)
 - [ ] PBO pass over §4 hypotheses with the bench harness; keep ≥10-20% wins, revert the rest, commit the YAML records [2d]
