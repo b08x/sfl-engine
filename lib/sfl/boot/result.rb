@@ -21,9 +21,17 @@ module SFL
     #   .sfl-python/interpreter_path hasn't been provisioned yet (in which
     #   case the caller should omit `command:` entirely and let
     #   SpacySidecarParser fall back to its own `python3` default).
+    # - `pass1_env`: the subprocess env Hash to pass to
+    #   SpacySidecarParser.new(env:, ...) alongside pass1_command — sets
+    #   PYTHONPATH so the resolved vendored interpreter can actually import
+    #   spaCy (bin/setup-python installs into an isolated --target dir, not
+    #   the interpreter's own site-packages). nil when pass1_command is nil
+    #   (the python3-on-PATH fallback assumes a normal global install, no
+    #   PYTHONPATH override needed).
     # - `spacy_model`: resolved SPACY_MODEL, always present — needed
     #   whether or not pass1_command is nil (SpacySidecarParser's
     #   `model:` kwarg is required either way).
-    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :spacy_model, keyword_init: true)
+    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :pass1_env, :spacy_model,
+      keyword_init: true)
   end
 end

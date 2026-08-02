@@ -12,7 +12,7 @@ RSpec.describe SFL::Boot do
     double(
       "ruby_llm_config",
       "openrouter_api_key=": nil, "gemini_api_key=": nil, "openai_api_key=": nil, "anthropic_api_key=": nil,
-      "ollama_api_base=": nil, "default_embedding_model=": nil
+      "mistral_api_key=": nil, "ollama_api_base=": nil, "default_embedding_model=": nil
     )
   end
   let(:ruby_llm) { double("ruby_llm") }
@@ -145,6 +145,29 @@ RSpec.describe SFL::Boot do
       expect(ruby_llm_config).to have_received(:anthropic_api_key=).with("anthropic-key")
     end
 
+    it "sets mistral_api_key= when :mistral is selected as a task provider" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER" => "mistral",
+        "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "mistral-small-latest", "MISTRAL_API_KEY" => "mistral-key")
+
+      boot(env:)
+
+      expect(ruby_llm_config).to have_received(:mistral_api_key=).with("mistral-key")
+    end
+
+    it "raises Boot::Error when MISTRAL_API_KEY is missing for a mistral-provider task" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER" => "mistral",
+        "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "mistral-small-latest")
+
+      expect { boot(env:) }.to raise_error(SFL::Boot::Error, /MISTRAL_API_KEY/)
+    end
+
+    it "does not require an API key for :ollama as a primary task provider, not just embedding" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER" => "ollama",
+        "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "llama3")
+
+      expect { boot(env:) }.not_to raise_error
+    end
+
     it "raises Boot::Error when a required provider API key is missing" do
       env = base_env.merge("SFL_TASK_CONTEXT_SYNTHESIS_PROVIDER" => "openai",
         "SFL_TASK_CONTEXT_SYNTHESIS_MODEL" => "gpt-x")
@@ -227,6 +250,7 @@ RSpec.describe SFL::Boot do
       result = boot(env: base_env)
 
       expect(result.pass1_command).to be_nil
+      expect(result.pass1_env).to be_nil
       expect(result.spacy_model).to eq("en_core_web_sm")
     end
 
@@ -244,6 +268,16 @@ RSpec.describe SFL::Boot do
           "en_core_web_lg",
 ]
       )
+    end
+
+    it "sets pass1_env to PYTHONPATH=PYTHON_TARGET_DIR when interpreter_path is provisioned (the vendored " \
+      "install lives in an isolated --target dir, not the interpreter's own site-packages)" do
+      allow(File).to receive(:exist?).with(SFL::Boot::INTERPRETER_PATH_FILE).and_return(true)
+      allow(File).to receive(:read).with(SFL::Boot::INTERPRETER_PATH_FILE).and_return("/opt/py/bin/python3\n")
+
+      result = boot(env: base_env)
+
+      expect(result.pass1_env).to eq("PYTHONPATH" => SFL::Boot::PYTHON_TARGET_DIR)
     end
   end
 

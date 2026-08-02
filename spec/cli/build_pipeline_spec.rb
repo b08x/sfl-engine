@@ -30,7 +30,20 @@ RSpec.describe SFL::CLI do
         breaker:, instrumenter:, logger:)
 
       expect(SFL::Core::PassOne::SpacySidecarParser).to have_received(:new)
-        .with(model: "en_core_web_sm", command: nil, logger:)
+        .with(model: "en_core_web_sm", command: nil, env: {}, logger:)
+    end
+
+    it "forwards boot_result's pass1_env (PYTHONPATH for a vendored interpreter) when present" do
+      allow(SFL::LLM::EngineBuilder).to receive(:call)
+      vendored_boot_result = SFL::Boot::Result.new(
+        **boot_result.to_h, pass1_env: { "PYTHONPATH" => "/vendored/python" }
+      )
+
+      described_class.build_pipeline(vendored_boot_result, { pass1_only: false, store: false, resume: false },
+        breaker:, instrumenter:, logger:)
+
+      expect(SFL::Core::PassOne::SpacySidecarParser).to have_received(:new)
+        .with(model: "en_core_web_sm", command: nil, env: { "PYTHONPATH" => "/vendored/python" }, logger:)
     end
 
     it "builds a real Pass 2 engine via EngineBuilder when pass1_only is false" do

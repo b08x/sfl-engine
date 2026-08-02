@@ -74,37 +74,43 @@ module SFL
     # ENV var per provider whose absence is a hard Boot::Error — mirrors
     # legacy's KEY_ENV_BY_PREFIX, but keyed by the plain provider Symbol
     # TaskConfig#provider already holds (RubyLLM registers providers as
-    # :openai/:openrouter/:anthropic/:gemini/:ollama — verified against
-    # the installed ruby_llm 1.16.0's `RubyLLM::Provider.register` calls
-    # in lib/ruby_llm.rb; note :gemini, not legacy's "google/" prefix
-    # naming, though the ENV var name itself stays GOOGLE_API_KEY to match
-    # this repo's existing .env). :ollama is deliberately absent — its
-    # `configuration_requirements` is `[:ollama_api_base]` only (verified
-    # against Providers::Ollama.configuration_requirements), no API key,
-    # so there is nothing to validate/set here for it; LLM::Embedder
-    # configures ollama_api_base itself from its own injected
-    # `ollama_base_url:`.
+    # :openai/:openrouter/:anthropic/:gemini/:mistral/:ollama, among
+    # others — verified against the installed ruby_llm 1.16.0's
+    # `RubyLLM::Provider.register` calls in lib/ruby_llm.rb; note :gemini,
+    # not legacy's "google/" prefix naming, though the ENV var name itself
+    # stays GOOGLE_API_KEY to match this repo's existing .env). :ollama is
+    # deliberately absent — its `configuration_requirements` is
+    # `[:ollama_api_base]` only (verified against
+    # Providers::Ollama.configuration_requirements), no API key, so there
+    # is nothing to validate/set here for it; LLM::Embedder already
+    # configures ollama_api_base globally (RubyLLM.config is a process
+    # singleton) from its own injected `ollama_base_url:`, and that
+    # config is built unconditionally whenever require_llm: true — so
+    # :ollama already works as a primary chat/annotation provider too,
+    # with no further wiring needed here.
     REQUIRED_KEY_ENV_BY_PROVIDER = {
       openrouter: "OPENROUTER_API_KEY",
       gemini: "GOOGLE_API_KEY",
       openai: "OPENAI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
+      mistral: "MISTRAL_API_KEY",
     }.freeze
 
     # RubyLLM.configure setter name per provider — verified against each
     # provider class's `configuration_options` in the installed ruby_llm
     # 1.16.0 source (lib/ruby_llm/providers/{openai,anthropic,gemini,
-    # openrouter}.rb). RubyLLM's config is a process-global singleton
-    # (RubyLLM.config ||= Configuration.new) — even though ChatFactory's
-    # `chat_builder:` seam lets specs stub RubyLLM.chat directly, a real
-    # RubyLLM::Chat still reads its provider's credentials from this
-    # global config, so Boot must set it once, same spirit as legacy's
-    # RUBY_LLM_KEY_SETTER table.
+    # openrouter,mistral}.rb). RubyLLM's config is a process-global
+    # singleton (RubyLLM.config ||= Configuration.new) — even though
+    # ChatFactory's `chat_builder:` seam lets specs stub RubyLLM.chat
+    # directly, a real RubyLLM::Chat still reads its provider's
+    # credentials from this global config, so Boot must set it once, same
+    # spirit as legacy's RUBY_LLM_KEY_SETTER table.
     RUBY_LLM_KEY_SETTER = {
       openrouter: :openrouter_api_key=,
       gemini: :gemini_api_key=,
       openai: :openai_api_key=,
       anthropic: :anthropic_api_key=,
+      mistral: :mistral_api_key=,
     }.freeze
 
     DEFAULT_SPACY_MODEL = "en_core_web_sm"
@@ -119,6 +125,12 @@ module SFL
     # not re-derived independently.
     APP_ROOT = File.expand_path("../..", __dir__)
     INTERPRETER_PATH_FILE = File.join(APP_ROOT, ".sfl-python", "interpreter_path")
+
+    # bin/setup-python's PYTHON_TARGET_DIR: spaCy is `pip install --target`ed
+    # here rather than into the interpreter's own site-packages, so the
+    # sidecar subprocess needs PYTHONPATH set to this directory at spawn
+    # time (see #resolve_pass1_env) — the interpreter alone isn't enough.
+    PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
 
     # rubocop:disable Metrics/ParameterLists -- one flag per independently-skippable startup
     # concern (mirrors legacy Bootstrap.call's require_db:/require_llm:/require_observability:
@@ -158,8 +170,9 @@ module SFL
 
       spacy_model = env["SPACY_MODEL"] || DEFAULT_SPACY_MODEL
       pass1_command = resolve_pass1_command(spacy_model)
+      pass1_env = pass1_command ? { "PYTHONPATH" => PYTHON_TARGET_DIR } : nil
 
-      Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, spacy_model:)
+      Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, pass1_env:, spacy_model:)
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -262,6 +275,7 @@ module SFL
 
       LLM::Embedder.new(
         model: embedding_task.model,
+        provider: embedding_task.provider,
         ollama_base_url: env["OLLAMA_BASE_URL"] || DEFAULT_OLLAMA_BASE_URL,
         breaker: Core::Ports::TimeoutBreaker.new(timeout_seconds:),
         ruby_llm:

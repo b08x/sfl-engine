@@ -2,16 +2,26 @@
 
 module SFL
   module LLM
-    # Ollama-backed Core::Ports::Embedder adapter — the first *real*
-    # (non-Null/Fake) Embedder in this codebase; only Null::Embedder
-    # (always an empty vector) and Fake::Embedder (deterministic test
-    # double) existed before this (see Rakefile's `embeddings:redrive`
-    # task, which raised with a TODO pointing at exactly this gap).
+    # RubyLLM-backed Core::Ports::Embedder adapter, :ollama by default —
+    # the first *real* (non-Null/Fake) Embedder in this codebase; only
+    # Null::Embedder (always an empty vector) and Fake::Embedder
+    # (deterministic test double) existed before this (see Rakefile's
+    # `embeddings:redrive` task, which raised with a TODO pointing at
+    # exactly this gap).
+    #
+    # `provider:` is injectable (any RubyLLM-registered provider Boot has
+    # already configured credentials for — see
+    # SFL::Boot::REQUIRED_KEY_ENV_BY_PROVIDER/RUBY_LLM_KEY_SETTER) so
+    # SFL_TASK_EMBEDDING_PROVIDER can actually take effect; ollama_api_base
+    # is still always configured globally regardless of which provider is
+    # selected, since nothing else in the Boot path sets it and a later
+    # ollama-provider call (chat or embedding) needs it available.
     #
     # Ports legacy's Compiler::Embedder
     # (sfl-compiler/lib/sfl/compiler/retrieval/embedder.rb) via
-    # RubyLLM.embed(text, model:, provider: :ollama), with two
-    # deliberate contract changes:
+    # RubyLLM.embed(text, model:, provider:) — legacy's own Embedder never
+    # supported provider selection either; the two deliberate contract
+    # changes below predate the provider-injectability fix above:
     #
     # 1. The `circuit_breaker` gem is dropped in favor of this codebase's
     #    own Core::Ports::Breaker port, injected as `breaker:` the same
@@ -42,23 +52,35 @@ module SFL
       include Core::Ports::Embedder
 
       # @param model [String] e.g. "embeddinggemma:latest"
-      # @param ollama_base_url [String] e.g. "http://localhost:11434"
+      # @param ollama_base_url [String] e.g. "http://localhost:11434" — always configured
+      #   globally (RubyLLM.config is a process singleton) regardless of `provider:`, since
+      #   nothing else in this codebase's Boot path sets it and a later ollama-provider call
+      #   (chat or embedding) needs it available.
+      # @param provider [Symbol] e.g. :ollama (default), :mistral, or any other
+      #   RubyLLM-registered provider whose credentials Boot has already configured —
+      #   this class never reads ENV/validates keys itself (track decision 4).
       # @param breaker [#call] Core::Ports::Breaker-compatible
       # @param logger [#debug,#info,#warn,#error] Core::Ports::Logger-compatible
       # @param ruby_llm [Module] injectable seam so specs never touch the real ::RubyLLM
+      # rubocop:disable Metrics/ParameterLists -- one independently-injectable collaborator/
+      # config value per kwarg (matches this codebase's own convention elsewhere, e.g.
+      # SFL::Boot.call's require_db:/require_llm:/... seam).
       def initialize(
         model:,
         ollama_base_url:,
+        provider: :ollama,
         breaker: Core::Ports::Null::Breaker.new,
         logger: Core::Ports::Null::Logger.new,
         ruby_llm: RubyLLM
       )
         @model = model
+        @provider = provider
         @breaker = breaker
         @logger = logger
         @ruby_llm = ruby_llm
         configure_ruby_llm(ollama_base_url)
       end
+      # rubocop:enable Metrics/ParameterLists
 
       # @param text [String]
       # @return [Array<Float>]
@@ -85,8 +107,8 @@ module SFL
         fail_embed("embed_batch", e)
       end
 
-      attr_reader :model, :breaker, :logger, :ruby_llm
-      private :model, :breaker, :logger, :ruby_llm
+      attr_reader :model, :provider, :breaker, :logger, :ruby_llm
+      private :model, :provider, :breaker, :logger, :ruby_llm
 
       private def configure_ruby_llm(ollama_base_url)
         ruby_llm.configure do |config|
@@ -112,12 +134,12 @@ module SFL
       end
 
       private def fetch(text)
-        response = ruby_llm.embed(text, model:, provider: :ollama)
+        response = ruby_llm.embed(text, model:, provider:)
         response.vectors
       end
 
       private def fetch_batch(texts)
-        response = ruby_llm.embed(texts, model:, provider: :ollama)
+        response = ruby_llm.embed(texts, model:, provider:)
         response.vectors
       end
 

@@ -75,4 +75,18 @@ RSpec.describe SFL::Core::PassOne::SpacySidecarParser do
       expect(io.string).to include("restarting and retrying once")
     end
   end
+
+  describe "env:" do
+    it "passes env: through to Open3.popen2 alongside command:, so a vendored interpreter's " \
+      "PYTHONPATH (Boot::Result#pass1_env) reaches the subprocess" do
+      fake_env = { "PYTHONPATH" => "/vendored/python" }
+      allow(Open3).to receive(:popen2).and_call_original
+
+      described_class.new(model: "en_core_web_sm", env: fake_env).close
+
+      expect(Open3).to have_received(:popen2).with(
+        fake_env, "python3", described_class::DEFAULT_SCRIPT_PATH, "--model", "en_core_web_sm"
+      )
+    end
+  end
 end

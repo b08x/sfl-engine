@@ -39,6 +39,14 @@ RSpec.describe SFL::LLM::Embedder do
 
       expect(ruby_llm_config).to have_received(:ollama_api_base=).with("http://tinybot:11434/v1")
     end
+
+    it "still configures ollama_api_base globally even when provider: is not :ollama " \
+      "(a later ollama-provider call, chat or embedding, needs it available)" do
+      described_class.new(model: "mistral-embed", provider: :mistral, ollama_base_url: "http://tinybot:11434",
+        ruby_llm:)
+
+      expect(ruby_llm_config).to have_received(:ollama_api_base=).with("http://tinybot:11434/v1")
+    end
   end
 
   describe "#embed" do
@@ -48,6 +56,15 @@ RSpec.describe SFL::LLM::Embedder do
         .and_return(response)
 
       expect(embedder.embed("hello")).to eq([0.1, 0.2, 0.3])
+    end
+
+    it "forwards a non-default provider: (e.g. :mistral) to RubyLLM.embed instead of hardcoding :ollama" do
+      mistral_embedder = described_class.new(model: "mistral-embed", provider: :mistral,
+        ollama_base_url: "http://tinybot:11434", ruby_llm:)
+      response = instance_double(RubyLLM::Embedding, vectors: [0.4, 0.5])
+      allow(ruby_llm).to receive(:embed).with("hi", model: "mistral-embed", provider: :mistral).and_return(response)
+
+      expect(mistral_embedder.embed("hi")).to eq([0.4, 0.5])
     end
 
     it "raises ArgumentError for nil text without calling RubyLLM" do

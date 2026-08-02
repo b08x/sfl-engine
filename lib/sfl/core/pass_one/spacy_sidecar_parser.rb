@@ -21,9 +21,14 @@ module SFL
         DEFAULT_SCRIPT_PATH = File.expand_path("../../../../sidecar/spacy_sidecar.py", __dir__)
         STARTUP_TIMEOUT_SECONDS = 30
 
-        def initialize(model:, command: nil, logger: Ports::Null::Logger.new)
+        # @param env [Hash] extra subprocess environment (e.g. PYTHONPATH for a
+        #   vendored interpreter whose packages live outside its own
+        #   site-packages — see Boot::Result#pass1_env) merged over the
+        #   current process's own env, not replacing it.
+        def initialize(model:, command: nil, env: {}, logger: Ports::Null::Logger.new)
           @model = model
           @command = command || ["python3", DEFAULT_SCRIPT_PATH, "--model", model]
+          @env = env
           @logger = logger
           @mutex = Mutex.new
           start_process
@@ -49,7 +54,7 @@ module SFL
 
         private def start_process
           logger.debug { "spawning sidecar: #{@command.join(' ')}" }
-          @stdin, @stdout, @wait_thread = Open3.popen2(*@command)
+          @stdin, @stdout, @wait_thread = Open3.popen2(@env, *@command)
           await_ready
           logger.info { "sidecar ready (model=#{@model}, pid=#{wait_thread.pid})" }
         end
