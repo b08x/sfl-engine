@@ -54,8 +54,13 @@ module SFL
       }.freeze
 
       # @param ctx [API::Context]
-      def initialize(ctx)
+      # @param debug_errors [Boolean] include raw exception messages in 500 responses
+      #   (Boot::Result#api_debug_errors, SFL_API_DEBUG_ERRORS — issue #3). False in every
+      #   real deployment; the generic response + logged request_id is the supported way to
+      #   correlate a client-reported failure with server-side logs.
+      def initialize(ctx, debug_errors: false)
         @ctx = ctx
+        @debug_errors = debug_errors
       end
 
       def call(env)
@@ -75,8 +80,12 @@ module SFL
       rescue ArgumentError => e
         json(400, { error: e.message })
       rescue => e
-        warn "[ERROR] API #{e.class}: #{e.message}"
-        json(500, { error: "Internal Server Error", message: e.message })
+        request_id = SecureRandom.uuid
+        warn "[ERROR] API #{e.class} request_id=#{request_id} #{req.request_method} #{req.path_info}: " \
+          "#{e.message}\n#{e.backtrace&.first(10)&.join("\n")}"
+        body = { error: "Internal Server Error", request_id: }
+        body[:message] = e.message if @debug_errors
+        json(500, body)
       end
 
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity

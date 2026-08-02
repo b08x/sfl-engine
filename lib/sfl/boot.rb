@@ -171,8 +171,10 @@ module SFL
       spacy_model = env["SPACY_MODEL"] || DEFAULT_SPACY_MODEL
       pass1_command = resolve_pass1_command(spacy_model)
       pass1_env = pass1_command ? { "PYTHONPATH" => PYTHON_TARGET_DIR } : nil
+      api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
 
-      Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, pass1_env:, spacy_model:)
+      Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, pass1_env:, spacy_model:,
+        api_debug_errors:)
     end
     # rubocop:enable Metrics/ParameterLists
 

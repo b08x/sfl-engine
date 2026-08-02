@@ -243,6 +243,19 @@ RSpec.describe SFL::Boot do
     end
   end
 
+  describe "api_debug_errors (issue #3)" do
+    it "defaults to false when SFL_API_DEBUG_ERRORS is unset" do
+      result = boot(env: base_env)
+
+      expect(result.api_debug_errors).to be false
+    end
+
+    it "is true only when SFL_API_DEBUG_ERRORS is exactly \"true\"" do
+      expect(boot(env: base_env.merge("SFL_API_DEBUG_ERRORS" => "true")).api_debug_errors).to be true
+      expect(boot(env: base_env.merge("SFL_API_DEBUG_ERRORS" => "1")).api_debug_errors).to be false
+    end
+  end
+
   describe "Pass 1 sidecar command resolution" do
     it "returns a nil pass1_command when .sfl-python/interpreter_path has not been provisioned" do
       allow(File).to receive(:exist?).with(SFL::Boot::INTERPRETER_PATH_FILE).and_return(false)

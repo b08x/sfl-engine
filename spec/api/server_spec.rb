@@ -100,13 +100,35 @@ RSpec.describe SFL::API::Server do
   end
 
   describe "an unexpected error" do
-    it "returns 500 without leaking a bare exception" do
-      allow(clause_store).to receive(:find_all).and_raise(RuntimeError, "boom")
+    it "returns a generic 500 with a request_id instead of the raw exception message (issue #3: " \
+      "internal database/provider/filesystem details must not reach the client)" do
+      allow(clause_store).to receive(:find_all).and_raise(RuntimeError, "boom: password=hunter2")
 
       get "/clauses"
 
       expect(last_response.status).to eq(500)
-      expect(JSON.parse(last_response.body)["message"]).to eq("boom")
+      body = JSON.parse(last_response.body)
+      expect(body["error"]).to eq("Internal Server Error")
+      expect(body["request_id"]).to match(/\A[0-9a-f-]{36}\z/)
+      expect(body).not_to have_key("message")
+    end
+
+    it "logs the exception class, request_id, route, message, and a backtrace excerpt server-side" do
+      allow(clause_store).to receive(:find_all).and_raise(RuntimeError, "boom")
+
+      expect { get "/clauses" }.to output(a_string_including("[ERROR] API RuntimeError", "GET /clauses", "boom"))
+        .to_stderr
+    end
+
+    it "includes the raw exception message only when constructed with debug_errors: true" do
+      allow(clause_store).to receive(:find_all).and_raise(RuntimeError, "boom")
+      debug_app = described_class.new(ctx, debug_errors: true)
+
+      env = Rack::MockRequest.env_for("/clauses", method: "GET")
+      status, _headers, response_body = debug_app.call(env)
+
+      expect(status).to eq(500)
+      expect(JSON.parse(response_body.first)["message"]).to eq("boom")
     end
   end
 

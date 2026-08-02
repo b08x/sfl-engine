@@ -14,4 +14,4 @@ SFL::DockerServices.ensure_running!
 boot_result = SFL::Boot.call(require_llm: true, require_tracing: true)
 ctx = SFL::API.build_context(boot_result)
 
-run SFL::API::Server.new(ctx)
+run SFL::API::Server.new(ctx, debug_errors: boot_result.api_debug_errors)

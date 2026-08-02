@@ -31,7 +31,11 @@ module SFL
     # - `spacy_model`: resolved SPACY_MODEL, always present — needed
     #   whether or not pass1_command is nil (SpacySidecarParser's
     #   `model:` kwarg is required either way).
+    # - `api_debug_errors`: resolved SFL_API_DEBUG_ERRORS (issue #3) — whether
+    #   API::Server may include raw exception messages in its 500 responses.
+    #   Always false unless explicitly opted into; production deploys must
+    #   never set this.
     Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :pass1_env, :spacy_model,
-      keyword_init: true)
+      :api_debug_errors, keyword_init: true)
   end
 end
