@@ -54,6 +54,13 @@ gem "sequel", "~> 5.88"
 gem "falcon", "~> 0.47"
 gem "rack", "~> 3.1"
 
+# CLI UX: a real progress bar (turn/artifact completion + ETA) replacing
+# the old plain print/puts pair, and an interactive setup wizard
+# (bin/setup-config) for .env — both from the TTY toolkit (ruby-dev
+# skill's TUI Builder gem set).
+gem "tty-progressbar", "~> 0.18"
+gem "tty-prompt", "~> 0.23"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"
