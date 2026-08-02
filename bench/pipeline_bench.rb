@@ -17,7 +17,7 @@
 # fix: don't cross directories at all.
 #
 # Usage (from inside the target repo):
-#   ruby /path/to/sfl-compilerV2/bench/pipeline_bench.rb --subcommand conversation \
+#   ruby /path/to/sfl-engine/bench/pipeline_bench.rb --subcommand conversation \
 #     --input spec/fixtures/conversations/sample.jsonl --label legacy-baseline --pass1-only
 #
 # Deliberately does NOT default to a real (paid) LLM run: --pass1-only must be passed

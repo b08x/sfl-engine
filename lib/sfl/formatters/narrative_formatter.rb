@@ -30,7 +30,7 @@ module SFL
         md = <<~MARKDOWN
           # Narrative Report: #{result.source}
 
-          *Generated #{result.generated_at.iso8601} by sfl-compiler narrative generation.*
+          *Generated #{result.generated_at.iso8601} by sfl-engine narrative generation.*
 
           #{body}
         MARKDOWN

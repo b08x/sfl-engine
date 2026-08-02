@@ -42,7 +42,7 @@ module SFL
 
           ## Methodology
 
-          **SFL Framework**: Two-Pass SFL Compiler (sfl-compiler)
+          **SFL Framework**: Two-Pass SFL Engine (sfl-engine)
           - **Pass 1**: Syntactic parsing (spaCy) + Ideational extraction
           - **Pass 2**: Interpersonal annotation (DSPy.rb + LLM) → mood, modality, tenor
           - **Quality scoring**: annotation source (40%) + modality (30%) + substance (20%) + freshness (10%)

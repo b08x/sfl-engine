@@ -1,7 +1,7 @@
-# SFL Compiler — Project Overview
+# SFL Engine — Project Overview
 
 **What this document is for**: a single, neutral, comprehensive description of what
-the SFL Compiler actually is and does — not angled toward any one audience. It
+the SFL Engine actually is and does — not angled toward any one audience. It
 exists so other documents (a UI design brief, an academic case study, a portfolio
 write-up, a future demo) can all be generated *from* this one, rather than each
 re-describing the project from scratch and drifting apart. If you're pointing an
@@ -10,7 +10,7 @@ codebase) at the project, start here.
 
 ## What it is, in one paragraph
 
-The SFL Compiler is a Ruby application that analyzes text — conversations,
+The SFL Engine is a Ruby application that analyzes text — conversations,
 documentation, or general knowledge-base corpora — by annotating every clause
 with a full Systemic Functional Linguistics (SFL) breakdown: what happened
 (Ideational: process type, participants, circumstances), the stance being taken
@@ -19,7 +19,7 @@ as text (Textual). It combines a deterministic syntactic parse (spaCy, via a
 subprocess sidecar) with LLM-based interpretation of stance and certainty,
 persists the result to Postgres with vector embeddings for hybrid retrieval, and
 exposes the whole thing through both a CLI and an HTTP API. It is mid-rebuild
-(`sfl-compilerV2`, a from-scratch architectural rewrite of an earlier working
+(`sfl-engine`, a from-scratch architectural rewrite of an earlier working
 version, `sfl-compiler`) — Phases 0-5 of a 6-phase blueprint are done; only
 hardening (performance validation, documentation, coverage) remains.
 

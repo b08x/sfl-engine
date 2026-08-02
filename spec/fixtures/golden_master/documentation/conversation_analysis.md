@@ -160,7 +160,7 @@ Derivation: `7d20698c21a4d622fc74cd171a63750c0b3935ad5be891850f13ed26960c70e1`
 
 ## Methodology
 
-**SFL Framework**: Two-Pass SFL Compiler (sfl-compiler)
+**SFL Framework**: Two-Pass SFL Engine (sfl-engine)
 - **Pass 1**: Syntactic parsing (spaCy) + Ideational extraction (process types, participants)
 - **Pass 2**: Interpersonal annotation (DSPy.rb + LLM) → mood, modality, tenor, attitude
 

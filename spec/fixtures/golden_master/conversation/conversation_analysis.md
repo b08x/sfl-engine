@@ -93,7 +93,7 @@ This analysis tracks **tenor evolution** (formality shifts), **field evolution**
 
 ## Methodology
 
-**SFL Framework**: Two-Pass SFL Compiler (sfl-compiler)
+**SFL Framework**: Two-Pass SFL Engine (sfl-engine)
 - **Pass 1**: Syntactic parsing (spaCy) + Ideational extraction (process types, participants)
 - **Pass 2**: Interpersonal annotation (DSPy.rb + LLM) → mood, modality, tenor, attitude
 

@@ -1,4 +1,4 @@
-# sfl-compilerV2
+# SFL Engine
 
 Rebuild of [sfl-compiler](../sfl-compiler) — a single, non-gem Ruby application (no gemspec,
 no `gem install`; clone and run). See `rebuild-blueprint-with-plugin.md` for the full SIFT
