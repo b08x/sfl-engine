@@ -39,6 +39,65 @@ services:
       timeout: 5s
       retries: 10
 
+  # `api`/`migrate` (issue #34, docs/dockerization-strategy.md): behind the
+  # "app" profile so plain `docker compose up -d` — what
+  # SFL::DockerServices.ensure_running! shells out to, and what README's
+  # bare-metal "Getting Started" instructs — keeps starting only
+  # postgres/redis, same as before this service existed. Bring these up
+  # explicitly with `docker compose --profile app up -d`.
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    profiles: ["app"]
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Service DNS names, not the host-port remaps (5433/6380) .env uses
+      # for bare-metal-vs-local-service conflict avoidance — irrelevant
+      # inside the Compose network.
+      DATABASE_URL: postgresql://sfl:sfl@postgres:5432/sfl_engine_dev
+      HOST: "0.0.0.0"
+      PORT: "3001"
+      # Never let the containerized api shell out to `docker compose up` on
+      # itself — Compose already owns startup ordering via depends_on below.
+      SFL_AUTO_START_DOCKER: "0"
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "ruby", "-rnet/http", "-e",
+        "exit(Net::HTTP.get_response(URI('http://localhost:3001/health')).code == '200' ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: `docker compose --profile app run --rm migrate`. Never part of
+  # `api`'s own entrypoint — this codebase has an explicit, documented
+  # decision that migrations are a deliberate, visible action, never a
+  # silent side effect of app startup (AGENTS.md's "No auto-migration"
+  # gotcha; SFL::Boot never runs migrations).
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    profiles: ["app"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://sfl:sfl@postgres:5432/sfl_engine_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["bundle", "exec", "rake", "db:migrate"]
+
 volumes:
   sfl_engine_pgdata:
   sfl_engine_redisdata:

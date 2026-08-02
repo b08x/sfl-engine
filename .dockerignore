@@ -1,0 +1,17 @@
+.git
+.github
+.codemap
+.claude
+.bundle
+.sfl-python
+.sfl-cache
+coverage
+log
+tmp
+spec
+experiments
+docs
+*.md
+.env
+.rspec
+.rubocop.yml

@@ -8,6 +8,18 @@ talks to this subprocess over a line-delimited JSON protocol on
 stdin/stdout — see the docstring in `spacy_sidecar.py` for the exact
 message shapes.
 
+**Note on the containerized API (issue #34):** `docker/api.Dockerfile`
+bakes spaCy directly into the `sfl-api` image's system Python (mirroring
+this directory's own `pip install spacy && spacy download` approach)
+rather than running this directory's `Dockerfile` as a *separate*
+sidecar container per compile call — that would require the API
+container to itself have Docker access just to `docker run` it, the
+same wrong shape #17/#18 already fixed for
+`DockerServices.ensure_running!`. This directory's `Dockerfile` is kept
+as-is, not deleted: it's still a valid, working reference for anyone
+running Pass 1 as a genuinely separate process outside the `sfl-api`
+image (see "Running it via Docker" below).
+
 ## Running it directly (local dev)
 
 Requires `python3` with `spacy` installed and a model downloaded:

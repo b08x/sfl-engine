@@ -29,42 +29,56 @@ module SFL
       keyword_init: true
     )
 
-    # Composes a Context from a Boot::Result — config.ru's one call site.
-    # Reuses CLI.build_pipeline/CLI.build_collaborators rather than
-    # duplicating that wiring a second time (the same T4 "one factory, not
-    # four near-identical copies" fix CLI.build_pipeline itself exists
-    # for). `store: true` in the options passed to build_pipeline wires a
-    # real PgEmbeddingStore/embedder (not the Null doubles a pass1-only/
-    # no-store CLI run would get) — POST /pipeline/compile lets a caller
-    # request `embed: true` per request, so the pipeline must be able to
-    # honor that. `resume: false` keeps the cache Null — API requests
-    # aren't a resumable multi-turn CLI run.
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat collaborator-wiring
-    # sequence, each line building exactly one Context field.
-    module_function def build_context(boot_result)
-      logger, instrumenter, breaker = CLI.build_collaborators
-      pipeline = CLI.build_pipeline(boot_result, { store: true, resume: false }, breaker:, instrumenter:, logger:)
-      pass_two = LLM::EngineBuilder.call(
-        config: boot_result.llm_config, chat_factory: boot_result.chat_factory, breaker:, instrumenter:, logger:
-      )
-      clause_store = Store::PgClauseStore.new(boot_result.db)
-      annotation_review_repo = Store::PgAnnotationReviewRepository.new(boot_result.db)
+    class Context
+      # Composes a Context from a Boot::Result — config.ru's one call site.
+      # Reuses CLI.build_pipeline/CLI.build_collaborators rather than
+      # duplicating that wiring a second time (the same T4 "one factory, not
+      # four near-identical copies" fix CLI.build_pipeline itself exists
+      # for). `store: true` in the options passed to build_pipeline wires a
+      # real PgEmbeddingStore/embedder (not the Null doubles a pass1-only/
+      # no-store CLI run would get) — POST /pipeline/compile lets a caller
+      # request `embed: true` per request, so the pipeline must be able to
+      # honor that. `resume: false` keeps the cache Null — API requests
+      # aren't a resumable multi-turn CLI run.
+      #
+      # A method ON Context (not a bare `SFL::API.build_context` module
+      # method, which is what this used to be) deliberately: live-verified
+      # 2026-08-02 that config.ru is the only call site anywhere in this
+      # codebase, so `SFL::API.build_context(...)` was calling a method that
+      # only existed if something ELSE had already referenced
+      # `SFL::API::Context` and triggered Zeitwerk to autoload this file —
+      # which nothing did. The HTTP API had never actually booted. Defining
+      # this as `Context.build` instead means the very reference that calls
+      # it (`SFL::API::Context.build(...)`) is what triggers Zeitwerk to
+      # load this file, so the method is guaranteed to exist by the time
+      # it's called, independent of what else has run first.
+      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat collaborator-wiring
+      # sequence, each line building exactly one Context field.
+      def self.build(boot_result)
+        logger, instrumenter, breaker = CLI.build_collaborators
+        pipeline = CLI.build_pipeline(boot_result, { store: true, resume: false }, breaker:, instrumenter:, logger:)
+        pass_two = LLM::EngineBuilder.call(
+          config: boot_result.llm_config, chat_factory: boot_result.chat_factory, breaker:, instrumenter:, logger:
+        )
+        clause_store = Store::PgClauseStore.new(boot_result.db)
+        annotation_review_repo = Store::PgAnnotationReviewRepository.new(boot_result.db)
 
-      Context.new(
-        pipeline:,
-        retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
-        synthesizer: Retrieval::ContextSynthesizer.new(
+        new(
+          pipeline:,
           retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
-          chat: boot_result.chat_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
-        ),
-        clause_store:,
-        review_queue_repo: Store::PgReviewQueueRepository.new(boot_result.db),
-        annotation_review_repo:,
-        pass_two:,
-        clause_review_service: ClauseReviewService.new(db: boot_result.db, clause_store:, annotation_review_repo:,
-          pass_two:)
-      )
+          synthesizer: Retrieval::ContextSynthesizer.new(
+            retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
+            chat: boot_result.chat_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
+          ),
+          clause_store:,
+          review_queue_repo: Store::PgReviewQueueRepository.new(boot_result.db),
+          annotation_review_repo:,
+          pass_two:,
+          clause_review_service: ClauseReviewService.new(db: boot_result.db, clause_store:, annotation_review_repo:,
+            pass_two:)
+        )
+      end
+      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
   end
 end

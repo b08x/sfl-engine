@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "dotenv"
+require "ruby_llm"
 
 module SFL
   # Composition root (track decision 4): the ONLY place in this codebase

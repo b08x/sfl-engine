@@ -50,8 +50,10 @@ rake db:migrate                     # run pending Sequel migrations
 rake embeddings:redrive             # re-drive pending/failed embeddings
 
 # Server
-bundle exec sfl-api                 # starts Falcon on port 3001 (default)
-PORT=3002 bundle exec sfl-api       # custom port
+bundle exec exe/sfl-api             # starts Falcon on port 3001 (default), 0.0.0.0 by default (#33)
+PORT=3002 bundle exec exe/sfl-api   # custom port
+# NOT `bundle exec sfl-api` -- no gemspec/executables list (track decision 1), so there is no
+# binstub for Bundler to resolve that bare command name to (live-verified 2026-08-02, #34).
 
 # Setup
 bin/setup-python                    # vendor spaCy into .sfl-python/
