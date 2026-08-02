@@ -35,7 +35,10 @@ module SFL
     #   API::Server may include raw exception messages in its 500 responses.
     #   Always false unless explicitly opted into; production deploys must
     #   never set this.
+    # - `api_cors_origins`: resolved SFL_API_CORS_ORIGINS (issue #35), split on
+    #   commas — the Origin allowlist API::Server accepts. Falls back to
+    #   API::Server::DEFAULT_CORS_ORIGINS (the two localhost origins) when unset.
     Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :pass1_env, :spacy_model,
-      :api_debug_errors, keyword_init: true)
+      :api_debug_errors, :api_cors_origins, keyword_init: true)
   end
 end

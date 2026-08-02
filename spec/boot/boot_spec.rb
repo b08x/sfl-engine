@@ -256,6 +256,22 @@ RSpec.describe SFL::Boot do
     end
   end
 
+  describe "api_cors_origins (issue #35)" do
+    it "defaults to API::Server::DEFAULT_CORS_ORIGINS when SFL_API_CORS_ORIGINS is unset" do
+      result = boot(env: base_env)
+
+      expect(result.api_cors_origins).to eq(SFL::API::Server::DEFAULT_CORS_ORIGINS)
+    end
+
+    it "splits SFL_API_CORS_ORIGINS on commas and trims surrounding whitespace" do
+      result = boot(env: base_env.merge(
+        "SFL_API_CORS_ORIGINS" => "https://webui.example.com, https://admin.example.com "
+      ))
+
+      expect(result.api_cors_origins).to eq(%w[https://webui.example.com https://admin.example.com])
+    end
+  end
+
   describe "Pass 1 sidecar command resolution" do
     it "returns a nil pass1_command when .sfl-python/interpreter_path has not been provisioned" do
       allow(File).to receive(:exist?).with(SFL::Boot::INTERPRETER_PATH_FILE).and_return(false)

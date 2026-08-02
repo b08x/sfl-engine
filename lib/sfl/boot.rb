@@ -132,10 +132,11 @@ module SFL
     # time (see #resolve_pass1_env) — the interpreter alone isn't enough.
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
 
-    # rubocop:disable Metrics/ParameterLists -- one flag per independently-skippable startup
-    # concern (mirrors legacy Bootstrap.call's require_db:/require_llm:/require_observability:
-    # shape) plus the four DI seams (env:/tty:/input:/ruby_llm:) every ENV-touching or
-    # process-global-touching method in this codebase exposes for specs.
+    # rubocop:disable Metrics/ParameterLists, Metrics/MethodLength -- one flag per
+    # independently-skippable startup concern (mirrors legacy Bootstrap.call's
+    # require_db:/require_llm:/require_observability: shape) plus the four DI seams
+    # (env:/tty:/input:/ruby_llm:) every ENV-touching or process-global-touching method in this
+    # codebase exposes for specs; the body is one flat build-each-Result-field sequence.
     # @param env [#[], #fetch] environment source, injectable for tests
     # @param load_dotenv [Boolean] read .env first (off in tests)
     # @param require_db [Boolean] connect the database (no migrations — see Store::Database)
@@ -172,11 +173,12 @@ module SFL
       pass1_command = resolve_pass1_command(spacy_model)
       pass1_env = pass1_command ? { "PYTHONPATH" => PYTHON_TARGET_DIR } : nil
       api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
+      api_cors_origins = resolve_api_cors_origins(env)
 
       Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, pass1_env:, spacy_model:,
-        api_debug_errors:)
+        api_debug_errors:, api_cors_origins:)
     end
-    # rubocop:enable Metrics/ParameterLists
+    # rubocop:enable Metrics/ParameterLists, Metrics/MethodLength
 
     module_function def build_llm_collaborators(env, ruby_llm)
       llm_config = build_llm_config(env)
@@ -231,6 +233,16 @@ module SFL
       params = temperature ? { temperature: } : {}
 
       LLM::TaskConfig.new(model:, provider:, params:)
+    end
+
+    # @param env [#[]] environment source
+    # @return [Array<String>] SFL_API_CORS_ORIGINS split on commas and trimmed, or
+    #   API::Server::DEFAULT_CORS_ORIGINS when unset (issue #35).
+    module_function def resolve_api_cors_origins(env)
+      raw = presence(env["SFL_API_CORS_ORIGINS"])
+      return API::Server::DEFAULT_CORS_ORIGINS unless raw
+
+      raw.split(",").map(&:strip).reject(&:empty?)
     end
 
     module_function def presence(value)

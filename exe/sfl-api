@@ -2,7 +2,15 @@
 # frozen_string_literal: true
 
 # Starts the SFL HTTP API server via Falcon.
-# Usage: bundle exec sfl-api [PORT=3001]
+# Usage: bundle exec sfl-api [PORT=3001] [HOST=0.0.0.0]
+#
+# HOST defaults to "0.0.0.0" (issue #33): a "localhost"-bound server is
+# unreachable from anything outside its own network namespace, including
+# another container on the same Compose network -- this worked silently on
+# bare metal (the developer *is* on localhost) and broke silently the
+# moment the API was containerized or put behind a reverse proxy. Set
+# HOST=localhost explicitly for a bare-metal-only setup that wants the old
+# behavior.
 
 lib = File.expand_path("../lib", __dir__)
 $LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
@@ -10,5 +18,6 @@ $LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
 $stdout.sync = true
 
 port = ENV.fetch("PORT", "3001")
+host = ENV.fetch("HOST", "0.0.0.0")
 exec "bundle", "exec", "falcon", "serve", "-c", "config.ru",
-  "-b", "http://localhost:#{port}"
+  "-b", "http://#{host}:#{port}"
