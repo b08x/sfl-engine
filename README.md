@@ -24,4 +24,10 @@ never autoloaded, never shipped.
 
 ## Status
 
-Phase 0 (safety net & triage) in progress. No pipeline code yet.
+Phases 0-5 complete: full pipeline (spaCy NDJSON sidecar Pass 1 + ruby_llm
+Pass 2 engine), Postgres/pgvector store with hybrid retrieval, unified
+analysis engine, formatters, boot composition root, real embedder, CLI entry
+points, and an HTTP API (`lib/sfl/api`, `exe/sfl-api`) with dead-surface
+cleanup done (sfl-jobs and sfl-tui dropped, not ported). Remaining: Phase 6
+(hardening — perf pass, coverage gate, YARD docs) — see
+`rebuild-blueprint-with-plugin.md` for the full phased backlog.
