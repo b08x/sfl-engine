@@ -36,6 +36,18 @@ module SFL
 
       DEFAULT_MODEL = ENV.fetch("EMBEDDING_MODEL", "embeddinggemma:latest")
 
+      # Must match db/migrations/004_create_embeddings.rb's `vector(768)`
+      # column exactly. Root cause of a real failure (2026-08-02): pgvector
+      # column width is fixed at migration time, but SFL_TASK_EMBEDDING_*
+      # lets an operator pick any provider/model — e.g. mistral-embed
+      # (1024-dim) instead of the default embeddinggemma:latest (768-dim).
+      # Nothing coupled the two, so a mismatched pick reached Postgres raw
+      # and surfaced deep inside Sequel#multi_insert as a bare
+      # "PG::DataException: expected 768 dimensions, not 1024" with no
+      # indication it was a config problem. #insert_succeeded now checks
+      # this before the INSERT so the error names the actual cause.
+      VECTOR_DIMENSIONS = 768
+
       # @param db [Sequel::Database]
       # @param model [String] embedding model identifier stored alongside
       #   each vector, so multiple models' vectors for the same clause can
@@ -72,10 +84,25 @@ module SFL
         nil
       end
 
+      # `succeeded` is an Array of [clause_id, vector] pairs from
+      # Array#partition, not a Hash — Style/HashEachMethods' each_value
+      # suggestion doesn't apply here (see mark_failed above).
+      # rubocop:disable Style/HashEachMethods -- see comment above
       private def insert_succeeded(succeeded)
         return if succeeded.empty?
 
+        succeeded.each { |_clause_id, vector| check_dimensions!(vector) }
         @db[:embeddings].multi_insert(succeeded.map { |clause_id, vector| row(clause_id, vector) })
+      end
+      # rubocop:enable Style/HashEachMethods
+
+      private def check_dimensions!(vector)
+        return if vector.size == VECTOR_DIMENSIONS
+
+        raise Error, "embedding model #{@model.inspect} returned a #{vector.size}-dimension vector, but the " \
+          "embeddings table is provisioned for #{VECTOR_DIMENSIONS} dimensions " \
+          "(db/migrations/004_create_embeddings.rb). Check SFL_TASK_EMBEDDING_PROVIDER/SFL_TASK_EMBEDDING_MODEL " \
+          "— the configured embedding model's output width must match the migrated column width."
       end
 
       private def mark_embedded(succeeded)

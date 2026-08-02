@@ -100,5 +100,26 @@ RSpec.describe SFL::CLI do
         expect(File.read(expanded_path)).to include("What is reciprocal rank fusion?")
       end
     end
+
+    it "isolates a per-file failure instead of aborting the whole batch (F11 partial-failure isolation), " \
+      "warns which file failed, and still reports every file that succeeded (live-verified gap, " \
+      "2026-08-02 — a 900-conversation export produced 1-2 reports because one bad conversation's " \
+      "unhandled Store::Error killed the entire files.each loop)" do
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "a.jsonl"), "")
+        File.write(File.join(dir, "b.jsonl"), "")
+        File.write(File.join(dir, "c.jsonl"), "")
+        allow(engine).to receive(:analyze).and_return(result)
+        allow(engine).to receive(:analyze).with(source, hash_including(label: "b"))
+          .and_raise(SFL::Store::Error, "boom")
+
+        expect { described_class.run_conversation(dir, base_options) }
+          .to output(a_string_including("[ERROR] b: boom").and(a_string_including("1/3 conversations failed: b")))
+          .to_stderr
+
+        expect(SFL::Formatters::ReportWriter).to have_received(:write).with(result, File.join("./out", "a"))
+        expect(SFL::Formatters::ReportWriter).to have_received(:write).with(result, File.join("./out", "c"))
+      end
+    end
   end
 end

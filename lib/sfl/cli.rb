@@ -179,8 +179,10 @@ module SFL
     # No un-rescued crash for expected operational failures (D9): bad
     # args, Boot-time misconfiguration (missing API key, DB connection
     # failure, cancelled tracing), a Pipeline#compile failure surfaced
-    # through Analysis::Error, or a provider-side LLM/HTTP failure that
-    # escaped Pass 2's own degradation ladder (only Retrieval::
+    # through Analysis::Error, a storage-layer misconfiguration surfaced
+    # through Store::Error (e.g. an embedding model/column-width mismatch —
+    # see PgEmbeddingStore's own comment), or a provider-side LLM/HTTP
+    # failure that escaped Pass 2's own degradation ladder (only Retrieval::
     # ContextSynthesizer's synthesis call is NOT internally degraded —
     # see that class's own comment: "a failed synthesis call propagates
     # — there is no useful default answer").
@@ -194,7 +196,7 @@ module SFL
     rescue UsageError => e
       warn e.message
       1
-    rescue Boot::Error, Analysis::Error, Timeout::Error => e
+    rescue Boot::Error, Analysis::Error, Store::Error, Timeout::Error => e
       warn "[ERROR] #{e.message}"
       1
     rescue RubyLLM::Error => e
@@ -205,7 +207,7 @@ module SFL
     end
     # rubocop:enable Metrics/MethodLength
 
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
     # -- one flat file-dispatch/compile/report loop, ported verbatim from legacy's own
     # run_conversation; every step is already its own private method call (build_conversation_engine,
     # finish_report, write_narrative, print_interrupt_status) — the loop wiring itself is what's left.
@@ -219,26 +221,43 @@ module SFL
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
       engine = build_conversation_engine(boot_result, options, stop_flag)
 
+      failures = []
       files.each do |file|
         break if stop_flag.stopped?
 
         puts "=== #{file[:label]} ===" if files.size > 1
-        source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
-        result = engine.analyze(source, label: file[:label], store: options[:store],
-          resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
-        output_dir = if files.size > 1
-          File.join(options[:output_dir], file[:label])
-        else
-          options[:output_dir]
-        end
-        finish_report(result, output_dir)
-        write_narrative(result, output_dir, boot_result) if options[:narrative]
-        print_interrupt_status(result, file[:path], :conversation) if result.metadata[:interrupted]
+        process_conversation_file(file, files, options, engine, boot_result)
+      rescue Analysis::Error, Core::Loaders::Error, Store::Error, Timeout::Error, RubyLLM::Error => e
+        warn "[ERROR] #{file[:label]}: #{e.message}"
+        failures << file[:label]
       end
+      warn "[WARN] #{failures.size}/#{files.size} conversations failed: #{failures.join(', ')}" if failures.any?
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    # A single file's failure (embedding-model/schema mismatch, a malformed
+    # export, a provider timeout...) must not take the rest of a batch down
+    # with it — same F11 partial-failure-isolation principle this codebase
+    # already applies at the clause level (PgEmbeddingStore#replace_document:
+    # one clause's failed embed doesn't abort the document). Before this,
+    # `files.each` had no per-file rescue, so a 900-conversation export
+    # that hit one bad conversation early produced 1-2 reports instead of
+    # 900 (live-verified gap, 2026-08-02).
+    module_function def process_conversation_file(file, files, options, engine, boot_result)
+      source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
+      result = engine.analyze(source, label: file[:label], store: options[:store],
+        resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
+      output_dir = if files.size > 1
+        File.join(options[:output_dir], file[:label])
+      else
+        options[:output_dir]
+      end
+      finish_report(result, output_dir)
+      write_narrative(result, output_dir, boot_result) if options[:narrative]
+      print_interrupt_status(result, file[:path], :conversation) if result.metadata[:interrupted]
+    end
+    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
     # @return [Array<Hash>] {path:, source_type:, label:} — native .jsonl/.srt/.vtt/.ass files
     #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude exports,

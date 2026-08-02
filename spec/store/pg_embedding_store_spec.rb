@@ -78,5 +78,15 @@ RSpec.describe SFL::Store::PgEmbeddingStore do
       expect(db[:embeddings].where(clause_id: "c-1").count).to eq(0)
       expect(db[:clauses].where(external_id: "c-1").first[:embedding_status]).to eq("failed")
     end
+
+    it "raises a clear SFL::Store::Error naming the configured model instead of a bare pgvector " \
+      "PG::DataException when the embedder's output width doesn't match the migrated vector(768) column " \
+      "(live-verified gap, 2026-08-02 — SFL_TASK_EMBEDDING_MODEL=mistral-embed returns 1024-dim vectors)" do
+      expect do
+        store.replace_document("doc-1", { "c-1" => Array.new(1024, 0.1) })
+      end.to raise_error(SFL::Store::Error, /test-model.*1024-dimension.*768 dimensions/m)
+
+      expect(db[:embeddings].where(clause_id: "c-1").count).to eq(0)
+    end
   end
 end
