@@ -12,18 +12,23 @@ module SFL
     # (loaders, pass_one, llm, ...) to need a live database. Store specs
     # opt in explicitly by calling `StoreTestDb.db` themselves.
     #
-    # Points at a DEDICATED `sfl_compiler_v2_dev` database, not the
-    # DATABASE_URL value in .env (`sfl_compiler_dev`) — that database
-    # already holds ~7800 rows of the legacy sfl-compiler repo's own
-    # dev data under a different, incompatible clauses/ideational_payloads/
-    # interpersonal_payloads/embeddings schema (no FKs, extra topic_id/
-    # source_type columns, etc.), verified live with `psql -d
-    # sfl_compiler_dev -c "\dt"` and row counts before writing this.
-    # Running v2's versioned migrations against it would either collide
-    # (table already exists) or, if forced, destroy that data. See the
-    # slice report for the human-review action this implies for .env.
+    # Points at a DEDICATED `sfl_engine_v2_test` database, not the
+    # DATABASE_URL value in .env (`sfl_engine_dev`) — kept separate so this
+    # file's own per-example TRUNCATE (#clean!, below) never wipes real
+    # data from an interactive/manual run against the same Postgres
+    # instance. docker-compose.yml's postgres service auto-creates this
+    # database on first init (docker/init-test-db.sql); originally this
+    # pointed at a bare `postgresql:///sfl_compiler_v2_dev` socket
+    # connection to the host's system Postgres — moved onto the
+    # docker-compose-managed instance 2026-08-02 alongside the app's own
+    # DATABASE_URL, both for consistency and because the local Postgres's
+    # `sfl_compiler_dev` database (note: no "v2") had ~7800 rows of the
+    # legacy sfl-compiler repo's own dev data under a different,
+    # incompatible schema, which running v2's migrations against risked
+    # colliding with or destroying — irrelevant now that this points at
+    # its own fresh, dedicated database instead.
     module StoreTestDb
-      TEST_DATABASE_URL = ENV.fetch("DATABASE_URL_V2_TEST", "postgresql:///sfl_compiler_v2_dev")
+      TEST_DATABASE_URL = ENV.fetch("DATABASE_URL_V2_TEST", "postgresql://sfl:sfl@localhost:5433/sfl_engine_v2_test")
 
       def self.db
         @db ||= begin # rubocop:disable ThreadSafety/ClassInstanceVariable -- test-only memoized

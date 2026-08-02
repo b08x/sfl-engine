@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sfl
+      POSTGRES_PASSWORD: sfl
+      POSTGRES_DB: sfl_engine_dev
+    # Host port 5433, not 5432 — this machine already has a system Postgres
+    # bound to 5432 (the ident-auth failure this compose file exists to
+    # route around); 5433 avoids fighting it for the port rather than
+    # requiring it be stopped.
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - sfl_engine_pgdata:/var/lib/postgresql/data
+      # Auto-creates sfl_engine_v2_test on first init — see spec/support/
+      # store_test_db.rb for why the test suite needs its own database.
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sfl -d sfl_engine_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis/redis-stack:latest
+    restart: unless-stopped
+    # Host port 6380, not 6379 — this machine already has a local Redis
+    # bound to 6379, same reasoning as Postgres's 5433 above.
+    ports:
+      - "127.0.0.1:6380:6379"
+      - "127.0.0.1:8001:8001" # RedisInsight UI
+    volumes:
+      - sfl_engine_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sfl_engine_pgdata:
+  sfl_engine_redisdata:

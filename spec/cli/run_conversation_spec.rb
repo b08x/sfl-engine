@@ -47,7 +47,7 @@ RSpec.describe SFL::CLI do
       described_class.run_conversation("convo.jsonl", base_options)
 
       expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: true)
-      expect(SFL::Analysis::ConversationSource).to have_received(:new).with("convo.jsonl")
+      expect(SFL::Analysis::ConversationSource).to have_received(:new).with("convo.jsonl", source_type: "chat_native")
       expect(engine).to have_received(:analyze).with(
         source, label: "convo", store: true, resume: true, topics: 3, pass_one_only: false
       )
@@ -82,6 +82,22 @@ RSpec.describe SFL::CLI do
 
         expect(SFL::Formatters::ReportWriter).to have_received(:write).with(result, File.join("./out", "a"))
         expect(SFL::Formatters::ReportWriter).to have_received(:write).with(result, File.join("./out", "b"))
+      end
+    end
+
+    it "accepts a raw ChatGPT/Claude export .json file directly, expanding it into per-conversation " \
+      "JSONL under <output_dir>/_expanded instead of raising 'Unsupported conversation input format' " \
+      "(live-verified gap, 2026-08-02 — a single-file .json argument used to skip format validation " \
+      "entirely and fail deep inside ConversationSource#raw_turns)" do
+      Dir.mktmpdir do |dir|
+        output_dir = File.join(dir, "out")
+        described_class.run_conversation("spec/fixtures/loaders/chatgpt_conversations.json",
+          base_options.merge(output_dir:))
+
+        expect(SFL::Analysis::ConversationSource).to have_received(:new)
+          .with(a_string_matching(%r{_expanded/explaining-rrf}), source_type: "chat_chatgpt")
+        expanded_path = Dir.glob(File.join(output_dir, "_expanded", "*.jsonl")).first
+        expect(File.read(expanded_path)).to include("What is reciprocal rank fusion?")
       end
     end
   end

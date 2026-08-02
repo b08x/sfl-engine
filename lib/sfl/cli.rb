@@ -213,8 +213,8 @@ module SFL
       stop_flag = StopFlag.new
       install_interrupt_trap(stop_flag)
 
-      files = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.{jsonl,srt,vtt,ass}")) : [input]
-      raise UsageError, "No .jsonl/.srt/.vtt/.ass files found in #{input}" if files.empty?
+      files = gather_conversation_files(input, options)
+      raise UsageError, "No .jsonl/.srt/.vtt/.ass/.json (ChatGPT/Claude export) files found in #{input}" if files.empty?
 
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
       engine = build_conversation_engine(boot_result, options, stop_flag)
@@ -222,24 +222,47 @@ module SFL
       files.each do |file|
         break if stop_flag.stopped?
 
-        puts "=== #{File.basename(file)} ===" if files.size > 1
-        source = Analysis::ConversationSource.new(file)
-        result = engine.analyze(source, label: File.basename(file, ".*"), store: options[:store],
+        puts "=== #{file[:label]} ===" if files.size > 1
+        source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
+        result = engine.analyze(source, label: file[:label], store: options[:store],
           resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
         output_dir = if files.size > 1
-          File.join(options[:output_dir],
-            File.basename(file, ".*"))
+          File.join(options[:output_dir], file[:label])
         else
           options[:output_dir]
         end
         finish_report(result, output_dir)
         write_narrative(result, output_dir, boot_result) if options[:narrative]
-        print_interrupt_status(result, file, :conversation) if result.metadata[:interrupted]
+        print_interrupt_status(result, file[:path], :conversation) if result.metadata[:interrupted]
       end
     ensure
       Signal.trap("INT", "DEFAULT")
     end
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    # @return [Array<Hash>] {path:, source_type:, label:} — native .jsonl/.srt/.vtt/.ass files
+    #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude exports,
+    #   each expanded (Analysis::ChatExportExpander) into one native JSONL file per conversation
+    #   under `<output_dir>/_expanded`, tagged with the right source_type for the loader that
+    #   actually parsed them. A raw export .json file skipped format validation entirely as a
+    #   single-file argument before this method existed (only directory-glob mode filtered by
+    #   extension) — live-verified gap, 2026-08-02: see ChatExportExpander's own comment.
+    # rubocop:disable Metrics/AbcSize -- one flat gather-native/gather-and-expand-exports/
+    # combine sequence; splitting further would only relocate, not reduce, this.
+    module_function def gather_conversation_files(input, options)
+      native_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.{jsonl,srt,vtt,ass}")) : [input]
+      native = native_paths.reject { |p| File.extname(p).casecmp(".json").zero? }
+        .map { |p| { path: p, source_type: "chat_native", label: File.basename(p, ".*") } }
+
+      export_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.json")) : [input]
+      export_paths = export_paths.select { |p| File.extname(p).casecmp(".json").zero? }
+      expanded = export_paths.flat_map do |p|
+        Analysis::ChatExportExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"))
+      end
+
+      native + expanded
+    end
+    # rubocop:enable Metrics/AbcSize
 
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/compile/report
     # sequence, ported verbatim from legacy's own run_documentation; every step is already its

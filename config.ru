@@ -9,6 +9,8 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require_relative "lib/sfl"
 
+SFL::DockerServices.ensure_running!
+
 boot_result = SFL::Boot.call(require_llm: true, require_tracing: true)
 ctx = SFL::API.build_context(boot_result)
 

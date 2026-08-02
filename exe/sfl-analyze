@@ -12,4 +12,6 @@ $stdout.sync = true
 
 require_relative "../lib/sfl"
 
+SFL::DockerServices.ensure_running!
+
 exit SFL::CLI.run(ARGV)
