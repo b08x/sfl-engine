@@ -2,9 +2,11 @@
 
 source "https://rubygems.org"
 
-# .ruby-version pins the production target (3.4.4, matching the legacy repo). No hard `ruby`
-# pin here: this sandbox's interpreter (4.0.1) doesn't match it and there's no 3.4.4 installed
-# via asdf/rbenv, so a Gemfile-level pin would block `bundle install` for local dev entirely.
+# .ruby-version / .tool-versions pin 4.0.1 — the Ruby every gem in this Gemfile.lock is
+# actually installed and verified against (issue #4: 3.4.4 was the aspirational legacy-repo
+# target, but asdf ignores .ruby-version without opting into legacy_version_file, so every
+# session had silently been running on 4.0.1 the whole time; 4.0.1 is now the documented one).
+ruby "4.0.1"
 
 # Core loading & typing (track decision 1: single app, no gemspec)
 gem "amatch", "~> 0.4" # Jaro-Winkler fuzzy matching for ClassificationRegistry

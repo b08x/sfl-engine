@@ -61,8 +61,8 @@ bin/setup-config                    # interactive .env setup wizard
 ## Key Conventions
 
 ### Ruby Version
-- `.ruby-version`: 3.4.4 (production target)
-- `.rubocop.yml`: `TargetRubyVersion: 3.4`
+- `.ruby-version` / `.tool-versions`: 4.0.1 (production target — issue #4)
+- `.rubocop.yml`: `TargetRubyVersion: 4.0`
 - Hash value omission (`{ turn_id:, total: }`) and anonymous `**` forwarding are valid syntax
 
 ### Code Style
