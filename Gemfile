@@ -48,6 +48,12 @@ gem "pg", "~> 1.5"
 gem "pgvector", "~> 0.3"
 gem "sequel", "~> 5.88"
 
+# Phase 5 sfl-api: HTTP surface over the pipeline/retrieval/review-queue
+# collaborators (lib/sfl/api). falcon is the Rack server config.ru/
+# exe/sfl-api run under (matches legacy's choice).
+gem "falcon", "~> 0.47"
+gem "rack", "~> 3.1"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"
