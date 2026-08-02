@@ -356,7 +356,7 @@ module SFL
     # duplicated elsewhere, not something to fragment further within this one method.
     module_function def build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
       parser = Core::PassOne::SpacySidecarParser.new(model: boot_result.spacy_model,
-        command: boot_result.pass1_command, logger:)
+        command: boot_result.pass1_command, env: boot_result.pass1_env || {}, logger:)
       pass_one = Core::PassOne::Engine.new(parser:, instrumenter:, logger:)
 
       pass_two = if options[:pass1_only]
@@ -380,10 +380,11 @@ module SFL
       logger, instrumenter, breaker = build_collaborators
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
       review_queue_repo = options[:store] ? Store::PgReviewQueueRepository.new(boot_result.db) : nil
+      progress_bar = TurnProgressBar.new
 
       Analysis::Engine.new(
         pipeline:, review_queue_repo:,
-        on_progress: progress_printer, on_turn_start: progress_starter,
+        on_progress: progress_bar.method(:advance), on_turn_start: progress_bar.method(:start),
         stop_requested: -> { stop_flag.stopped? }
       )
     end
@@ -407,10 +408,11 @@ module SFL
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
       review_queue_repo = options[:store] ? Store::PgReviewQueueRepository.new(boot_result.db) : nil
       chat = boot_result.chat_factory.for(:context_synthesis) if options[:images]
+      progress_bar = ArtifactProgressBar.new
 
       Analysis::KnowledgeBaseSource.new(
         pipeline:, review_queue_repo:,
-        on_progress: kb_progress_printer, stop_requested: -> { stop_flag.stopped? },
+        on_progress: progress_bar.method(:advance), stop_requested: -> { stop_flag.stopped? },
         analyze_images: options[:images], chat:
       )
     end
@@ -426,30 +428,6 @@ module SFL
       result.clauses.each_with_index do |clause, idx|
         marker = result.cited_clause_ids.include?(clause[:clause_id]) ? "*" : " "
         puts "#{marker} [#{idx + 1}] #{clause[:text]} (#{clause[:document_id]})"
-      end
-    end
-
-    # Fires immediately, before a turn/section's compilation starts —
-    # a single turn's Pass 1 + Pass 2 can take 20-60s, so without this
-    # the terminal sits static with no signal the run hasn't hung.
-    # No trailing newline: progress_printer completes the same line.
-    module_function def progress_starter
-      lambda do |event|
-        print "  #{event[:turn_id]}/#{event[:total]} (#{event[:speaker]})... "
-        $stdout.flush
-      end
-    end
-
-    module_function def progress_printer
-      lambda do |event|
-        label = event[:defaulted].zero? ? "OK" : "#{event[:defaulted]}/#{event[:clause_count]} DEFAULTED"
-        puts "#{event[:elapsed]}s [#{label}]"
-      end
-    end
-
-    module_function def kb_progress_printer
-      lambda do |event|
-        puts "  #{event[:artifact_id]}/#{event[:total]} [#{File.basename(event[:source_file])}] #{event[:title]}"
       end
     end
 
