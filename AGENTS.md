@@ -86,7 +86,7 @@ bin/setup-config                    # interactive .env setup wizard
 
 ## Docker Services
 
-`docker-compose.yml` provides Postgres (port 5433) and Redis (port 6380). Auto-started by `SFL::DockerServices.ensure_running!` at entry points.
+`docker-compose.yml` provides Postgres (port 5433) and Redis (port 6380). `SFL::DockerServices.ensure_running!` (called from `exe/sfl-analyze` and `config.ru`) starts them only when `SFL_AUTO_START_DOCKER=1` is set (issue #17 — auto-start used to be unconditional, which fought an external `DATABASE_URL`); otherwise run `docker compose up -d` yourself.
 
 ## Gotchas
 
