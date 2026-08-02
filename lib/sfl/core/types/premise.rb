@@ -15,7 +15,11 @@ module SFL
         attribute :type, Types::String
         attribute :source, Types::String
         attribute :value, Types::String
-        attribute :weight, Types::Float.optional
+        # Coercible, not strict Float — same LLM-boundary-integer failure
+        # mode as ModalityWeight/TenorValue (live-verified 2026-08-02): a
+        # bare JSON `1` here previously nuked the whole clause's annotation,
+        # same class of bug #type's own comment above already documents.
+        attribute :weight, Types::Coercible::Float.optional
       end
     end
   end
