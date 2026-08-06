@@ -40,8 +40,9 @@ JSON-key sniffing for ChatGPT/Claude exports) and `Analysis::KnowledgeBaseSource
 - Redesigning Pass 2's interpersonal/textual annotation logic or its model selection — Pass 2
   already takes an injectable model/provider via `SFL_TASK_PASS_TWO_ANNOTATION_*`; this design
   only adds two new task names alongside it.
-- A database-backed review queue (like `PgReviewQueueRepository`) or any UI for reviewing
-  low-confidence classifications or drafted loaders — out of scope until a UI exists.
+- Any UI for browsing/resolving review entries — out of scope until a UI exists. The DB table
+  below is designed so a future UI is a pure read/query layer on top of it, not a reason to add
+  one now.
 - Automatically registering or executing an LLM-drafted loader against real data. A drafted
   loader is always inert until a human reviews and wires it in.
 
@@ -72,7 +73,7 @@ Core::Ports::Classifier#classify(sample)   [tier: ingest_classification, cheap]
       yes                          no (format itself unrecognized)
         │                          │
         ▼                          ▼
-  write to review manifest    Ingest::LoaderDrafter#draft(sample)  [tier: loader_drafting, reasoning]
+  insert ingest_review_entry  Ingest::LoaderDrafter#draft(sample)  [tier: loader_drafting, reasoning]
   (skip this file, continue)  writes candidate lib/sfl/core/loaders/*_source.rb
                                + review doc, skips this file, continue
 
@@ -135,14 +136,36 @@ and why existing loaders didn't match.
 until a human reviews it and wires it in (adds the `require` and a `DeterministicRules` table
 entry). No code path exists for a drafted loader to execute against real data unreviewed.
 
-### `Ingest::ReviewManifest` (new, file-based — not a DB table)
+### `ingest_review_entries` table + `Store::PgIngestReviewRepository` (new — DB-backed)
 
-A single JSON/YAML file per ingest run (e.g. `.sfl-ingest-review/<timestamp>.yml`) listing every
-low-confidence or drafted-loader file with the classifier's reasoning. File-based rather than a
-`PgReviewQueueRepository`-style DB table because there's no UI yet to browse a DB table — a file
-you can read and act on is the right weight here. The manifest is advisory, not a blocking DB
-state: resolving an entry (deleting it, or fixing/registering the loader) and re-running
-`ingest` picks up cleanly without reprocessing already-dispatched files.
+Persisted from the start, following the exact same convention as `review_queue`
+(`db/migrations/007_create_review_queue.rb`) so a future UI is a pure read/query layer on this
+table, not a migration to write later:
+
+```ruby
+# db/migrations/009_create_ingest_review_entries.rb
+create_table(:ingest_review_entries) do
+  String :id, primary_key: true # UUID
+  String :path, null: false, text: true
+  String :status, null: false, default: "pending" # low_confidence_mode | loader_drafted | draft_failed | resolved
+  String :format # classifier's guess, nilable
+  String :mode   # :conversation/:knowledge_base/:documentation, nilable
+  Float :confidence
+  String :reasoning, text: true, null: false
+  String :loader_path  # set when status: loader_drafted
+  String :doc_path     # set when status: loader_drafted
+  DateTime :created_at, null: false, default: Sequel::CURRENT_TIMESTAMP
+  DateTime :resolved_at
+
+  index :status, name: :idx_ingest_review_entries_status
+end
+```
+
+`Store::PgIngestReviewRepository` mirrors `Store::PgReviewQueueRepository`'s shape (`#enqueue`,
+`#find`, a status-scoped list method). No UI reads this table yet, but a future one — or a CLI
+`ingest review` subcommand in the meantime — needs no schema change to do so: `status: "pending"`
+rows are exactly what's still unresolved, `resolved_at` marks a human decision, and re-running
+`ingest` skips paths already present as `resolved` so nothing is reprocessed.
 
 ### `Ingest::Orchestrator` (new, the coordinator)
 
@@ -174,26 +197,28 @@ Input: `export-dump/weird_chat.jsonl` (a JSONL export from a tool with no existi
    reasoning: "JSONL rows with 'role'/'content' keys resembling a chat log, but no loader
    recognizes this exact shape"}`.
 3. Confidence below threshold **and** format is `:unknown` (not just an ambiguous-mode case) →
-   routes to `LoaderDrafter`, not the review manifest directly.
+   routes to `LoaderDrafter`, not directly to an `ingest_review_entries` row.
 4. `LoaderDrafter#draft` (tier: `loader_drafting`) reads a larger sample, drafts
    `lib/sfl/core/loaders/generic_jsonl_chat_source.rb` implementing
    `Core::Loaders::Source#each_unit`, plus `docs/ingest-review/generic_jsonl_chat_source.md`
    (sample rows shown, proposed `speaker`/`text`/`sent_at` field mapping, confidence,
    reasoning).
-5. This file is recorded in the run's `ReviewManifest` as `status: loader_drafted`, and
-   **skipped** — it does not get dispatched to any engine this run.
+5. `PgIngestReviewRepository#enqueue` writes a row: `status: "loader_drafted"`, `loader_path`/
+   `doc_path` set, `reasoning` carried over from the classifier. The file is **skipped** — it
+   does not get dispatched to any engine this run.
 6. Orchestrator continues to the next file in the directory; a drafted-loader entry doesn't
    halt the whole batch (consistent with the existing **F11** partial-failure-isolation
    principle already in this codebase — one file's issue doesn't take the rest down).
 7. End of run: summary printed (`12 dispatched, 1 loader drafted for review, 0 flagged
-   low-confidence`), pointing at the manifest file.
+   low-confidence`), sourced from a `status`-grouped count against `ingest_review_entries` for
+   this run rather than a separate file — one source of truth.
 
 **Contrast case — ambiguous mode, not unrecognized format:** a `.md` file the classifier reads
 as `{format: :markdown, mode: :conversation, confidence: 0.4, reasoning: "Has speaker-labeled
 lines but also prose paragraphs — could be a pasted chat log or documentation with dialogue
-examples"}` → format *is* known (`:markdown`, a loader exists), only `mode` is uncertain → goes
-straight to the `ReviewManifest` as `status: low_confidence_mode`, no `LoaderDrafter` involved,
-since there's nothing to draft.
+examples"}` → format *is* known (`:markdown`, a loader exists), only `mode` is uncertain → an
+`ingest_review_entries` row is written with `status: "low_confidence_mode"`, no `LoaderDrafter`
+involved, since there's nothing to draft.
 
 ## Error Handling
 
@@ -201,12 +226,11 @@ Follows this codebase's existing conventions rather than inventing new ones:
 
 - **Classifier LLM call fails/times out** (wrapped in `Core::Ports::Breaker`, same as
   `Embedder`/`Engine`): treated as confidence `0.0`, not a raised error — falls through to the
-  low-confidence path (review manifest), never silently skips the file entirely. Logged at
-  `WARN` via the injected `Core::Ports::Logger`, matching Pass 2's `log_classification_gap`
-  pattern.
-- **LoaderDrafter fails** (bad LLM response, schema violation): the file is recorded in the
-  manifest as `status: draft_failed` with the error message — not a crash, not silently
-  dropped.
+  low-confidence review-entry path, never silently skips the file entirely. Logged at `WARN` via
+  the injected `Core::Ports::Logger`, matching Pass 2's `log_classification_gap` pattern.
+- **LoaderDrafter fails** (bad LLM response, schema violation): an `ingest_review_entries` row
+  is written with `status: "draft_failed"` and the error message in `reasoning` — not a crash,
+  not silently dropped.
 - **One file's failure never aborts the batch** — same **F11** partial-failure-isolation
   principle already established in `cli.rb` for conversation-file batches; the Orchestrator's
   per-file step is wrapped the same way.
@@ -230,10 +254,11 @@ Follows this codebase's existing conventions rather than inventing new ones:
   the drafted file before writing is cheap enough to include.
 - `Ingest::Orchestrator` — the integration-level spec: a fixture directory with one of each case
   (deterministic match, low-confidence mode, unrecognized format) asserts the right
-  dispatch/manifest-entry/draft outcome per file, and that a failure in one file doesn't stop
+  dispatch/review-row/draft outcome per file, and that a failure in one file doesn't stop
   processing the rest.
-- `Ingest::ReviewManifest` — round-trip test (write entries, re-read, confirm shape) plus a
-  rerun test: resolving an entry and re-running doesn't reprocess already-dispatched files.
+- `Store::PgIngestReviewRepository` — spec follows `PgReviewQueueRepository`'s own spec shape
+  (`#enqueue`/`#find`/status-scoped list round-trip) plus a rerun test: a `resolved` row's path
+  is skipped on the next `ingest` run rather than reprocessed.
 
 ## Open Questions for Implementation Planning
 
@@ -241,5 +266,6 @@ Follows this codebase's existing conventions rather than inventing new ones:
   as a constant, tune later.
 - Whether `LoaderDrafter`'s sample size needs to scale with file size (e.g. always read the
   first N records rather than N bytes for line-delimited formats).
-- CLI flag surface for `sfl-analyze ingest` (e.g. `--dry-run` to classify without dispatching,
-  `--manifest-dir` override).
+- CLI flag surface for `sfl-analyze ingest` (e.g. `--dry-run` to classify without dispatching).
+- Whether a CLI `ingest review`/`ingest resolve <id>` subcommand belongs in this same slice, or
+  is deferred alongside the eventual UI (the table's shape doesn't force this decision now).
