@@ -1,0 +1,15 @@
+.sfl-python/
+.sfl-cache/
+.ruby-lsp/
+.playwright-mcp/
+rebuild-blueprint-with-plugin.md
+Gemfile.lock
+.gitignore
+.git/
+.codemap/
+.codebase-memory/
+.claude/
+spec/
+sqlite_mcp_server.db
+.dockerignore
+.env

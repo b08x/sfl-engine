@@ -12,3 +12,11 @@
 /spec/examples.txt
 /.sfl-python/
 sqlite_mcp_server.db
+graphify-out/cache/
+graphify-out/manifest.json
+cost.json
+.graphify_labels.json
+.sfl-cache/
+.opencode/
+.omm/
+.claude/worktrees/
