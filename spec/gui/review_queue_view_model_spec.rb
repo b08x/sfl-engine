@@ -182,6 +182,116 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
     end
   end
 
+  # SIFT F-1 follow-up. Glimmer's observers notify synchronously in the calling
+  # thread (glimmer-2.8.2 observable_model.rb#notify_observers), so assigning an
+  # observed attribute pushes straight into a libui C call on that thread.
+  # save_and_recompile! is therefore split in two: the network-bound half that
+  # mutates nothing (safe on a worker thread) and the state-mutating half that
+  # must run on the main thread via queue_main.
+  describe "#compile_for_recompile" do
+    before do
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      view_model.select(pending_row)
+      view_model.edited_text = "corrected text"
+    end
+
+    it "returns pipeline.compile's Result for the edited text" do
+      compile_success = Dry::Monads::Success([:clause])
+      allow(pipeline).to receive(:compile)
+        .with("corrected text", document_id: "doc-1", store: true, embed: true)
+        .and_return(compile_success)
+
+      expect(view_model.compile_for_recompile).to eq(compile_success)
+    end
+
+    # The whole reason this method exists: it is what runs on the worker thread,
+    # so it must not touch a single Glimmer-observed attribute.
+    it "mutates no observed attribute, so it is safe off the main thread" do
+      allow(pipeline).to receive(:compile).and_return(Dry::Monads::Success([:clause]))
+      before_state = [view_model.items, view_model.selected_item, view_model.edited_text]
+
+      view_model.compile_for_recompile
+
+      expect([view_model.items, view_model.selected_item, view_model.edited_text]).to eq(before_state)
+    end
+
+    it "never records a decision or refreshes" do
+      allow(pipeline).to receive(:compile).and_return(Dry::Monads::Success([:clause]))
+      allow(repo).to receive(:decide)
+
+      view_model.compile_for_recompile
+
+      expect(repo).not_to have_received(:decide)
+      expect(repo).not_to have_received(:pending) # #refresh! is the only caller
+    end
+
+    it "returns Failure without calling pipeline.compile when nothing is selected" do
+      view_model.selected_item = nil
+      allow(pipeline).to receive(:compile)
+
+      expect(view_model.compile_for_recompile).to be_failure
+      expect(pipeline).not_to have_received(:compile)
+    end
+
+    it "converts a raised pipeline exception into a Failure" do
+      allow(pipeline).to receive(:compile).and_raise(Timeout::Error, "LLM timed out")
+
+      result = nil
+      expect { result = view_model.compile_for_recompile }.not_to raise_error
+
+      expect(result).to be_failure
+      expect(result.failure).to eq("LLM timed out")
+    end
+  end
+
+  describe "#finish_recompile!" do
+    before do
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      view_model.select(pending_row)
+    end
+
+    it "records an edit decision and refreshes when handed a successful compile" do
+      allow(repo).to receive_messages(decide: pending_row.merge(status: "edited"), pending: { items: [], total: 0 })
+
+      result = view_model.finish_recompile!(Dry::Monads::Success([:clause]))
+
+      expect(repo).to have_received(:decide).with(id: "row-1", decision: "edit", reviewer: "bob")
+      expect(result).to be_success
+    end
+
+    it "short-circuits and returns the compile Failure without recording a decision" do
+      compile_failure = Dry::Monads::Failure([:pass_one_failed, "sidecar crashed"])
+      allow(repo).to receive(:decide)
+
+      result = view_model.finish_recompile!(compile_failure)
+
+      expect(repo).not_to have_received(:decide)
+      expect(result).to eq(compile_failure)
+    end
+
+    # The queue_main callback runs after the compile finished, by which point
+    # the 10s auto-refresh timer may have resolved the row out from under it.
+    it "returns Failure rather than raising when the selection vanished mid-compile" do
+      view_model.selected_item = nil
+      allow(repo).to receive(:decide)
+
+      result = nil
+      expect { result = view_model.finish_recompile!(Dry::Monads::Success([:clause])) }.not_to raise_error
+
+      expect(result).to be_failure
+      expect(repo).not_to have_received(:decide)
+    end
+
+    it "returns Failure without raising when recording the decision fails" do
+      allow(repo).to receive(:decide).and_raise(Errno::ECONNREFUSED)
+
+      result = nil
+      expect { result = view_model.finish_recompile!(Dry::Monads::Success([:clause])) }.not_to raise_error
+
+      expect(result).to be_failure
+    end
+  end
+
   describe "#detail_kind" do
     it "is nil when nothing is selected" do
       expect(view_model.detail_kind).to be_nil
@@ -337,6 +447,10 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       expect(view_model.selected_item).to eq(pending_row)
     end
 
+    # SIFT F-1 follow-up: this method is now a thin composition of
+    # #compile_for_recompile + #finish_recompile!. Every example in this block
+    # is unchanged from before that split and still passes, which is the actual
+    # evidence that the composition is behaviour-preserving.
     it "logs the raised exception via the injected logger" do
       logger = instance_spy(SFL::Core::Ports::StandardLogger)
       vm = described_class.new(repo:, pipeline:, reviewer_name: "bob", logger:)

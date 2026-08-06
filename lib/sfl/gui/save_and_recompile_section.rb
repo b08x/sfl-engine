@@ -40,28 +40,42 @@ module SFL
         }
       end
 
-      # SIFT F-1: ReviewQueueViewModel#save_and_recompile! runs the whole
-      # pipeline — LLM calls and embedding over the network, seconds to minutes.
-      # Called inline from on_clicked it blocks the libui event loop, so the
-      # window stops repainting and the desktop marks it "not responding".
+      # SIFT F-1: recompiling runs the whole pipeline — LLM calls and embedding
+      # over the network, seconds to minutes. Called inline from on_clicked it
+      # blocks the libui event loop, so the window stops repainting and the
+      # desktop marks it "not responding".
       #
-      # The fix lives entirely here in the view: the viewmodel method keeps its
-      # plain synchronous Result contract (and its unit tests) untouched, and
-      # this control simply stops calling it on the UI thread. The button is
-      # disabled for the duration so a second click can't start a concurrent
-      # recompile of the same row, and the result is marshalled back through
-      # queue_main because no control may be touched off the main thread.
+      # The work is split rather than simply backgrounded, because only half of
+      # it is safe to move. Glimmer's observers notify **synchronously in the
+      # calling thread** (glimmer-2.8.2 observable_model.rb#notify_observers is
+      # a plain `each { observer.call(...) }`, and there is no queue_main
+      # anywhere in the gem). So assigning an observed attribute like `items`
+      # pushes straight into a libui C call on whatever thread did the assigning
+      # — undefined GTK behaviour off the main thread, on every successful run,
+      # not just under an unlucky interleaving.
+      #
+      # Hence:
+      #   Thread     -> #compile_for_recompile, which mutates nothing and only
+      #                 reaches the network. No observed writer fires.
+      #   queue_main -> #finish_recompile!, which is where decide!/refresh!
+      #                 assign items/selected_item/edited_text, plus the button
+      #                 and dialog updates. queue_main callbacks run
+      #                 sequentially on the main thread, so the state mutation
+      #                 and the UI update stay ordered and on-thread together.
+      #
+      # The button stays disabled across both phases so a second click cannot
+      # start a concurrent recompile of the same row.
       def start_save_and_recompile
-        apply_busy_state(true)
+        apply_busy_state(true) # already on the UI thread: on_clicked runs there
 
-        # rubocop:disable ThreadSafety/NewThread -- offloading blocking work off
-        # the libui event loop is the entire point; queue_main below is the
-        # documented way back onto the UI thread, and the disabled button means
-        # only one of these can be in flight per control at a time.
+        # rubocop:disable ThreadSafety/NewThread -- offloading the network-bound
+        # compile off the libui event loop is the entire point. Nothing in this
+        # block touches an observed attribute; see the comment above.
         Thread.new do
-          result = perform_save_and_recompile
+          compile_result = perform_compile
 
           Glimmer::LibUI.queue_main do
+            result = finish_recompile(compile_result)
             apply_busy_state(false)
             msg_box_error("Recompile failed", FailureMessage.call(result.failure)) if result.failure?
           end
@@ -69,13 +83,23 @@ module SFL
         # rubocop:enable ThreadSafety/NewThread
       end
 
-      # #save_and_recompile! already converts its own exceptions to Failure, but
-      # anything it misses would die silently inside the Thread and strand the
-      # button disabled forever. This guarantees a Result reaches queue_main.
+      # #compile_for_recompile already converts pipeline exceptions to Failure,
+      # but anything it misses would die silently inside the Thread and strand
+      # the button disabled forever. This guarantees a Result reaches queue_main.
       #
       # @return [Dry::Monads::Result]
-      private def perform_save_and_recompile
-        viewmodel.save_and_recompile!
+      private def perform_compile
+        viewmodel.compile_for_recompile
+      rescue => e
+        Dry::Monads::Failure(e.message)
+      end
+
+      # Same belt-and-braces on the main-thread half: if this raised, the
+      # queue_main block would abort before re-enabling the button.
+      #
+      # @return [Dry::Monads::Result]
+      private def finish_recompile(compile_result)
+        viewmodel.finish_recompile!(compile_result)
       rescue => e
         Dry::Monads::Failure(e.message)
       end

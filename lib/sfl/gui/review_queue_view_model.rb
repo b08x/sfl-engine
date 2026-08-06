@@ -114,11 +114,41 @@ module SFL
       #
       # @return [Dry::Monads::Result]
       def save_and_recompile!
+        finish_recompile!(compile_for_recompile)
+      end
+
+      # Phase 1 of #save_and_recompile!, split out so a GUI control can run the
+      # slow half off the UI thread (SIFT F-1 follow-up).
+      #
+      # Mutates nothing. It only reads edited_text/selected_item and calls
+      # pipeline.compile, so it is safe to call from a background thread: none
+      # of Glimmer's observed writers fire, and therefore no libui C call is
+      # made from off the main thread. Everything that *does* mutate observed
+      # state lives in #finish_recompile! instead.
+      #
+      # @return [Dry::Monads::Result] pipeline.compile's own Result
+      def compile_for_recompile
         return Failure("no item selected") unless selected_item
 
-        compile_result = compile_edited_text
+        compile_edited_text
+      end
+
+      # Phase 2 of #save_and_recompile!: records the decision and refreshes.
+      #
+      # This is the half that assigns items/selected_item/edited_text, each of
+      # which Glimmer observes and synchronously pushes into libui — so a GUI
+      # caller MUST invoke this inside Glimmer::LibUI.queue_main, on the main
+      # thread. Passing a failed compile Result through short-circuits, exactly
+      # as the original inline flow did.
+      #
+      # @param compile_result [Dry::Monads::Result] from #compile_for_recompile
+      # @return [Dry::Monads::Result]
+      def finish_recompile!(compile_result)
         return compile_result if compile_result.failure?
 
+        # No selected_item guard needed: #decide! already returns
+        # Failure("no item selected") when the auto-refresh timer resolved the
+        # row out from under an in-flight compile.
         decide!("edit")
       end
 
