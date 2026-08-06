@@ -1,6 +1,8 @@
 # lib/sfl/gui/text_review_control.rb
 # frozen_string_literal: true
 
+require_relative "failure_message"
+
 module SFL
   module GUI
     # Same shape as ImageReviewControl minus the image — serves both
@@ -15,22 +17,20 @@ module SFL
 
       body {
         vertical_box {
+          # See ImageReviewControl for why computed_by is required here:
+          # detail_kind has no writer, so without it Glimmer never observes it.
           # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
-          visible <= [viewmodel, :detail_kind, on_read: ->(kind) { kind == :text }]
+          visible <= [viewmodel, :detail_kind, on_read: ->(k) { k == :text }, computed_by: [:selected_item]]
           # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
           multiline_entry {
             text <=> [viewmodel, :edited_text]
           }
 
-          # rubocop:disable Style/StringLiterals
-          button('Save & Recompile') {
-            # rubocop:enable Style/StringLiterals
+          button("Save & Recompile") {
             on_clicked do
               result = viewmodel.save_and_recompile!
-              # rubocop:disable Style/StringLiterals
-              msg_box_error('Recompile failed', result.failure.inspect) if result.failure?
-              # rubocop:enable Style/StringLiterals
+              msg_box_error("Recompile failed", FailureMessage.call(result.failure)) if result.failure?
             end
           }
         }

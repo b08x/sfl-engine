@@ -87,6 +87,24 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       expect(view_model.selected_item).to eq(pending_row)
       expect(view_model.edited_text).to eq("Some flagged text.")
     end
+
+    # ItemListControl looks a clicked row up as items[row], which returns nil if
+    # the auto-refresh timer shrank items between the repaint and the click.
+    it "no-ops instead of raising when handed nil" do
+      expect { view_model.select(nil) }.not_to raise_error
+
+      expect(view_model.selected_item).to be_nil
+      expect(view_model.edited_text).to be_nil
+    end
+
+    it "leaves an existing selection untouched when handed nil" do
+      view_model.select(pending_row)
+
+      view_model.select(nil)
+
+      expect(view_model.selected_item).to eq(pending_row)
+      expect(view_model.edited_text).to eq("Some flagged text.")
+    end
   end
 
   describe "#detail_kind" do
@@ -200,6 +218,47 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
 
       expect(pipeline).not_to have_received(:compile)
       expect(result).to be_failure
+    end
+
+    # pipeline.compile reaches the network; an exception escaping here would
+    # unwind into the libui event loop and take the window down.
+    it "converts an exception raised by pipeline.compile into a Failure" do
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      view_model.select(pending_row)
+      view_model.edited_text = "corrected text"
+      allow(pipeline).to receive(:compile).and_raise(Timeout::Error, "LLM timed out")
+      allow(repo).to receive(:decide)
+
+      result = nil
+      expect { result = view_model.save_and_recompile! }.not_to raise_error
+
+      expect(result).to be_failure
+      expect(result.failure).to eq("LLM timed out")
+      expect(repo).not_to have_received(:decide)
+    end
+
+    it "preserves edited_text and the selection after a raised recompile" do
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      view_model.select(pending_row)
+      view_model.edited_text = "corrected text"
+      allow(pipeline).to receive(:compile).and_raise(StandardError, "connection reset")
+
+      view_model.save_and_recompile!
+
+      expect(view_model.edited_text).to eq("corrected text")
+      expect(view_model.selected_item).to eq(pending_row)
+    end
+
+    it "logs the raised exception via the injected logger" do
+      logger = instance_spy(SFL::Core::Ports::StandardLogger)
+      vm = described_class.new(repo:, pipeline:, reviewer_name: "bob", logger:)
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      vm.select(pending_row)
+      allow(pipeline).to receive(:compile).and_raise(StandardError, "connection reset")
+
+      vm.save_and_recompile!
+
+      expect(logger).to have_received(:error)
     end
   end
 end

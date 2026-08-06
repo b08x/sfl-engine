@@ -1,6 +1,7 @@
 # lib/sfl/gui/detail_pane_control.rb
 # frozen_string_literal: true
 
+require_relative "failure_message"
 require_relative "image_review_control"
 require_relative "text_review_control"
 
@@ -55,37 +56,31 @@ module SFL
 
               "No reviewer UI for modality #{viewmodel.selected_item[:modality].inspect} yet."
             }
-            text <= [viewmodel, :detail_kind, on_read: unrecognized_message]
+            # computed_by is required: detail_kind is a writer-less derived
+            # reader, which Glimmer will not observe on its own.
+            text <= [viewmodel, :detail_kind, on_read: unrecognized_message, computed_by: [:selected_item]]
             # rubocop:enable Style/HashAsLastArrayItem
           }
 
-          # rubocop:disable Style/StringLiterals
-          button('Approve') {
-            # rubocop:enable Style/StringLiterals
+          button("Approve") {
             # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             enabled <= [viewmodel, :selected_item, on_read: ->(item) { !item.nil? }]
             # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
             on_clicked do
               result = viewmodel.approve!
-              # rubocop:disable Style/StringLiterals
-              msg_box_error('Approve failed', result.failure.inspect) if result.failure?
-              # rubocop:enable Style/StringLiterals
+              msg_box_error("Approve failed", FailureMessage.call(result.failure)) if result.failure?
             end
           }
 
-          # rubocop:disable Style/StringLiterals
-          button('Reject') {
-            # rubocop:enable Style/StringLiterals
+          button("Reject") {
             # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             enabled <= [viewmodel, :selected_item, on_read: ->(item) { !item.nil? }]
             # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
             on_clicked do
               result = viewmodel.reject!
-              # rubocop:disable Style/StringLiterals
-              msg_box_error('Reject failed', result.failure.inspect) if result.failure?
-              # rubocop:enable Style/StringLiterals
+              msg_box_error("Reject failed", FailureMessage.call(result.failure)) if result.failure?
             end
           }
         }

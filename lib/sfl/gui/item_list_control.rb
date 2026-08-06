@@ -23,12 +23,10 @@ module SFL
           }
 
           table {
-            # rubocop:disable Style/StringLiterals
-            text_column('Modality')
-            text_column('Reason')
-            text_column('Source File')
-            text_column('Created At')
-            # rubocop:enable Style/StringLiterals
+            text_column("Modality")
+            text_column("Reason")
+            text_column("Source File")
+            text_column("Created At")
 
             # rubocop:disable Lint/Void, Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral, Style/Lambda, Layout/MultilineArrayBraceLayout
             cell_rows <= [viewmodel, :items, on_read: ->(items) {

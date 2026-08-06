@@ -49,8 +49,15 @@ module SFL
         Failure(e.message)
       end
 
-      # @param item [Hash] a row from #items
+      # No-ops on nil rather than raising: #items can shrink between a table
+      # repaint and a row click (the 10s auto-refresh timer resolving a row out
+      # from under the user), so ItemListControl's `items[row]` lookup can hand
+      # us nil. Guarding here rather than at the call site protects every caller.
+      #
+      # @param item [Hash, nil] a row from #items
       def select(item)
+        return if item.nil?
+
         self.selected_item = item
         self.edited_text = item[:generated_text]
       end
@@ -76,12 +83,17 @@ module SFL
         decide!("reject")
       end
 
+      # #compile returns a Result for expected failures, but it reaches the
+      # network (LLM calls, embedding) and can raise for unexpected ones. An
+      # exception escaping here would unwind into the libui event loop and take
+      # the whole window down, so it is converted to this method's own Failure
+      # contract instead.
+      #
       # @return [Dry::Monads::Result]
       def save_and_recompile!
         return Failure("no item selected") unless selected_item
 
-        compile_result = pipeline.compile(edited_text, document_id: selected_item[:document_id], store: true,
-          embed: true)
+        compile_result = compile_edited_text
         return compile_result if compile_result.failure?
 
         decide!("edit")
@@ -97,6 +109,17 @@ module SFL
         refresh!
       rescue Sequel::Error => e
         logger.warn { "review queue #{decision} failed: #{e.message}" }
+        Failure(e.message)
+      end
+
+      # A bare `rescue` is StandardError; spelled this way to satisfy this
+      # project's Style/RescueStandardError setting.
+      #
+      # @return [Dry::Monads::Result]
+      private def compile_edited_text
+        pipeline.compile(edited_text, document_id: selected_item[:document_id], store: true, embed: true)
+      rescue => e
+        logger.error { "review queue recompile raised: #{e.class}: #{e.message}" }
         Failure(e.message)
       end
 
