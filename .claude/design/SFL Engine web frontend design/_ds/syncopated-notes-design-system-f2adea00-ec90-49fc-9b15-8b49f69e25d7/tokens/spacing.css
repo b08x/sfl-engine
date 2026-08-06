@@ -1,0 +1,38 @@
+/* ============================================================
+   Syncopated Notes — Spacing & Layout
+   8px base rhythm with a tight 4px sub-step for the dense,
+   border-driven IDE chrome.
+   ============================================================ */
+
+:root {
+  --space-0:   0;
+  --space-px:  1px;
+  --space-1:   0.25rem;   /* 4px  */
+  --space-2:   0.5rem;    /* 8px  */
+  --space-3:   0.75rem;   /* 12px */
+  --space-4:   1rem;      /* 16px */
+  --space-5:   1.5rem;    /* 24px */
+  --space-6:   2rem;      /* 32px */
+  --space-7:   2.5rem;    /* 40px */
+  --space-8:   3rem;      /* 48px */
+  --space-10:  4rem;      /* 64px */
+  --space-12:  6rem;      /* 96px */
+
+  /* ---- Layout widths ---- */
+  --measure-prose: 65ch;     /* readable column                  */
+  --width-content: 1100px;   /* platform / wide                  */
+  --width-article: 860px;    /* note / article                   */
+  --width-narrow:  740px;    /* focused reading                  */
+  --sidebar-w:     232px;    /* left nav rail                    */
+  --toc-w:         220px;    /* right table-of-contents rail     */
+  --header-h:      56px;     /* sticky header height             */
+
+  /* ---- Z-index scale ---- */
+  --z-base:    0;    /* @kind other */
+  --z-raised:  10;   /* @kind other */
+  --z-sticky:  30;   /* @kind other */
+  --z-overlay: 40;   /* @kind other */
+  --z-modal:   50;   /* @kind other */
+  --z-toast:   70;   /* @kind other */
+  --z-tooltip: 100;  /* @kind other */
+}

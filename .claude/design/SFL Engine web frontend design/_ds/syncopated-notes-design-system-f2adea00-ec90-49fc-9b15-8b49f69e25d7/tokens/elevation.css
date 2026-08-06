@@ -1,0 +1,43 @@
+/* ============================================================
+   Syncopated Notes — Radius, Borders & Elevation
+   Border-first system: structure comes from 1px hairlines,
+   not shadow. Corners are minimal; shadows are soft and rare.
+   ============================================================ */
+
+:root {
+  /* ---- Radius ---- */
+  --radius-none: 0;
+  --radius-xs:  3px;    /* badges, tokens, inline code         */
+  --radius-sm:  4px;    /* inputs, small buttons, field-notes  */
+  --radius-md:  8px;    /* cards, callouts, panels             */
+  --radius-lg:  12px;   /* large surfaces, media               */
+  --radius-xl:  20px;   /* hero cards / canvas nodes (--radius)*/
+  --radius-pill: 999px; /* pills, switches, avatars            */
+  --radius: var(--radius-xl); /* legacy alias from source theme */
+
+  /* ---- Border widths ---- */
+  --border-width:   1px;
+  --border-width-2: 2px;   /* active / focus emphasis          */
+  --border-accent:  3px;   /* left-rule on quotes / active nav */
+
+  /* ---- Elevation (soft, neutral — used sparingly) ---- */
+  --shadow-xs: 0 1px 2px rgba(28, 27, 25, 0.05);
+  --shadow-sm: 0 1px 3px rgba(28, 27, 25, 0.08), 0 1px 2px rgba(28, 27, 25, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(28, 27, 25, 0.10), 0 2px 4px -1px rgba(28, 27, 25, 0.06);
+  --shadow-lg: 0 10px 24px -6px rgba(28, 27, 25, 0.14);
+  --shadow-glow: 0 0 0 1px var(--accent), 0 0 18px -4px color-mix(in oklab, var(--accent) 55%, transparent);
+
+  /* ---- Motion ---- */
+  --transition-fast:   120ms;  /* @kind other */
+  --transition-base:   200ms;  /* @kind other */
+  --transition-slow:   320ms;  /* @kind other */
+  --ease-out:    cubic-bezier(0, 0, 0.2, 1);    /* @kind other */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);  /* @kind other */
+}
+
+.dark {
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 28px -6px rgba(0, 0, 0, 0.6);
+}

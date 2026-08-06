@@ -1,0 +1,112 @@
+/* ============================================================
+   Syncopated Notes — Color System
+   The "Field Note" brand: cream parchment surfaces, dark ink,
+   terracotta accent, an earthy dusty-blue secondary, and a
+   muted Visio-era status palette (blue / olive / ochre / red)
+   that doubles as syntax + diagram-overlay colors.
+
+   Light (parchment) is the default. `.dark` is a warm,
+   lamp-lit night field note — never a cold IDE black.
+   ============================================================ */
+
+:root {
+  /* ---- Brand constants (mode-independent reference hues) ---- */
+  --brand-terracotta: #B5654A;  /* primary accent           */
+  --brand-blue:       #5C7C99;  /* dusty slate-blue secondary*/
+  --brand-ink:        #2A2420;  /* dark ink                 */
+  --brand-paper:      #EDE6D6;  /* cream parchment          */
+  --brand-mark:       #8B0A5F;  /* logo plum — mark only    */
+
+  /* ---- Field-note "chart" palette (syntax + data + diagrams) ----
+     1 blue · 2 ochre · 3 olive · 4 plum · 5 red                  */
+  --chart-1: #5C7C99;
+  --chart-2: #B08833;
+  --chart-3: #6B7F52;
+  --chart-4: #8A5A6F;
+  --chart-5: #A8453A;
+
+  /* ---- Status / badge hues (the muted Visio-era set) ---- */
+  --status-info:    #5C7C99;  /* dusty blue  — note / info     */
+  --status-accent:  #4E6E8A;  /* deep blue   — abstract / tldr  */
+  --status-success: #6B7F52;  /* olive       — tip / done       */
+  --status-question:#B08833;  /* ochre       — question / faq   */
+  --status-warning: #BC6B3F;  /* burnt orange— warning / caution*/
+  --status-danger:  #A8453A;  /* brick red   — error / bug      */
+  --status-special: #7E5C73;  /* muted plum  — example          */
+
+  /* ---- Surfaces (cream parchment stack) ---- */
+  --background: #EDE6D6;       /* page — cream paper           */
+  --surface:    #E3DBC8;       /* cards, panels                */
+  --surface-2:  #DACFB8;       /* nested / hover surface       */
+  --popover:    #F4EFE3;       /* menus, tooltips, raised      */
+  --bg-code:    #E3DBC8;       /* code / command panels        */
+
+  /* ---- Ink ---- */
+  --foreground: #2A2420;       /* primary ink                  */
+  --text-2:     #5C5248;       /* secondary text               */
+  --muted:      #8A7F72;       /* muted / meta                 */
+  --dim:        #B0A492;       /* very dim / disabled          */
+
+  /* ---- Lines ---- */
+  --border:     #D2C7B4;       /* standard 1px border          */
+  --border-2:   #C9B8A0;       /* stronger / hover border      */
+  --ring:       color-mix(in oklab, var(--accent) 40%, transparent);
+
+  /* ---- Accents (semantic) ---- */
+  --accent:      #B5654A;      /* terracotta — actions / headings */
+  --accent-hi:   #C97A5E;      /* hover / lifted                  */
+  --accent-soft: #E7D7C6;      /* tinted terracotta wash          */
+  --cyan:        #5C7C99;      /* secondary / links (dusty blue)  */
+  --cyan-hi:     #4E6E8A;
+
+  /* ---- Diagram overlay layers (Cisco-Visio → Agentic) ---- */
+  --layer-routing:    var(--status-info);     /* blue   */
+  --layer-addressing: var(--status-success);  /* olive  */
+  --layer-subnet:     var(--status-warning);  /* orange */
+  --layer-firewall:   var(--status-danger);   /* red    */
+
+  /* ---- Badge text (on solid badges) ---- */
+  --badge-text: #F4EFE3;       /* @kind color */
+}
+
+.dark {
+  /* ---- Field-note "chart" palette — night ---- */
+  --chart-1: #84A4C0;
+  --chart-2: #D2A653;
+  --chart-3: #97AC78;
+  --chart-4: #B488A0;
+  --chart-5: #D2715F;
+
+  /* ---- Status — warm night ---- */
+  --status-info:    #84A4C0;
+  --status-accent:  #93B0CA;
+  --status-success: #97AC78;
+  --status-question:#D2A653;
+  --status-warning: #DB8A5C;
+  --status-danger:  #D2715F;
+  --status-special: #B488A0;
+
+  /* ---- Surfaces — lamp-lit warm dark ---- */
+  --background: #211C17;
+  --surface:    #2A241D;
+  --surface-2:  #342D24;
+  --popover:    #2E2820;
+  --bg-code:    #1B1712;
+
+  /* ---- Ink — warm cream ---- */
+  --foreground: #ECE3D2;
+  --text-2:     #C7BBA6;
+  --muted:      #968A78;
+  --dim:        #5E5546;
+
+  /* ---- Lines ---- */
+  --border:     #3A3228;
+  --border-2:   #4B4135;
+
+  /* ---- Accents ---- */
+  --accent:      #C97A5E;
+  --accent-hi:   #DB8E72;
+  --accent-soft: #3A2A22;
+  --cyan:        #84A4C0;
+  --cyan-hi:     #9DB8CE;
+}
