@@ -438,7 +438,7 @@ git commit -m "feat(core): add ClassificationResult type"
 
 **Interfaces:**
 - Consumes: `Core::Types::ClassificationResult` (Task 3).
-- Produces: `Core::Ports::Classifier` module with `#classify(sample) -> Core::Types::ClassificationResult`; `Null::Classifier.new` (always returns `format: "unknown", mode: nil, confidence: 0.0, reasoning: "..."`, matching `Null::Embedder`'s "no-op, safe default" spirit); `Fake::Classifier.new(results: {})` (returns a caller-registered `ClassificationResult` per exact `sample` string, or a low-confidence default — mirrors `Fake::Embedder`'s `vectors:`/`default:` shape). Consumed by Task 6 (`LLM::Classifier` includes this port) and Task 9 (`Ingest::Orchestrator`).
+- Produces: `Core::Ports::Classifier` module with `#classify(sample, path) -> Core::Types::ClassificationResult` (`path` is the file's original path — passed through so a real adapter can use the filename/extension as a classification signal, matching `Ingest::LoaderDrafter#draft(sample, path)`'s existing two-arg shape in Task 8); `Null::Classifier.new` (always returns `format: "unknown", mode: nil, confidence: 0.0, reasoning: "..."`, matching `Null::Embedder`'s "no-op, safe default" spirit); `Fake::Classifier.new(results: {})` (returns a caller-registered `ClassificationResult` per exact `sample` string — `path` is accepted but not part of the lookup key — or a low-confidence default — mirrors `Fake::Embedder`'s `vectors:`/`default:` shape). Consumed by Task 6 (`LLM::Classifier` includes this port) and Task 9 (`Ingest::Orchestrator`).
 
 - [ ] **Step 1: Write the failing specs**
 
@@ -447,7 +447,7 @@ Read `spec/support/shared_examples/ports.rb` first, then add this shared example
 ```ruby
 RSpec.shared_examples "a classifier port" do
   it "returns a Core::Types::ClassificationResult from #classify" do
-    expect(subject.classify("some file sample")).to be_a(SFL::Core::Types::ClassificationResult)
+    expect(subject.classify("some file sample", "some/path.txt")).to be_a(SFL::Core::Types::ClassificationResult)
   end
 end
 ```
@@ -461,7 +461,7 @@ RSpec.describe SFL::Core::Ports::Null::Classifier do
   it_behaves_like "a classifier port"
 
   it "always returns format unknown, mode nil, confidence 0.0" do
-    result = subject.classify("anything")
+    result = subject.classify("anything", "some/path.txt")
 
     expect(result.format).to eq("unknown")
     expect(result.mode).to be_nil
@@ -485,14 +485,14 @@ RSpec.describe SFL::Core::Ports::Fake::Classifier do
   it_behaves_like "a classifier port"
 
   it "returns the registered result for an exact sample match" do
-    result = subject.classify("chatgpt-shaped sample")
+    result = subject.classify("chatgpt-shaped sample", "some/path.txt")
 
     expect(result.format).to eq("chatgpt_export")
     expect(result.confidence).to eq(0.95)
   end
 
   it "returns a low-confidence unknown default for an unregistered sample" do
-    result = subject.classify("never registered")
+    result = subject.classify("never registered", "some/path.txt")
 
     expect(result.format).to eq("unknown")
     expect(result.confidence).to eq(0.0)
@@ -523,8 +523,11 @@ module SFL
       # case (see that module's own comment).
       module Classifier
         # @param sample [String]
+        # @param path [String] the file's original path — real adapters may use the
+        #   filename/extension as a classification signal (see Ingest::LoaderDrafter#draft's
+        #   matching two-arg shape)
         # @return [SFL::Core::Types::ClassificationResult]
-        def classify(sample)
+        def classify(sample, path)
           raise NotImplementedError, "#{self.class} must implement #classify"
         end
       end
@@ -551,7 +554,7 @@ module SFL
         class Classifier
           include Ports::Classifier
 
-          def classify(_sample)
+          def classify(_sample, _path)
             Types::ClassificationResult.new(
               format: "unknown", mode: nil, confidence: 0.0, reasoning: "Null::Classifier: no real classifier configured"
             )
@@ -589,7 +592,7 @@ module SFL
             @default = default
           end
 
-          def classify(sample)
+          def classify(sample, _path)
             @results.fetch(sample, @default)
           end
         end
@@ -823,7 +826,7 @@ git commit -m "feat(ingest): add DeterministicRules fast-path classifier"
 
 **Interfaces:**
 - Consumes: `Core::Ports::Classifier` (Task 4), `Core::Types::ClassificationResult` (Task 3), `Prompts.render` (`lib/sfl/prompts.rb:19`), `LLM::ResponseSymbolizer.call` (`lib/sfl/llm/response_symbolizer.rb:10`), `Core::Ports::Breaker`/`Null::Breaker`, `Core::Ports::Logger`/`Null::Logger`.
-- Produces: `LLM::Classifier.new(chat:, breaker: Core::Ports::Null::Breaker.new, logger: Core::Ports::Null::Logger.new)`, `#classify(sample) -> Core::Types::ClassificationResult`. Consumed by Task 7 (`Boot.build_classifier`) and Task 9.
+- Produces: `LLM::Classifier.new(chat:, breaker: Core::Ports::Null::Breaker.new, logger: Core::Ports::Null::Logger.new)`, `#classify(sample, path) -> Core::Types::ClassificationResult`. Consumed by Task 7 (`Boot.build_classifier`) and Task 9.
 
 - [ ] **Step 1: Write the schema**
 
@@ -902,7 +905,7 @@ RSpec.describe SFL::LLM::Classifier do
       })
       allow(schema_chat).to receive(:ask).and_return(response)
 
-      result = classifier.classify("path: weird_chat.jsonl\n...")
+      result = classifier.classify("path: weird_chat.jsonl\n...", "weird_chat.jsonl")
 
       expect(result).to be_a(SFL::Core::Types::ClassificationResult)
       expect(result.format).to eq("generic_jsonl_chat")
@@ -913,7 +916,7 @@ RSpec.describe SFL::LLM::Classifier do
     it "returns a low-confidence unknown result, not a raised error, when the LLM call fails" do
       allow(schema_chat).to receive(:ask).and_raise(RubyLLM::Error, "rate limited")
 
-      result = classifier.classify("some sample")
+      result = classifier.classify("some sample", "some/path.txt")
 
       expect(result.format).to eq("unknown")
       expect(result.confidence).to eq(0.0)
@@ -957,9 +960,11 @@ module SFL
       end
 
       # @param sample [String]
+      # @param path [String] the file's original path — included in the prompt so the model
+      #   can use the filename/extension as a classification signal, not just raw content
       # @return [Core::Types::ClassificationResult]
-      def classify(sample)
-        raw = breaker.call("classifier.classify") { fetch(sample) }
+      def classify(sample, path)
+        raw = breaker.call("classifier.classify") { fetch(sample, path) }
         Core::Types::ClassificationResult.new(
           format: raw[:format], mode: raw[:mode], confidence: raw[:confidence], reasoning: raw[:reasoning]
         )
@@ -973,8 +978,8 @@ module SFL
       attr_reader :chat, :breaker, :logger
       private :chat, :breaker, :logger
 
-      private def fetch(sample)
-        prompt = Prompts.render(:ingest_classification, path: "(sample)", sample:)
+      private def fetch(sample, path)
+        prompt = Prompts.render(:ingest_classification, path:, sample:)
         response = chat.with_schema(Schemas::ClassificationSchema).ask(prompt)
         ResponseSymbolizer.call(response.content)
       end
@@ -1147,7 +1152,19 @@ to:
 
 - [ ] **Step 6: Build the `LLM::Classifier` collaborator and expose it on `Boot::Result`**
 
-Read `lib/sfl/boot/result.rb` first. Add a `classifier:` attribute to `Boot::Result` following the exact pattern its existing attributes (`db:`, `embedder:`, etc.) already use.
+Read `lib/sfl/boot/result.rb` first. Change:
+
+```ruby
+    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :pass1_env, :spacy_model,
+      :api_debug_errors, :api_cors_origins, keyword_init: true)
+```
+
+to (inserting `:classifier` right after `:embedder`, matching the argument order the `Result.new(...)` call below uses):
+
+```ruby
+    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :classifier, :pass1_command, :pass1_env,
+      :spacy_model, :api_debug_errors, :api_cors_origins, keyword_init: true)
+```
 
 In `lib/sfl/boot.rb`, change `build_llm_collaborators` (`:184-193`):
 
@@ -1728,7 +1745,7 @@ module SFL
         return deterministic if deterministic
 
         sample = File.read(file, SAMPLE_BYTES)
-        result = classifier.classify(sample)
+        result = classifier.classify(sample, file)
         { format: result.format, mode: result.mode, confidence: result.confidence, reasoning: result.reasoning }
       end
 
@@ -1957,7 +1974,7 @@ Add after `run_context` (find its end via the method list already surveyed: `run
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
 
       if options[:dry_run]
-        run_ingest_dry_run(input, boot_result)
+        run_ingest_dry_run(input)
         return
       end
 
@@ -1971,7 +1988,7 @@ Add after `run_context` (find its end via the method list already surveyed: `run
     # any engine or writing any ingest_review_entries row — a separate, simpler code path
     # rather than a flag threaded through Ingest::Orchestrator itself, so Orchestrator's own
     # contract stays side-effecting-by-default and easy to reason about.
-    module_function def run_ingest_dry_run(input, boot_result)
+    module_function def run_ingest_dry_run(input)
       files = File.directory?(input) ? Dir.glob(File.join(input, "**", "*")).select { |p| File.file?(p) } : [input]
       files.each do |file|
         classification = Ingest::DeterministicRules.classify(file)
