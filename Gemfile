@@ -63,6 +63,16 @@ gem "rack", "~> 3.1"
 gem "tty-progressbar", "~> 0.18"
 gem "tty-prompt", "~> 0.23"
 
+# Phase 6 GUI (lib/sfl/gui, exe/sfl-review): first desktop app, wraps
+# Store::PgReviewQueueRepository. Bundles libui (the `libui` gem) — no
+# Java/Electron dependency, prerequisite-free native windows.
+gem "glimmer-dsl-libui", "~> 0.13"
+# fiddle dropped out of Ruby's default gems as of 4.0 (this app's pinned
+# Ruby); the `libui` gem's FFI layer requires "fiddle/import" unconditionally,
+# so it must be declared explicitly here or `require "glimmer-dsl-libui"`
+# raises LoadError under `bundle exec` (discovered running this task's spike).
+gem "fiddle", "~> 1.1"
+
 group :development, :test do
   gem "pry"
   gem "pry-byebug"
