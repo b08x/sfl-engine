@@ -1,5 +1,6 @@
-# lib/sfl/gui/detail_pane_control.rb
 # frozen_string_literal: true
+
+# lib/sfl/gui/detail_pane_control.rb
 
 require_relative "failure_message"
 require_relative "image_review_control"
@@ -22,24 +23,16 @@ module SFL
       body {
         vertical_box {
           label {
-            # rubocop:disable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             text <= [viewmodel, :selected_item, on_read: ->(item) { item ? "Modality: #{item[:modality]}" : "" }]
-            # rubocop:enable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           }
           label {
-            # rubocop:disable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             text <= [viewmodel, :selected_item, on_read: ->(item) { item ? "Reason: #{item[:reason]}" : "" }]
-            # rubocop:enable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           }
           label {
-            # rubocop:disable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             text <= [viewmodel, :selected_item, on_read: ->(item) { item ? "Source: #{item[:source_file]}" : "" }]
-            # rubocop:enable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           }
           label {
-            # rubocop:disable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             text <= [viewmodel, :selected_item, on_read: ->(item) { item ? "Created: #{item[:created_at]}" : "" }]
-            # rubocop:enable Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           }
 
           image_review_control(viewmodel:)
@@ -50,7 +43,6 @@ module SFL
           # complement of both review controls' visible bindings, all three
           # reading the same viewmodel.detail_kind single source of truth.
           label {
-            # rubocop:disable Style/HashAsLastArrayItem
             unrecognized_message = lambda { |kind|
               next "" unless kind == :unrecognized
 
@@ -59,13 +51,10 @@ module SFL
             # computed_by is required: detail_kind is a writer-less derived
             # reader, which Glimmer will not observe on its own.
             text <= [viewmodel, :detail_kind, on_read: unrecognized_message, computed_by: [:selected_item]]
-            # rubocop:enable Style/HashAsLastArrayItem
           }
 
           button("Approve") {
-            # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             enabled <= [viewmodel, :selected_item, on_read: ->(item) { !item.nil? }]
-            # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
             on_clicked do
               result = viewmodel.approve!
@@ -74,9 +63,7 @@ module SFL
           }
 
           button("Reject") {
-            # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
             enabled <= [viewmodel, :selected_item, on_read: ->(item) { !item.nil? }]
-            # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
             on_clicked do
               result = viewmodel.reject!

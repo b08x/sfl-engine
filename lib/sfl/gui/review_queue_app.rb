@@ -15,22 +15,31 @@ module SFL
 
       REFRESH_INTERVAL_SECONDS = 10
 
+      # Every approve/reject/edit this window writes is attributed to this
+      # reviewer. Defaulting it (to a system username, or worse to nil) would
+      # produce audit rows nobody can trace back to a person, so an unset
+      # variable is a hard startup failure rather than a silent fallback.
+      class MissingReviewerNameError < SFL::Error; end
+
       attr_reader :viewmodel, :logger
 
-      def initialize
-        # require_tracing: false unconditionally — LangfuseReachability's
-        # reachability prompt expects an interactive tty, which this GUI
-        # process doesn't have in the CLI's sense (see the design doc).
-        boot_result = Boot.call(require_llm: true, require_tracing: false)
-        @logger = Core::Ports::StandardLogger.new(progname: "sfl.gui")
-        pipeline = CLI.build_pipeline(
-          boot_result, { pass1_only: false, store: true, resume: false },
-          breaker: Core::Ports::Null::Breaker.new, instrumenter: Core::Ports::Null::Instrumenter.new, logger:
-        )
-        repo = Store::PgReviewQueueRepository.new(boot_result.db)
-        reviewer_name = ENV.fetch("SFL_REVIEWER_NAME", nil)
+      # Collaborators are injectable so this class's non-GUI logic is testable
+      # without a database, an LLM or a display — the same kwarg-DI shape
+      # ReviewQueueViewModel already uses. In production all three are omitted
+      # and built here; Boot.call is only reached when something was left out.
+      #
+      # @param repo [Store::PgReviewQueueRepository, nil]
+      # @param pipeline [Core::Pipeline, nil]
+      # @param logger [#debug,#info,#warn,#error, nil]
+      # @raise [MissingReviewerNameError] if SFL_REVIEWER_NAME is unset or blank
+      def initialize(repo: nil, pipeline: nil, logger: nil)
+        @logger = logger || Core::Ports::StandardLogger.new(progname: "sfl.gui")
+        # Checked before build_collaborators on purpose: booting the DB and the
+        # LLM only to then refuse to start wastes seconds and muddies the error.
+        reviewer_name = reviewer_name_from_env
+        repo, pipeline = build_collaborators(repo, pipeline)
 
-        @viewmodel = ReviewQueueViewModel.new(repo:, pipeline:, reviewer_name:, logger:)
+        @viewmodel = ReviewQueueViewModel.new(repo:, pipeline:, reviewer_name:, logger: @logger)
         log_refresh_failure("startup", @viewmodel.refresh!)
       end
 
@@ -46,6 +55,40 @@ module SFL
             detail_pane_control(viewmodel:)
           }
         }.show
+      end
+
+      # @raise [MissingReviewerNameError] if unset, empty or whitespace-only
+      # @return [String]
+      private def reviewer_name_from_env
+        name = ENV.fetch("SFL_REVIEWER_NAME", nil)
+        return name unless name.nil? || name.strip.empty?
+
+        raise MissingReviewerNameError,
+          "SFL_REVIEWER_NAME must be set — every review-queue decision is attributed to this reviewer"
+      end
+
+      # Boot.call opens a DB connection and validates LLM credentials, so it is
+      # skipped entirely when both collaborators were injected.
+      #
+      # @return [Array(Object, Object)] the repo and pipeline to hand the viewmodel
+      private def build_collaborators(repo, pipeline)
+        return [repo, pipeline] if repo && pipeline
+
+        # require_tracing: false unconditionally — LangfuseReachability's
+        # reachability prompt expects an interactive tty, which this GUI
+        # process doesn't have in the CLI's sense (see the design doc).
+        boot_result = Boot.call(require_llm: true, require_tracing: false)
+        [
+          repo || Store::PgReviewQueueRepository.new(boot_result.db),
+          pipeline || build_pipeline(boot_result),
+        ]
+      end
+
+      private def build_pipeline(boot_result)
+        CLI.build_pipeline(
+          boot_result, { pass1_only: false, store: true, resume: false },
+          breaker: Core::Ports::Null::Breaker.new, instrumenter: Core::Ports::Null::Instrumenter.new, logger:
+        )
       end
 
       # Showing the main window makes GTK show every descendant, which overrides

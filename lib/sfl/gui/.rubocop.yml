@@ -1,12 +1,53 @@
 ---
-# Narrowly-scoped DSL configuration for Glimmer custom controls.
-# Only Style/BlockDelimiters is kept here because every Glimmer control
-# structurally requires `body { }`, `vertical_box { }`, etc.
-# All other idiomatic patterns (data-binding operators, quotes, lambdas, layouts)
-# are suppressed via inline rubocop:disable/enable comments in the control files
-# to avoid masking real bugs in non-DSL logic (event handlers, helpers, etc.)
+# Rubocop configuration for the Glimmer DSL layer.
+#
+# Two tiers on purpose (SIFT I-1):
+#
+# 1. Style/BlockDelimiters is off directory-wide — every Glimmer control
+#    structurally requires `body { }`, `vertical_box { }` and friends.
+#
+# 2. The four data-binding cops below are off only for the files that actually
+#    declare bindings. `visible <= [model, :attr, on_read: ->(k) { ... }]` is
+#    the documented DSL spelling of a binding and trips all four at once
+#    (Lint/Void for the operator's discarded value, Style/HashAsLastArrayItem
+#    for the trailing options, Layout/SpaceInLambdaLiteral and Style/Lambda for
+#    the converter). Suppressing them per-line meant a disable/enable pragma
+#    pair around nearly every binding — six in detail_pane_control.rb alone and
+#    seven cops on a single line in item_list_control.rb.
+#
+# Scoped with per-cop Exclude rather than a blanket `Enabled: false`, so
+# review_queue_view_model.rb and failure_message.rb — plain Ruby, no DSL — keep
+# full coverage. A genuine Lint/Void or stray lambda in the model layer still
+# fails the build.
+#
+# Deliberately NOT listed here:
+#   - Metrics/BlockLength (detail_pane_control.rb): a real size signal about
+#     that one body block, not a DSL artifact. Stays inline.
+#   - Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks,
+#     Layout/MultilineArrayBraceLayout (item_list_control.rb): about how one
+#     long converter array happens to be wrapped, not universal to bindings.
+#   - Style/StringLiterals: no file in this directory needed it — the GUI
+#     already uses the project's double_quotes style throughout.
 
 inherit_from: ../../../.rubocop.yml
 
 Style/BlockDelimiters:
   Enabled: false
+
+Lint/Void:
+  Exclude: &dsl_binding_files
+    - item_list_control.rb
+    - image_review_control.rb
+    - text_review_control.rb
+    - detail_pane_control.rb
+    - review_queue_app.rb
+    - save_and_recompile_section.rb
+
+Style/HashAsLastArrayItem:
+  Exclude: *dsl_binding_files
+
+Layout/SpaceInLambdaLiteral:
+  Exclude: *dsl_binding_files
+
+Style/Lambda:
+  Exclude: *dsl_binding_files

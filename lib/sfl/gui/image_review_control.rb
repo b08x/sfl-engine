@@ -1,7 +1,8 @@
-# lib/sfl/gui/image_review_control.rb
 # frozen_string_literal: true
 
-require_relative "failure_message"
+# lib/sfl/gui/image_review_control.rb
+
+require_relative "save_and_recompile_section"
 
 module SFL
   module GUI
@@ -14,11 +15,14 @@ module SFL
     # controls read from).
     class ImageReviewControl
       include Glimmer::LibUI::CustomControl
+      include SaveAndRecompileSection
 
       options :viewmodel
 
-      IMAGE_WIDTH = 400
-      IMAGE_HEIGHT = 400
+      # The preview box the image is fitted inside, not the size it is drawn at
+      # — see #preview_geometry.
+      MAX_PREVIEW_WIDTH = 400
+      MAX_PREVIEW_HEIGHT = 400
 
       # glimmer-dsl-libui rasterizes images through ChunkyPNG, which reads PNG
       # only. Anything else — a nil path, a file that has since been moved, a
@@ -26,6 +30,12 @@ module SFL
       # where no Ruby rescue can reach it. So the path is validated up front and
       # nothing is drawn unless it will actually load.
       PREVIEWABLE_EXTENSION = ".png"
+
+      # Bytes 16..23 of a PNG are the IHDR width and height, big-endian uint32
+      # each. Read directly rather than through ChunkyPNG so getting the
+      # dimensions doesn't decode the whole image on every repaint.
+      PNG_HEADER_BYTES = 24
+      PNG_DIMENSION_OFFSET = 16
 
       attr_accessor :image_area
 
@@ -38,9 +48,7 @@ module SFL
           # that have a writer or an explicit computed_by. Without it this
           # binding evaluates once at construction (when nothing is selected)
           # and never fires again.
-          # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           visible <= [viewmodel, :detail_kind, on_read: ->(k) { k == :image }, computed_by: [:selected_item]]
-          # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
           # The image is drawn imperatively inside on_draw rather than declared
           # as a static child. A child `image` proxy caches its rasterized
@@ -49,21 +57,12 @@ module SFL
           # selection and simply draws nothing when there is no usable file.
           control.image_area = area {
             on_draw do |_area_draw_params|
-              path = control.previewable_image_path
-              image(path, IMAGE_WIDTH, IMAGE_HEIGHT) if path
+              path, width, height = control.preview_geometry
+              image(path, width, height) if path
             end
           }
 
-          multiline_entry {
-            text <=> [viewmodel, :edited_text]
-          }
-
-          button("Save & Recompile") {
-            on_clicked do
-              result = viewmodel.save_and_recompile!
-              msg_box_error("Recompile failed", FailureMessage.call(result.failure)) if result.failure?
-            end
-          }
+          control.save_and_recompile_section
         }
       }
 
@@ -71,9 +70,37 @@ module SFL
         # on_draw only re-runs when a redraw is requested, and selecting a
         # different row changes no area property that would request one. This
         # observer is what turns a selection change into a repaint.
+        #
+        # SIFT F-5: deliberately never unobserved. This control is constructed
+        # once, by DetailPaneControl, and lives for the life of the window — it
+        # is not rebuilt per selection — so the observer's lifetime already is
+        # the process's lifetime and there is no leak to dispose of. Adding
+        # teardown here would be dead code guarding an unreachable case.
         @selection_observer = Glimmer::DataBinding::Observer.proc { image_area&.queue_redraw_all }
         @selection_observer.observe(viewmodel, :selected_item)
       }
+
+      # SIFT S-3: previously drawn at a fixed 400x400, which stretched any
+      # non-square source out of shape. Scales to fit inside the preview box
+      # instead, preserving the source aspect ratio. Never enlarges: a 64px
+      # icon blown up to 400px is worse to review than the same icon at 64px.
+      #
+      # Falls back to the box size when the header can't be read, which keeps a
+      # readable (if distorted) preview rather than showing nothing at all.
+      #
+      # @return [Array(String, Integer, Integer), nil] path, draw width, draw
+      #   height — or nil when there is nothing safe to draw
+      def preview_geometry
+        path = previewable_image_path
+        return nil if path.nil?
+
+        source = png_dimensions(path)
+        return [path, MAX_PREVIEW_WIDTH, MAX_PREVIEW_HEIGHT] if source.nil?
+
+        width, height = source
+        scale = [MAX_PREVIEW_WIDTH.fdiv(width), MAX_PREVIEW_HEIGHT.fdiv(height), 1.0].min
+        [path, (width * scale).round, (height * scale).round]
+      end
 
       # @return [String, nil] the selected row's source file if it can be
       #   rasterized, nil if there is nothing safe to draw
@@ -84,6 +111,23 @@ module SFL
         return nil unless File.exist?(path)
 
         path
+      end
+
+      # Runs inside the libui draw callback, where a raised exception can't be
+      # caught by anything upstream, so every failure resolves to nil instead.
+      #
+      # @return [Array(Integer, Integer), nil] source width and height
+      private def png_dimensions(path)
+        header = File.binread(path, PNG_HEADER_BYTES)
+        return nil unless header&.bytesize == PNG_HEADER_BYTES
+
+        # A full-length header guarantees unpack returns two integers.
+        width, height = header.byteslice(PNG_DIMENSION_OFFSET, 8).unpack("N2")
+        return nil if width.zero? || height.zero?
+
+        [width, height]
+      rescue
+        nil
       end
     end
   end

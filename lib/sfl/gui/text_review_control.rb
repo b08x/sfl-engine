@@ -1,7 +1,8 @@
-# lib/sfl/gui/text_review_control.rb
 # frozen_string_literal: true
 
-require_relative "failure_message"
+# lib/sfl/gui/text_review_control.rb
+
+require_relative "save_and_recompile_section"
 
 module SFL
   module GUI
@@ -12,27 +13,19 @@ module SFL
     # ImageReviewControl reads (SIFT Finding 1 fix).
     class TextReviewControl
       include Glimmer::LibUI::CustomControl
+      include SaveAndRecompileSection
 
       options :viewmodel
 
       body {
+        control = self
+
         vertical_box {
           # See ImageReviewControl for why computed_by is required here:
           # detail_kind has no writer, so without it Glimmer never observes it.
-          # rubocop:disable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
           visible <= [viewmodel, :detail_kind, on_read: ->(k) { k == :text }, computed_by: [:selected_item]]
-          # rubocop:enable Lint/Void, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral
 
-          multiline_entry {
-            text <=> [viewmodel, :edited_text]
-          }
-
-          button("Save & Recompile") {
-            on_clicked do
-              result = viewmodel.save_and_recompile!
-              msg_box_error("Recompile failed", FailureMessage.call(result.failure)) if result.failure?
-            end
-          }
+          control.save_and_recompile_section
         }
       }
     end

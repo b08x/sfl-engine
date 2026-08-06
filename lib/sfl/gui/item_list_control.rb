@@ -1,5 +1,6 @@
-# lib/sfl/gui/item_list_control.rb
 # frozen_string_literal: true
+
+# lib/sfl/gui/item_list_control.rb
 
 module SFL
   module GUI
@@ -15,9 +16,7 @@ module SFL
         vertical_box {
           combobox {
             items %w[all image text audio]
-            # rubocop:disable Lint/Void
             selected_item <=> [viewmodel, :modality_filter]
-            # rubocop:enable Lint/Void
 
             on_selected { viewmodel.refresh! }
           }
@@ -28,13 +27,16 @@ module SFL
             text_column("Source File")
             text_column("Created At")
 
-            # rubocop:disable Lint/Void, Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral, Style/Lambda, Layout/MultilineArrayBraceLayout
+            # rubocop:disable Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks, Layout/MultilineArrayBraceLayout
             cell_rows <= [viewmodel, :items, on_read: ->(items) {
               items.map { |item| [item[:modality], item[:reason], item[:source_file], item[:created_at].to_s] }
             }]
-            # rubocop:enable Lint/Void, Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks, Style/HashAsLastArrayItem, Layout/SpaceInLambdaLiteral, Style/Lambda, Layout/MultilineArrayBraceLayout
+            # rubocop:enable Layout/FirstArrayElementLineBreak, Layout/MultilineArrayLineBreaks, Layout/MultilineArrayBraceLayout
 
-            on_row_clicked { |row| viewmodel.select(viewmodel.items[row]) }
+            # Hands over the index and nothing else: resolving it to an item is
+            # the viewmodel's job (SIFT S-2 — this used to reach through the
+            # viewmodel into its own items array).
+            on_row_clicked { |row| viewmodel.select_row(row) }
           }
         }
       }

@@ -8,11 +8,9 @@ module SFL
     # "sidecar crashed"]` rendered with #inspect leaks Ruby syntax into a
     # dialog. This only formats; the Result contract itself is unchanged.
     module FailureMessage
-      extend self
-
       # @param failure [Object] the payload of a Dry::Monads::Failure
       # @return [String] e.g. "pass one failed: sidecar crashed"
-      def call(failure)
+      module_function def call(failure)
         case failure
         when String then failure
         when Symbol then failure.to_s.tr("_", " ")

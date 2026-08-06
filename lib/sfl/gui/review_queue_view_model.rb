@@ -39,12 +39,20 @@ module SFL
         @edited_text = nil
       end
 
+      # Rescues StandardError, not just Sequel::Error: this runs at startup and
+      # again on every tick of the 10s auto-refresh timer, where an escaping
+      # exception unwinds into the libui event loop and takes the window down.
+      # A DB outage surfaces as more than Sequel::Error alone (connection-pool,
+      # socket and DNS failures all have their own classes), so the net is the
+      # whole StandardError hierarchy. Spelled as a bare `rescue` to match
+      # #compile_edited_text and this project's Style/RescueStandardError.
+      #
       # @return [Dry::Monads::Result] Success(items) or Failure(message)
       def refresh!
         self.items = repo.pending(modality: modality_filter_param).fetch(:items)
         sync_selection_after_refresh
         Success(items)
-      rescue Sequel::Error => e
+      rescue => e
         logger.warn { "review queue refresh failed: #{e.message}" }
         Failure(e.message)
       end
@@ -54,6 +62,21 @@ module SFL
       # from under the user), so ItemListControl's `items[row]` lookup can hand
       # us nil. Guarding here rather than at the call site protects every caller.
       #
+      # Row-index entry point for ItemListControl's on_row_clicked. The control
+      # hands over the index it was given and nothing else; which item that
+      # index names is this class's business, not the view's (SIFT S-2 —
+      # previously the control scripted `viewmodel.select(viewmodel.items[row])`).
+      # An index past the end resolves to nil, which #select no-ops on. Negative
+      # indices are rejected rather than passed to Array#[], where -1 would
+      # quietly select the last row instead of nothing.
+      #
+      # @param index [Integer, nil] the clicked table row index
+      def select_row(index)
+        return if index.nil? || index.negative?
+
+        select(items[index])
+      end
+
       # @param item [Hash, nil] a row from #items
       def select(item)
         return if item.nil?
@@ -107,7 +130,7 @@ module SFL
 
         repo.decide(id: selected_item[:id], decision:, reviewer: reviewer_name)
         refresh!
-      rescue Sequel::Error => e
+      rescue => e
         logger.warn { "review queue #{decision} failed: #{e.message}" }
         Failure(e.message)
       end
