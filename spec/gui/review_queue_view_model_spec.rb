@@ -78,6 +78,29 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
 
       expect(result).to be_failure
     end
+
+    # SIFT F-2: this runs at startup and on every tick of the 10s auto-refresh
+    # timer, where anything escaping unwinds into the libui event loop and kills
+    # the window. A DB outage is not only Sequel::Error — socket, DNS and
+    # connection-pool failures each have their own class.
+    it "returns Failure without raising when the repo raises a non-Sequel error" do
+      allow(repo).to receive(:pending).and_raise(Errno::ECONNREFUSED)
+
+      result = nil
+      expect { result = view_model.refresh! }.not_to raise_error
+
+      expect(result).to be_failure
+    end
+
+    it "logs the non-Sequel failure via the injected logger" do
+      logger = instance_spy(SFL::Core::Ports::StandardLogger)
+      vm = described_class.new(repo:, pipeline:, reviewer_name: "bob", logger:)
+      allow(repo).to receive(:pending).and_raise(Errno::EHOSTUNREACH)
+
+      vm.refresh!
+
+      expect(logger).to have_received(:warn)
+    end
   end
 
   describe "#select" do
@@ -104,6 +127,58 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
 
       expect(view_model.selected_item).to eq(pending_row)
       expect(view_model.edited_text).to eq("Some flagged text.")
+    end
+  end
+
+  # SIFT S-2: ItemListControl used to script `select(viewmodel.items[row])`.
+  # The index-to-item lookup lives here now, so it can be tested at all.
+  describe "#select_row" do
+    let(:other_row) { pending_row.merge(id: "row-2", generated_text: "Another flagged text.") }
+
+    before { view_model.items = [pending_row, other_row] }
+
+    it "selects the item at the given index" do
+      view_model.select_row(1)
+
+      expect(view_model.selected_item).to eq(other_row)
+      expect(view_model.edited_text).to eq("Another flagged text.")
+    end
+
+    # The reason #select's nil-guard exists: the 10s auto-refresh timer can
+    # shrink items between a table repaint and the click it was repainted for.
+    it "no-ops instead of raising when the index is past the end of items" do
+      expect { view_model.select_row(99) }.not_to raise_error
+
+      expect(view_model.selected_item).to be_nil
+    end
+
+    it "no-ops when items is empty" do
+      view_model.items = []
+
+      expect { view_model.select_row(0) }.not_to raise_error
+      expect(view_model.selected_item).to be_nil
+    end
+
+    it "leaves an existing selection untouched when the index is out of bounds" do
+      view_model.select_row(0)
+
+      view_model.select_row(99)
+
+      expect(view_model.selected_item).to eq(pending_row)
+    end
+
+    # Array#[] would read -1 as "the last row"; selecting nothing is the only
+    # defensible reading of a negative row index.
+    it "selects nothing rather than the last row when handed a negative index" do
+      view_model.select_row(-1)
+
+      expect(view_model.selected_item).to be_nil
+    end
+
+    it "no-ops when handed nil" do
+      expect { view_model.select_row(nil) }.not_to raise_error
+
+      expect(view_model.selected_item).to be_nil
     end
   end
 
@@ -150,6 +225,19 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       result = view_model.approve!
 
       expect(repo).not_to have_received(:decide)
+      expect(result).to be_failure
+    end
+
+    # SIFT F-2: same widened rescue as #refresh!, in the private #decide! both
+    # approve!/reject!/save_and_recompile! funnel through.
+    it "returns Failure without raising when decide raises a non-Sequel error" do
+      allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
+      view_model.select(pending_row)
+      allow(repo).to receive(:decide).and_raise(Errno::ECONNREFUSED)
+
+      result = nil
+      expect { result = view_model.approve! }.not_to raise_error
+
       expect(result).to be_failure
     end
   end
