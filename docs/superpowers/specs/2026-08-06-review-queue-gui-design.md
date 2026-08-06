@@ -129,29 +129,84 @@ A `combobox` (`items ['all', 'image', 'text', 'audio']`) bound one-way into
 `vertical_box` (single root, per Glimmer's "`body` needs exactly one root control" rule)
 containing: labels for the selected item's modality/reason/source_file/created_at (blank when
 nothing is selected), then `image_review_control(viewmodel:)`, then
-`text_review_control(viewmodel:)`, then the shared `button('Approve')`/`button('Reject')` pair —
-each `on_clicked` calling `viewmodel.approve!`/`viewmodel.reject!`, both `enabled <= [viewmodel,
-:selected_item, on_read: ->(item) { !item.nil? }]`.
+`text_review_control(viewmodel:)`, then a `label` bound to
+`[viewmodel, :selected_item, on_read: ->(item) { item && viewmodel.detail_kind == :unrecognized ? "No reviewer UI for modality #{item[:modality].inspect} yet." : "" }]`
+(the exhaustiveness fallback — see `#detail_kind` below), then the shared
+`button('Approve')`/`button('Reject')` pair — each `on_clicked` calling
+`viewmodel.approve!`/`viewmodel.reject!`, both `enabled <= [viewmodel, :selected_item, on_read:
+->(item) { !item.nil? }]`.
+
+**Exhaustiveness fix (SIFT Finding 1):** `ImageReviewControl`/`TextReviewControl`'s visibility
+predicates independently re-deriving "which modality is this" in two files was flagged as a
+non-exhaustive hidden duck — a third modality value would make both controls invisible with no
+explanation. Fixed by having `ReviewQueueViewModel` expose one derived, exhaustive method both
+controls (and the new fallback label above) read from, instead of each recomputing its own
+boolean:
+
+```ruby
+# SFL::GUI::ReviewQueueViewModel
+# @return [Symbol, nil] :image | :text | :unrecognized | nil (nothing selected)
+def detail_kind
+  return nil if selected_item.nil?
+
+  case selected_item[:modality]
+  when "image" then :image
+  when "text", "audio" then :text
+  else :unrecognized
+  end
+end
+```
+
+`ImageReviewControl`'s `visible` becomes `[viewmodel, :detail_kind, on_read: ->(kind) { kind == :image }]`,
+`TextReviewControl`'s becomes `on_read: ->(kind) { kind == :text }` — both read the same single
+source of truth, so by construction exactly one of {image, text, unrecognized, nothing} is ever
+true, and an unrecognized modality now shows an explicit message instead of a silent blank pane.
 
 ### `SFL::GUI::ImageReviewControl` (class-based, `options :viewmodel`)
 
-Root box `visible <= [viewmodel, :selected_item, on_read: ->(item) { item&.dig(:modality) ==
-"image" }]`. Inside: `area { image(viewmodel.selected_item&.dig(:source_file), 400, 400) }`
-above a `multiline_entry { text <=> [viewmodel, :edited_text] }`, then `button('Save & Recompile')`
-calling `viewmodel.save_and_recompile!` and showing `msg_box_error` on a `Failure` result.
+Root box `visible <= [viewmodel, :detail_kind, on_read: ->(kind) { kind == :image }]`. Inside:
+`area { image(viewmodel.selected_item&.dig(:source_file), 400, 400) }` above a `multiline_entry
+{ text <=> [viewmodel, :edited_text] }`, then `button('Save & Recompile')` calling
+`viewmodel.save_and_recompile!` and showing `msg_box_error` on a `Failure` result.
 
 ### `SFL::GUI::TextReviewControl` (class-based, `options :viewmodel`)
 
-Same shape minus the image: `visible` bound to modality being `"text"` or `"audio"`,
-`multiline_entry <=> edited_text`, `button('Save & Recompile')`. Serves both text and audio
-modalities identically — audio has no special rendering need beyond the transcript text itself
-(and per the design discussion, no audio-modality `enqueue` call site exists in the codebase
-yet, so audio rows won't appear in practice until one is added elsewhere).
+Same shape minus the image: `visible <= [viewmodel, :detail_kind, on_read: ->(kind) { kind ==
+:text }]`, `multiline_entry <=> edited_text`, `button('Save & Recompile')`. Serves both text and
+audio modalities identically — audio has no special rendering need beyond the transcript text
+itself (and per the design discussion, no audio-modality `enqueue` call site exists in the
+codebase yet, so audio rows won't appear in practice until one is added elsewhere).
 
 ### `exe/sfl-review`
 
-New binstub, mirrors `exe/sfl-analyze`'s shebang/require pattern, calls
+New binstub, mirrors `exe/sfl-analyze`'s shebang/require pattern, requires and calls
 `SFL::GUI::ReviewQueueApp.launch`.
+
+**Require graph (SIFT Finding 3):** `lib/sfl.rb`'s Zeitwerk loader explicitly
+`ignore`s `lib/sfl/gui` — these six files are never autoloaded, so the design must state their
+load order rather than leave it implicit (an unspecified order is a guaranteed
+`NameError: undefined method 'item_list_control'`-style failure at first launch, since Glimmer
+custom controls must be `require`d before the file that invokes their DSL keyword). Each file
+requires its own direct dependencies at its top (leaf-to-root), so `exe/sfl-review` only ever
+requires the root:
+
+```
+lib/sfl/gui/review_queue_view_model.rb   requires: nothing (plain Ruby, no other gui/ file)
+lib/sfl/gui/item_list_control.rb         requires: nothing beyond glimmer-dsl-libui itself
+lib/sfl/gui/image_review_control.rb      requires: nothing beyond glimmer-dsl-libui itself
+lib/sfl/gui/text_review_control.rb       requires: nothing beyond glimmer-dsl-libui itself
+lib/sfl/gui/detail_pane_control.rb       requires: image_review_control, text_review_control
+lib/sfl/gui/review_queue_app.rb          requires: review_queue_view_model, item_list_control,
+                                                    detail_pane_control
+
+exe/sfl-review                           requires: glimmer-dsl-libui, lib/sfl (for Boot/Core::
+                                                    Pipeline/Store::PgReviewQueueRepository),
+                                                    lib/sfl/gui/review_queue_app
+```
+
+Each `require_relative` lives at the top of the file that needs it (standard Ruby practice, not
+a single flat manifest) — `review_queue_app.rb`'s three requires are the only "assembly" require
+list in the whole `gui/` directory.
 
 ## Data Flow — two worked examples
 
