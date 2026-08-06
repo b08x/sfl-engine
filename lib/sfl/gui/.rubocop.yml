@@ -1,0 +1,12 @@
+---
+# Narrowly-scoped DSL configuration for Glimmer custom controls.
+# Only Style/BlockDelimiters is kept here because every Glimmer control
+# structurally requires `body { }`, `vertical_box { }`, etc.
+# All other idiomatic patterns (data-binding operators, quotes, lambdas, layouts)
+# are suppressed via inline rubocop:disable/enable comments in the control files
+# to avoid masking real bugs in non-DSL logic (event handlers, helpers, etc.)
+
+inherit_from: ../../../.rubocop.yml
+
+Style/BlockDelimiters:
+  Enabled: false
