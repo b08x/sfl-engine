@@ -80,8 +80,11 @@ module SFL
         return deterministic if deterministic
 
         sample = File.read(file, SAMPLE_BYTES)
-        result = classifier.classify(sample, file)
-        { format: result.format, mode: result.mode, confidence: result.confidence, reasoning: result.reasoning }
+        classify_via_llm(sample, file)
+      end
+
+      private def classify_via_llm(sample, file)
+        classifier.classify(sample, file).to_h.merge(sample:)
       end
 
       private def dispatch_or_review(file, classification, counts)
@@ -134,7 +137,9 @@ module SFL
       end
 
       private def draft_or_record_failure(file, classification, counts)
-        sample = File.read(file, SAMPLE_BYTES)
+        # Reuses the sample #classify already read (this branch is only reachable via the
+        # classifier fallback) instead of re-reading the same bytes; fallback guards the invariant.
+        sample = classification[:sample] || File.read(file, SAMPLE_BYTES)
         draft = loader_drafter.draft(sample, file)
         enqueue_drafted(file, classification, draft)
         counts[:drafted] += 1
