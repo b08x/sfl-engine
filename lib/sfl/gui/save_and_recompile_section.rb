@@ -68,6 +68,15 @@ module SFL
       def start_save_and_recompile
         apply_busy_state(true) # already on the UI thread: on_clicked runs there
 
+        # Captured here, on the UI thread, before the compile starts — names the
+        # row that was selected at click time. The table stays interactive
+        # during the compile, so selected_item can move to a different row
+        # before the thread finishes; #finish_recompile! compares against this
+        # captured id and refuses to record the decision against whatever
+        # happens to be selected when the compile completes (SIFT follow-up:
+        # row-identity check).
+        compiled_item_id = viewmodel.selected_item_id
+
         # rubocop:disable ThreadSafety/NewThread -- offloading the network-bound
         # compile off the libui event loop is the entire point. Nothing in this
         # block touches an observed attribute; see the comment above.
@@ -75,7 +84,7 @@ module SFL
           compile_result = perform_compile
 
           Glimmer::LibUI.queue_main do
-            result = finish_recompile(compile_result)
+            result = finish_recompile(compile_result, compiled_item_id)
             apply_busy_state(false)
             msg_box_error("Recompile failed", FailureMessage.call(result.failure)) if result.failure?
           end
@@ -98,8 +107,8 @@ module SFL
       # queue_main block would abort before re-enabling the button.
       #
       # @return [Dry::Monads::Result]
-      private def finish_recompile(compile_result)
-        viewmodel.finish_recompile!(compile_result)
+      private def finish_recompile(compile_result, compiled_item_id)
+        viewmodel.finish_recompile!(compile_result, compiled_item_id:)
       rescue => e
         Dry::Monads::Failure(e.message)
       end

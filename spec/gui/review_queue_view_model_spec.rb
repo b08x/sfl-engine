@@ -253,7 +253,7 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
     it "records an edit decision and refreshes when handed a successful compile" do
       allow(repo).to receive_messages(decide: pending_row.merge(status: "edited"), pending: { items: [], total: 0 })
 
-      result = view_model.finish_recompile!(Dry::Monads::Success([:clause]))
+      result = view_model.finish_recompile!(Dry::Monads::Success([:clause]), compiled_item_id: "row-1")
 
       expect(repo).to have_received(:decide).with(id: "row-1", decision: "edit", reviewer: "bob")
       expect(result).to be_success
@@ -263,7 +263,7 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       compile_failure = Dry::Monads::Failure([:pass_one_failed, "sidecar crashed"])
       allow(repo).to receive(:decide)
 
-      result = view_model.finish_recompile!(compile_failure)
+      result = view_model.finish_recompile!(compile_failure, compiled_item_id: "row-1")
 
       expect(repo).not_to have_received(:decide)
       expect(result).to eq(compile_failure)
@@ -276,7 +276,9 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       allow(repo).to receive(:decide)
 
       result = nil
-      expect { result = view_model.finish_recompile!(Dry::Monads::Success([:clause])) }.not_to raise_error
+      expect do
+        result = view_model.finish_recompile!(Dry::Monads::Success([:clause]), compiled_item_id: "row-1")
+      end.not_to raise_error
 
       expect(result).to be_failure
       expect(repo).not_to have_received(:decide)
@@ -286,9 +288,27 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
       allow(repo).to receive(:decide).and_raise(Errno::ECONNREFUSED)
 
       result = nil
-      expect { result = view_model.finish_recompile!(Dry::Monads::Success([:clause])) }.not_to raise_error
+      expect do
+        result = view_model.finish_recompile!(Dry::Monads::Success([:clause]), compiled_item_id: "row-1")
+      end.not_to raise_error
 
       expect(result).to be_failure
+    end
+
+    # SIFT follow-up: the table stays interactive during a background compile,
+    # so the user can click a different row before it finishes. Without this
+    # check, decide! would record the edit against whatever is selected when
+    # the compile completes rather than the row that was actually compiled.
+    it "returns Failure and does not record a decision when the selection changed mid-compile" do
+      other_row = pending_row.merge(id: "row-2")
+      allow(repo).to receive_messages(pending: { items: [other_row], total: 1 }, decide: other_row)
+      view_model.select(other_row) # user clicked a different row while the compile was in flight
+
+      result = view_model.finish_recompile!(Dry::Monads::Success([:clause]), compiled_item_id: "row-1")
+
+      expect(result).to be_failure
+      expect(result.failure).to eq(SFL::GUI::ReviewQueueViewModel::SELECTION_CHANGED_MESSAGE)
+      expect(repo).not_to have_received(:decide)
     end
   end
 

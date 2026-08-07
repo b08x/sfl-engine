@@ -21,6 +21,10 @@ module SFL
     class ReviewQueueViewModel
       include Dry::Monads[:result]
 
+      # Surfaced when #finish_recompile!'s identity check rejects a stale
+      # compile — the user switched rows while a compile was in flight.
+      SELECTION_CHANGED_MESSAGE = "selection changed during recompile — the edit was not saved, please retry"
+
       attr_accessor :items, :selected_item, :modality_filter, :edited_text
 
       # @param repo [Store::PgReviewQueueRepository]
@@ -85,6 +89,15 @@ module SFL
         self.edited_text = item[:generated_text]
       end
 
+      # Identity used by #finish_recompile! to detect a stale compile — capture
+      # this before starting a background compile, then compare it against the
+      # live value once the compile finishes.
+      #
+      # @return [Object, nil] the selected item's id, or nil if nothing selected
+      def selected_item_id
+        selected_item&.dig(:id)
+      end
+
       # @return [Symbol, nil] :image | :text | :unrecognized | nil (nothing selected)
       def detail_kind
         return nil if selected_item.nil?
@@ -114,7 +127,8 @@ module SFL
       #
       # @return [Dry::Monads::Result]
       def save_and_recompile!
-        finish_recompile!(compile_for_recompile)
+        compiled_item_id = selected_item_id
+        finish_recompile!(compile_for_recompile, compiled_item_id:)
       end
 
       # Phase 1 of #save_and_recompile!, split out so a GUI control can run the
@@ -141,14 +155,25 @@ module SFL
       # thread. Passing a failed compile Result through short-circuits, exactly
       # as the original inline flow did.
       #
+      # The identity check is what makes backgrounding safe. The table stays
+      # interactive during a compile, so the user can click a different row
+      # while one is in flight; #select_row would move selected_item, and a
+      # decide! reading it *now* would record the edit against the wrong queue
+      # item. Comparing against the id captured before the compile started
+      # blocks that write before it happens — decide! is never reached with a
+      # mismatched row, so nothing is misattributed and then corrected.
+      #
+      # A vanished selection (the 10s timer resolved the row) lands here too:
+      # selected_item_id is nil, which fails the comparison.
+      #
       # @param compile_result [Dry::Monads::Result] from #compile_for_recompile
+      # @param compiled_item_id [Object, nil] #selected_item_id as captured
+      #   before the compile began
       # @return [Dry::Monads::Result]
-      def finish_recompile!(compile_result)
+      def finish_recompile!(compile_result, compiled_item_id:)
         return compile_result if compile_result.failure?
+        return Failure(SELECTION_CHANGED_MESSAGE) unless selected_item_id == compiled_item_id
 
-        # No selected_item guard needed: #decide! already returns
-        # Failure("no item selected") when the auto-refresh timer resolved the
-        # row out from under an in-flight compile.
         decide!("edit")
       end
 
