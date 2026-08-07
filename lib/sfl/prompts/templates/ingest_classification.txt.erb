@@ -1,0 +1,15 @@
+Classify this file sample for an ingest pipeline that routes files to one of three analysis
+modes: "conversation" (chat/dialogue transcripts), "knowledge_base" (reference documents,
+notes, articles), or "documentation" (technical docs, specs, READMEs).
+
+File path: <%= path %>
+
+Sample content (may be truncated):
+---
+<%= sample %>
+---
+
+Report a short format tag (e.g. chatgpt_export, markdown_chat, generic_jsonl_chat, unknown),
+which mode this belongs to (omit if you cannot tell), your confidence 0.0-1.0, and your
+reasoning. If the content doesn't look like any recognizable file format at all, use format
+"unknown" and omit mode.
