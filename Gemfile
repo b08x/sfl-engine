@@ -98,3 +98,5 @@ group :perf do
   gem "memory_profiler"
   gem "stackprof"
 end
+
+gem "gem-skill", "~> 0.2.0"

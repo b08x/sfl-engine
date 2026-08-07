@@ -108,6 +108,10 @@ GEM
       fiber-storage
     fiber-storage (1.0.1)
     fiddle (1.1.8)
+    gem-skill (0.2.0)
+      async (~> 2.0)
+      ruby_llm (~> 1.0)
+      tty-spinner
     glimmer (2.8.2)
       array_include_methods (>= 1.4.0, < 1.6.0)
       facets (= 3.1.0)
@@ -125,9 +129,6 @@ GEM
       rouge (>= 3.26.0, < 4.0.0)
       super_module (~> 1.4.1)
       text-table (>= 1.2.4, < 2.0.0)
-    google-protobuf (4.35.1)
-      bigdecimal
-      rake (~> 13.3)
     google-protobuf (4.35.1-x86_64-linux-gnu)
       bigdecimal
       rake (~> 13.3)
@@ -339,6 +340,8 @@ GEM
       tty-screen (~> 0.8)
       wisper (~> 2.0)
     tty-screen (0.8.2)
+    tty-spinner (0.9.3)
+      tty-cursor (~> 0.7)
     unicode-display_width (2.6.0)
     uri (1.1.1)
     wisper (2.0.1)
@@ -358,6 +361,7 @@ DEPENDENCIES
   dry-types (~> 1.7)
   falcon (~> 0.47)
   fiddle (~> 1.1)
+  gem-skill (~> 0.2.0)
   glimmer-dsl-libui (~> 0.13)
   inkmark (~> 0.1)
   json_canvas (~> 0.1)
@@ -437,9 +441,9 @@ CHECKSUMS
   fiber-local (1.1.0) sha256=c885f94f210fb9b05737de65d511136ea602e00c5105953748aa0f8793489f06
   fiber-storage (1.0.1) sha256=f48e5b6d8b0be96dac486332b55cee82240057065dc761c1ea692b2e719240e1
   fiddle (1.1.8) sha256=7fa8ee3627271497f3add5503acdbc3f40b32f610fc1cf49634f083ef3f32eee
+  gem-skill (0.2.0) sha256=e1a057dd579f6e7d67515cadd1146053e2d801ba1a9e04d05382c4e845c31718
   glimmer (2.8.2) sha256=b1ae9e3e1c7f5da7907c065f8b21a4f092be019d2971cda7f80c73791b65c124
   glimmer-dsl-libui (0.13.1) sha256=0009e312a1723fa756584035473b24c0991322735a0c2d8b689f5e71ca457e95
-  google-protobuf (4.35.1) sha256=a3a6471331d918f58dfa4d014a8f6286f0af2cf4840216bde52fcf2ea3fe3726
   google-protobuf (4.35.1-x86_64-linux-gnu) sha256=c786439087512a3fbd199e9897d265b855f951d4027e218ea55e858d45969edd
   googleapis-common-protos-types (1.23.0) sha256=992e740a523794d9fc5f29a504465d8fc737aaa16c930fe7228e3346860faf0a
   ice_nine (0.11.2) sha256=5d506a7d2723d5592dc121b9928e4931742730131f22a1a37649df1c1e2e63db
@@ -537,6 +541,7 @@ CHECKSUMS
   tty-prompt (0.23.1) sha256=fcdbce905238993f27eecfdf67597a636bc839d92192f6a0eef22b8166449ec8
   tty-reader (0.9.0) sha256=c62972c985c0b1566f0e56743b6a7882f979d3dc32ff491ed490a076f899c2b1
   tty-screen (0.8.2) sha256=c090652115beae764336c28802d633f204fb84da93c6a968aa5d8e319e819b50
+  tty-spinner (0.9.3) sha256=0e036f047b4ffb61f2aa45f5a770ec00b4d04130531558a94bfc5b192b570542
   unicode-display_width (2.6.0) sha256=12279874bba6d5e4d2728cef814b19197dbb10d7a7837a869bab65da943b7f5a
   uri (1.1.1) sha256=379fa58d27ffb1387eaada68c749d1426738bd0f654d812fcc07e7568f5c57c6
   wisper (2.0.1) sha256=ce17bc5c3a166f241a2e6613848b025c8146fce2defba505920c1d1f3f88fae6
