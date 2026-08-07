@@ -56,6 +56,12 @@ RSpec.shared_examples "an embedder port" do
   end
 end
 
+RSpec.shared_examples "a classifier port" do
+  it "returns a Core::Types::ClassificationResult from #classify" do
+    expect(subject.classify("some file sample", "some/path.txt")).to be_a(SFL::Core::Types::ClassificationResult)
+  end
+end
+
 RSpec.shared_examples "a clause store port" do
   let(:clause) do
     SFL::Core::Types::AnnotatedClause.new(

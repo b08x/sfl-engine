@@ -2,6 +2,41 @@
 
 require "spec_helper"
 
+RSpec.describe SFL::Core::Ports::Fake::Classifier do
+  subject { described_class.new(results:) }
+
+  let(:results) do
+    {
+      "chatgpt-shaped sample" => SFL::Core::Types::ClassificationResult.new(
+        format: "chatgpt_export", mode: "conversation", confidence: 0.95, reasoning: "has a mapping key"
+      ),
+    }
+  end
+
+  it_behaves_like "a classifier port"
+
+  it "returns the registered result for an exact sample match" do
+    result = subject.classify("chatgpt-shaped sample", "some/path.txt")
+
+    expect(result.format).to eq("chatgpt_export")
+    expect(result.confidence).to eq(0.95)
+  end
+
+  it "returns a low-confidence unknown default for an unregistered sample" do
+    result = subject.classify("never registered", "some/path.txt")
+
+    expect(result.format).to eq("unknown")
+    expect(result.confidence).to eq(0.0)
+  end
+
+  it "ignores path when looking up a registered sample" do
+    a = subject.classify("chatgpt-shaped sample", "some/path.txt")
+    b = subject.classify("chatgpt-shaped sample", "a/totally/different/path.json")
+
+    expect(a).to eq(b)
+  end
+end
+
 RSpec.describe SFL::Core::Ports::Fake::ClauseStore do
   subject { described_class.new }
 

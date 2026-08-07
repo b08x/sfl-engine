@@ -34,6 +34,27 @@ RSpec.describe SFL::Core::Ports::Null::Embedder do
   it_behaves_like "an embedder port"
 end
 
+RSpec.describe SFL::Core::Ports::Null::Classifier do
+  subject { described_class.new }
+
+  it_behaves_like "a classifier port"
+
+  it "always returns format unknown, mode nil, confidence 0.0" do
+    result = subject.classify("anything", "some/path.txt")
+
+    expect(result.format).to eq("unknown")
+    expect(result.mode).to be_nil
+    expect(result.confidence).to eq(0.0)
+  end
+
+  it "ignores sample and path, returning the same verdict regardless" do
+    a = subject.classify("sample one", "path/one.txt")
+    b = subject.classify("sample two", "path/two.json")
+
+    expect(a).to eq(b)
+  end
+end
+
 RSpec.describe SFL::Core::Ports::Null::ClauseStore do
   subject { described_class.new }
 
