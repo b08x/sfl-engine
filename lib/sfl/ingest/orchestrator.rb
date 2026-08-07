@@ -63,13 +63,17 @@ module SFL
 
       # One file's failure must not take the rest of the run down with it — same F11
       # partial-failure-isolation principle SFL::CLI.run_conversation's own per-file rescue
-      # already applies (lib/sfl/cli.rb:225-233).
+      # already applies (lib/sfl/cli.rb:225-233). SystemCallError covers the raw File.read calls
+      # in #classify/#draft_or_record_failure (a file vanishing or losing permissions mid-walk,
+      # e.g. a live filesystem being ingested concurrently with other writers) — without it, one
+      # such file crashes the entire run instead of being isolated like every other failure mode
+      # here (found by SIFT audit of the CLI wiring that first exercises a real directory walk).
       private def process(file, counts)
         return if review_repo.resolved?(file)
 
         classification = classify(file)
         dispatch_or_review(file, classification, counts)
-      rescue Analysis::Error, Core::Loaders::Error, Store::Error => e
+      rescue Analysis::Error, Core::Loaders::Error, Store::Error, SystemCallError => e
         logger.error { "ingest failed for #{file}: #{e.class}: #{e.message}" }
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Dispatch failed: #{e.message}")
         counts[:review_entries] += 1

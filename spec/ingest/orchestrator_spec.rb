@@ -155,5 +155,26 @@ RSpec.describe SFL::Ingest::Orchestrator do
       expect(summary[:dispatched]).to eq(1)
       expect(kb_source).to have_received(:analyze).twice
     end
+
+    it "writes a draft_failed review entry, and continues, when a file vanishes mid-walk " \
+      "(SystemCallError from the initial sampling File.read is not swallowed by " \
+      "Analysis::Error/Core::Loaders::Error/Store::Error alone)" do
+      gone_path = write("gone.unknownext", "will disappear")
+      write("still.unknownext", "still here")
+      classifier_results.default = SFL::Core::Types::ClassificationResult.new(
+        format: "unknown", mode: nil, confidence: 0.1, reasoning: "no loader recognizes this shape"
+      )
+      allow(loader_drafter).to receive(:draft).and_return(
+        loader_path: "lib/sfl/core/loaders/x_source.rb", doc_path: "docs/ingest-review/x_source.md"
+      )
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(gone_path, described_class::SAMPLE_BYTES).and_raise(Errno::ENOENT)
+
+      summary = orchestrator.run(tmpdir)
+
+      expect(summary[:review_entries]).to eq(1)
+      row = SFL::Store::StoreTestDb.db[:ingest_review_entries].where(path: gone_path).first
+      expect(review_repo.find(row[:id])[:status]).to eq("draft_failed")
+    end
   end
 end

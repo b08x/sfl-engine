@@ -111,6 +111,20 @@ RSpec.describe SFL::CLI do
       end
     end
 
+    describe "ingest" do
+      it "applies defaults with no flags" do
+        parsed = described_class.parse(%w[ingest ./inbox])
+        expect(parsed[:command]).to eq(:ingest)
+        expect(parsed[:input]).to eq("./inbox")
+        expect(parsed[:options]).to eq(output_dir: "./output/latest", disable_tracing: false)
+      end
+
+      it "parses --output-dir and --disable-tracing" do
+        parsed = described_class.parse(%w[ingest ./inbox --output-dir ./out --disable-tracing])
+        expect(parsed[:options]).to eq(output_dir: "./out", disable_tracing: true)
+      end
+    end
+
     describe "context" do
       it "applies defaults with no flags" do
         parsed = described_class.parse(["context", "does it work?"])

@@ -51,6 +51,11 @@ module SFL
         knowledge-base <path>        Assess a KB directory for migration —
                                       classifies artifacts, scores quality,
                                       and produces a migration manifest
+        ingest <path>                Walk a file or directory, classify each
+                                      file, and dispatch it into the
+                                      conversation/documentation/knowledge-base
+                                      pipelines — or queue low-confidence/
+                                      unrecognized files for review
         context "<query>"            Query stored clauses, synthesize an answer
 
       Common options:
@@ -87,7 +92,7 @@ module SFL
     module_function def parse(argv)
       argv = argv.dup
       command = argv.shift&.tr("-", "_")&.to_sym
-      unless %i[conversation documentation knowledge_base context].include?(command)
+      unless %i[conversation documentation knowledge_base ingest context].include?(command)
         raise UsageError, "Unknown subcommand: #{command}\n\n#{USAGE}"
       end
 
@@ -157,6 +162,19 @@ module SFL
       options
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+
+    # Minimal option surface (issue #52's own scope note): traversal/classification/dispatch
+    # logic all lives in Ingest::Orchestrator and its collaborators, not here — this subcommand
+    # is argv parsing + wiring only, so there's nothing beyond the two options every other
+    # subcommand already exposes.
+    module_function def parse_ingest_options(argv)
+      options = { output_dir: DEFAULT_OUTPUT_DIR }
+      OptionParser.new do |opt|
+        opt.on("--output-dir DIR") { |v| options[:output_dir] = v }
+        add_tracing_option(opt, options)
+      end.parse!(argv)
+      options
+    end
 
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- see parse_conversation_options above
     module_function def parse_context_options(argv)
@@ -347,6 +365,36 @@ module SFL
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
+    # Always require_llm: true — the classifier (Boot.call's own :ingest_classification chat) and
+    # the loader_drafter's :loader_drafting chat are both load-bearing collaborators of
+    # Ingest::Orchestrator; there is no --pass1-only-equivalent skip path for this subcommand,
+    # same call as run_knowledge_base's own require_llm: true (see that method's comment).
+    #
+    # No per-file rescue loop here (unlike run_conversation's): Ingest::Orchestrator#process
+    # already applies the same F11 partial-failure-isolation principle internally (rescues
+    # Analysis::Error/Core::Loaders::Error/Store::Error per file and routes to review_repo
+    # instead of raising), so nothing escapes #run for a single bad file — verified by reading
+    # that method rather than assumed.
+    # rubocop:disable Metrics/MethodLength -- one flat boot/build/run/print-summary sequence,
+    # matching the shape of every other run_* method above.
+    module_function def run_ingest(input, options)
+      stop_flag = StopFlag.new
+      install_interrupt_trap(stop_flag)
+
+      boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
+      orchestrator = build_ingest_orchestrator(boot_result, options, stop_flag)
+
+      counts = orchestrator.run(input)
+
+      puts "\nIngest complete:"
+      puts "  Dispatched: #{counts[:dispatched]}"
+      puts "  Queued for review: #{counts[:review_entries]}"
+      puts "  Loader drafted: #{counts[:drafted]}"
+    ensure
+      Signal.trap("INT", "DEFAULT")
+    end
+    # rubocop:enable Metrics/MethodLength
+
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/synthesize/print/
     # write-file sequence, ported verbatim from legacy's own run_context.
     module_function def run_context(query, options)
@@ -466,6 +514,25 @@ module SFL
         pipeline:, review_queue_repo:,
         on_progress: progress_bar.method(:advance), stop_requested: -> { stop_flag.stopped? },
         analyze_images: options[:images], chat:
+      )
+    end
+
+    # Reuses build_conversation_engine/build_kb_source verbatim for the two dispatch targets
+    # Ingest::Orchestrator needs — issue #52's own scope note: this is wiring only, the dispatch
+    # engines themselves are unmodified. `options` here is parse_ingest_options' minimal Hash
+    # (output_dir:/disable_tracing: only), which both factories tolerate fine — neither reads a
+    # key parse_ingest_options doesn't set (build_pipeline only reads options[:pass1_only]/
+    # [:store]/[:resume], all nil/falsy here, which is the correct default: an ingest run always
+    # wants a real Pass 2 engine and never needs --resume's file cache).
+    module_function def build_ingest_orchestrator(boot_result, options, stop_flag)
+      logger, = build_collaborators
+      conversation_engine = build_conversation_engine(boot_result, options, stop_flag)
+      kb_source = build_kb_source(boot_result, options, stop_flag)
+      loader_drafter = Ingest::LoaderDrafter.new(chat: boot_result.chat_factory.for(:loader_drafting))
+      review_repo = Store::PgIngestReviewRepository.new(boot_result.db)
+
+      Ingest::Orchestrator.new(
+        conversation_engine:, kb_source:, classifier: boot_result.classifier, loader_drafter:, review_repo:, logger:
       )
     end
 
