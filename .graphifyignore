@@ -13,3 +13,4 @@ spec/
 sqlite_mcp_server.db
 .dockerignore
 .env
+docs/superpowers/

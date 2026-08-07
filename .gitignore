@@ -1,3 +1,6 @@
+specs/
+.specs/
+.superpowers/
 /.playwright-mcp/
 /.codebase-memory/
 /experiments/live-test/
