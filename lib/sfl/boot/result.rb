@@ -16,6 +16,9 @@ module SFL
     #   require_llm: false).
     # - `embedder`: ready-to-use SFL::LLM::Embedder for --store-style
     #   commands that need real embeddings (nil if require_llm: false).
+    # - `classifier`: ready-to-use SFL::LLM::Classifier wired to the
+    #   ingest_classification task, for Ingest::Orchestrator (nil if
+    #   require_llm: false).
     # - `pass1_command`: the resolved `command:` array to pass to
     #   SpacySidecarParser.new(command:, ...), or nil when
     #   .sfl-python/interpreter_path hasn't been provisioned yet (in which
@@ -38,7 +41,7 @@ module SFL
     # - `api_cors_origins`: resolved SFL_API_CORS_ORIGINS (issue #35), split on
     #   commas — the Origin allowlist API::Server accepts. Falls back to
     #   API::Server::DEFAULT_CORS_ORIGINS (the two localhost origins) when unset.
-    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :pass1_command, :pass1_env, :spacy_model,
-      :api_debug_errors, :api_cors_origins, keyword_init: true)
+    Result = Struct.new(:db, :llm_config, :chat_factory, :embedder, :classifier, :pass1_command, :pass1_env,
+      :spacy_model, :api_debug_errors, :api_cors_origins, keyword_init: true)
   end
 end

@@ -47,7 +47,14 @@ module SFL
     # adds a fifth task, add its name here — Config.for raises a clear
     # LLM::Error for anything unregistered, so a missed entry fails loudly
     # rather than silently falling back to nothing.
-    TASK_NAMES = %i[pass_two_annotation pass_two_batch_annotation context_synthesis embedding].freeze
+    TASK_NAMES = %i[
+      pass_two_annotation
+      pass_two_batch_annotation
+      context_synthesis
+      embedding
+      ingest_classification
+      loader_drafting
+    ].freeze
 
     # Default provider/model for the two Pass 2 tasks, carried over from
     # legacy's single DSPY_PROVIDER default
@@ -164,7 +171,7 @@ module SFL
     )
       Dotenv.load if load_dotenv
 
-      llm_config, chat_factory, embedder = build_llm_collaborators(env, ruby_llm) if require_llm
+      llm_config, chat_factory, embedder, classifier = build_llm_collaborators(env, ruby_llm) if require_llm
 
       configure_tracing(env, tty:, input:) if require_tracing
 
@@ -176,7 +183,7 @@ module SFL
       api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
       api_cors_origins = resolve_api_cors_origins(env)
 
-      Result.new(db:, llm_config:, chat_factory:, embedder:, pass1_command:, pass1_env:, spacy_model:,
+      Result.new(db:, llm_config:, chat_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
         api_debug_errors:, api_cors_origins:)
     end
     # rubocop:enable Metrics/ParameterLists, Metrics/MethodLength
@@ -186,10 +193,25 @@ module SFL
       validate_api_keys!(llm_config, env)
       configure_ruby_llm_providers(llm_config, env, ruby_llm)
 
-      chat_factory = LLM::ChatFactory.new(config: llm_config)
+      # chat_builder: routes through the injected ruby_llm seam, not ChatFactory's own hardcoded
+      # ::RubyLLM default — Boot is now the first caller that builds a chat eagerly (for
+      # `classifier` below) rather than lazily inside a later command, so it must honor the same
+      # "specs never touch the real ::RubyLLM" seam every other ENV/process-global-touching
+      # method in this module already does.
+      chat_factory = LLM::ChatFactory.new(
+        config: llm_config, chat_builder: -> (model:, provider:) { ruby_llm.chat(model:, provider:) }
+      )
       embedder = build_embedder(llm_config, env, ruby_llm)
+      # Eagerly resolving :ingest_classification's chat here (unlike embedder, whose model/
+      # provider strings aren't touched until an actual #embed call) means a misconfigured
+      # ingest_classification model/provider fails Boot.call for every require_llm: true caller,
+      # not just ingest commands. Deliberate, not a laziness regression: matches
+      # validate_api_keys! above, which already fails boot for ANY misconfigured task's provider
+      # key regardless of whether the current command uses that task — "fail fast on any task
+      # misconfiguration at boot" is this module's established risk model, not something new here.
+      classifier = LLM::Classifier.new(chat: chat_factory.for(:ingest_classification))
 
-      [llm_config, chat_factory, embedder]
+      [llm_config, chat_factory, embedder, classifier]
     end
 
     # ENV convention for per-task config (track decision 8), decided here
@@ -203,6 +225,10 @@ module SFL
     # no established v2 convention yet for exposing arbitrary param keys
     # via ENV var names; add one here if/when a task actually needs it,
     # rather than speculatively generalizing now.
+    # rubocop:disable Metrics/MethodLength -- six independent per-task TaskConfig builds (two of
+    # them, ingest_classification/loader_drafting, needing an explanatory comment on their
+    # borrowed default), then one Config.new — no natural sub-grouping to extract without
+    # scattering related task-default reasoning across multiple methods.
     module_function def build_llm_config(env)
       pass_two_annotation = pass_two_task_config(:pass_two_annotation, env)
       pass_two_batch_annotation = pass_two_task_config(:pass_two_batch_annotation, env)
@@ -211,9 +237,29 @@ module SFL
         default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
       )
       embedding = embedding_task_config(env)
+      # No existing "cheap chat model" default to borrow from — :embedding's default is the
+      # cheapest task already configured, same defensible-starting-point judgment call
+      # :context_synthesis makes above by reusing :pass_two_annotation's default.
+      ingest_classification = task_config_from_env(
+        :ingest_classification, env, default_provider: embedding.provider, default_model: embedding.model
+      )
+      # No existing "reasoning tier" default either — :pass_two_annotation's default is the
+      # strongest general-purpose task already configured.
+      loader_drafting = task_config_from_env(
+        :loader_drafting, env,
+        default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
+      )
 
-      LLM::Config.new(tasks: { pass_two_annotation:, pass_two_batch_annotation:, context_synthesis:, embedding: })
+      LLM::Config.new(tasks: {
+        pass_two_annotation:,
+        pass_two_batch_annotation:,
+        context_synthesis:,
+        embedding:,
+        ingest_classification:,
+        loader_drafting:,
+      })
     end
+    # rubocop:enable Metrics/MethodLength
 
     module_function def pass_two_task_config(name, env)
       task_config_from_env(name, env, default_provider: DEFAULT_PROVIDER, default_model: DEFAULT_MODEL)

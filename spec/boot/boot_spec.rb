@@ -15,7 +15,10 @@ RSpec.describe SFL::Boot do
       "mistral_api_key=": nil, "ollama_api_base=": nil, "default_embedding_model=": nil
     )
   end
-  let(:ruby_llm) { double("ruby_llm") }
+  # chat: stub covers build_llm_collaborators' eager chat_factory.for(:ingest_classification)
+  # call (builds Result#classifier) — routed through the injected ruby_llm seam, not a real
+  # RubyLLM::Chat, same rationale as every other double in this file.
+  let(:ruby_llm) { double("ruby_llm", chat: double("chat")) }
   let(:base_env) do
     {
       "DATABASE_URL" => "postgresql:///irrelevant-for-these-examples",
@@ -307,6 +310,56 @@ RSpec.describe SFL::Boot do
       result = boot(env: base_env)
 
       expect(result.pass1_env).to eq("PYTHONPATH" => SFL::Boot::PYTHON_TARGET_DIR)
+    end
+  end
+
+  describe "ingest_classification and loader_drafting task configs" do
+    it "defaults ingest_classification to the embedding task's default provider/model" do
+      result = boot(env: base_env.merge("EMBEDDING_MODEL" => "embeddinggemma:latest"))
+
+      task = result.llm_config.for(:ingest_classification)
+      expect(task.provider).to eq(:ollama)
+      expect(task.model).to eq("embeddinggemma:latest")
+    end
+
+    it "honors SFL_TASK_INGEST_CLASSIFICATION_MODEL/_PROVIDER overrides" do
+      result = boot(env: base_env.merge(
+        "SFL_TASK_INGEST_CLASSIFICATION_MODEL" => "custom-cheap-model",
+        "SFL_TASK_INGEST_CLASSIFICATION_PROVIDER" => "openrouter"
+      ))
+
+      task = result.llm_config.for(:ingest_classification)
+      expect(task.provider).to eq(:openrouter)
+      expect(task.model).to eq("custom-cheap-model")
+    end
+
+    it "defaults loader_drafting to the same default provider/model as pass_two_annotation" do
+      result = boot(env: base_env)
+
+      pass_two = result.llm_config.for(:pass_two_annotation)
+      loader_drafting = result.llm_config.for(:loader_drafting)
+      expect(loader_drafting.provider).to eq(pass_two.provider)
+      expect(loader_drafting.model).to eq(pass_two.model)
+    end
+
+    it "honors SFL_TASK_LOADER_DRAFTING_MODEL/_PROVIDER overrides" do
+      result = boot(env: base_env.merge(
+        "SFL_TASK_LOADER_DRAFTING_MODEL" => "custom-reasoning-model",
+        "SFL_TASK_LOADER_DRAFTING_PROVIDER" => "anthropic",
+        "ANTHROPIC_API_KEY" => "anthropic-key"
+      ))
+
+      task = result.llm_config.for(:loader_drafting)
+      expect(task.provider).to eq(:anthropic)
+      expect(task.model).to eq("custom-reasoning-model")
+    end
+  end
+
+  describe "Result#classifier" do
+    it "builds an LLM::Classifier wired to the ingest_classification task" do
+      result = boot(env: base_env)
+
+      expect(result.classifier).to be_a(SFL::LLM::Classifier)
     end
   end
 
