@@ -1,6 +1,6 @@
 .claude/skills/
-specs/
-.specs/
+/specs/
+/.specs/
 .superpowers/
 /.playwright-mcp/
 /.codebase-memory/
