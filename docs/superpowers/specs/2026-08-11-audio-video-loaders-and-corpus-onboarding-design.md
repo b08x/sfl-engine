@@ -36,6 +36,15 @@ LLM config registry.
   already a transitive capability of the `ruby_llm` gem already in the
   Gemfile. Supports `.mp3 .wav .m4a .ogg .flac`; 25MB file-size limit.
   Verified via Context7 (`/crmne/ruby_llm`).
+- `whispercpp` gem (`bindings/ruby` in ggml-org/whisper.cpp, installed via
+  `bundle add whispercpp`) — native C-extension binding to whisper.cpp
+  itself: `Whisper::Context.new("base")` (or a local `.bin` path, or a URI —
+  models auto-download and cache), `Whisper::Params.new(language:, ...)`,
+  `context.transcribe(path, params) { |text| ... }`. Runs fully local, no
+  network call or per-call API cost. Verified via Context7
+  (`/ggml-org/whisper.cpp`). This mirrors Pass 1's existing local-first
+  precedent (a spaCy sidecar instead of a cloud NLP API — track decision 2)
+  more closely than an API-based transcriber does.
 - `RubyLLM.chat(model: "gemini-2.5-flash").ask(..., with: "clip.mp4")` —
   video-capable chat, `.mp4 .mov .avi .webm`. Verified via Context7: **video
   support is provider-limited to Gemini/VertexAI**, unlike image support
@@ -70,15 +79,49 @@ end
 `transcriber:` is injected rather than calling `RubyLLM.transcribe` directly,
 matching `ImageSource` taking `chat:` rather than calling `RubyLLM.chat`
 itself — keeps the loader testable with a plain double and keeps model/task
-resolution in `Boot`/`ChatFactory`, not scattered into loader classes.
-`RubyLLM.transcribe` is a module-level function (not a `ChatFactory`-built
-chat object), so the injected collaborator is a small adapter object
-responding to `#transcribe(path) -> String`, not a raw `RubyLLM::Chat`.
+resolution in `Boot`/`ChatFactory`, not scattered into loader classes. The
+injected collaborator is a small adapter object responding to
+`#transcribe(path) -> String`; `AudioSource` itself never knows which
+concrete backend it's talking to.
 
-One `Types::Unit` per file for this iteration (transcription segments/
-timestamps are available from `RubyLLM.transcribe`'s result but splitting a
-transcript into multiple units by segment is future work, not required to
-close the current gap).
+One `Types::Unit` per file for this iteration (segment/timestamp splitting
+is future work either way, not required to close the current gap).
+
+### Transcriber adapters
+
+Two concrete adapters behind the same `#transcribe(path) -> String` seam,
+both implemented (not one deferred) — the corpus-onboarding wizard in Part 2
+picks between them per run:
+
+- `Llm::Transcribers::RubyLlmTranscriber` — wraps `RubyLLM.transcribe`,
+  resolved via a `:audio_transcription` `Boot::TASK_NAMES` entry (provider/
+  model config, default provider inherited from `:pass_two_annotation` per
+  the `:context_synthesis` precedent). Requires network + an API key; no
+  local setup.
+- `Llm::Transcribers::WhisperCppTranscriber` — wraps `Whisper::Context#transcribe`
+  from the `whispercpp` gem. Config here isn't a provider/model pair, so it
+  does **not** go through `Boot::TASK_NAMES`/`TaskConfig` — it's a local
+  model name/path (`"base"`, `"base.en"`, `"small"`, or a cached `.bin`
+  path), recorded per-run in the `Onboarding::Profile` (Part 2), not
+  globally in `.env`. First use of this backend for a given model triggers
+  the gem's own auto-download/cache; a `bin/setup-whisper` helper (mirroring
+  `bin/setup-python`'s spaCy vendoring) pre-warms that cache instead of
+  paying the download cost mid-ingest-run.
+
+Trade-off worth naming: `whispercpp` is a native C++ extension compiled at
+`bundle install` time, so adding it to the Gemfile means every install pays
+that compile cost regardless of which backend a given run actually picks —
+unlike `kreuzberg` (already a hard dependency `PdfSource` requires
+unconditionally), this one is genuinely optional per-user. Not treated as
+disqualifying (this codebase already accepts a heavier local dependency for
+Pass 1's spaCy sidecar), but flagged here rather than glossed over.
+
+A CLI-level default is still needed for direct `ingest --audio` invocations
+that skip the `onboard` wizard entirely: defaults to `RubyLlmTranscriber`
+(no local setup required to get a working `--audio` flag), with a
+`--transcriber ruby_llm|whisper_cpp` override — the wizard sets this flag
+explicitly when it synthesizes its `ingest` invocation, so the default only
+matters for users who never run `onboard`.
 
 ### VideoSource
 
@@ -130,8 +173,12 @@ collaborator (`transcriber:` / `chat:`) when enabled — mirrors the existing
 
 `--audio`/`--no-audio` and `--video`/`--no-video` flags on the
 `knowledge-base` and `ingest` subcommands, alongside the existing
-`--images`/`--no-images`. `build_kb_source` gets two more conditional
-`chat_factory.for(...)` / transcriber-adapter calls, gated on
+`--images`/`--no-images`, plus `--transcriber ruby_llm|whisper_cpp`
+(default `ruby_llm`, see Transcriber adapters above) gating which concrete
+adapter `build_kb_source` constructs when `--audio` is set. `build_kb_source`
+gets two more conditional collaborator-construction branches
+(`chat_factory.for(:video_analysis)` for video; a `RubyLlmTranscriber` or
+`WhisperCppTranscriber` for audio, chosen by `--transcriber`), gated on
 `options[:audio]` / `options[:video]` exactly as `options[:images]` already
 gates the vision chat.
 
@@ -155,7 +202,15 @@ file, a plain `double` for the injected collaborator (`transcriber`/`chat`),
 one example asserting the unit's text/document_id, one asserting the
 collaborator was called with the right path/attachment shape, and a
 failure-path context asserting graceful fallback + the truthful failure
-flag. No shared example exists yet for `Loaders::Source` conformance across
+flag. `AudioSource` itself is tested once against a `transcriber` double —
+it doesn't know or care which concrete adapter is behind it. The two
+adapters (`RubyLlmTranscriber`, `WhisperCppTranscriber`) each get their own
+narrow spec asserting they satisfy `#transcribe(path) -> String` against a
+stubbed/faked backend call — `WhisperCppTranscriber`'s spec stubs
+`Whisper::Context` rather than exercising a real native transcription, same
+principle as not hitting a real LLM API in `RubyLlmTranscriber`'s spec.
+
+No shared example exists yet for `Loaders::Source` conformance across
 `MarkdownSource`/`PdfSource`/`ImageSource`/`AudioSource`/`VideoSource`; introducing
 one is worth doing here since it would now cover five classes, not
 duplicating per-class "is_a?(Source)" checks — noted as a small
@@ -202,6 +257,12 @@ the corpus (skipping any modality with zero files):
   that modality as a direct LLM-call-count estimate (one call per file for
   audio/video, per current one-unit-per-file design; images likewise) so the
   cost trade-off is visible rather than guessed.
+- If audio is enabled: which transcriber backend — `RubyLlmTranscriber`
+  (API, no local setup, per-call cost shown as the file count above) or
+  `WhisperCppTranscriber` (local, no per-call cost, needs a model
+  downloaded/cached first — the wizard offers to run `bin/setup-whisper`
+  right there if the chosen model isn't already cached, rather than
+  deferring that failure to mid-ingest-run).
 - Reuse the global default provider/model (from `.env` /
   `bin/setup-config`), or override per-run for this corpus specifically
   (writes explicit `SFL_TASK_*` overrides for just this run, not persisted
@@ -213,8 +274,8 @@ the corpus (skipping any modality with zero files):
 enabled/disabled, any per-run provider overrides, the extracted intent Hash)
 gets persisted to `.sfl-corpus-profiles/<slug>.yml` (slug derived from the
 target path's basename). The wizard then prints the equivalent
-`sfl-analyze ingest <path> [--images] [--audio] [--video] --store` invocation
-and asks whether to run it now or just save the profile for later. Running
+`sfl-analyze ingest <path> [--images] [--audio] [--transcriber ruby_llm|whisper_cpp] [--video] --store`
+invocation and asks whether to run it now or just save the profile for later. Running
 it now shells out to the existing `CLI.run_ingest` path unchanged — the
 wizard never talks to `Ingest::Orchestrator` directly, keeping the
 established CLI parsing/dispatch as the single entry point.
