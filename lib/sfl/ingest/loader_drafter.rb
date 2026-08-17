@@ -1,26 +1,24 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "dspy"
 
 module SFL
   module Ingest
     # Drafts a candidate SFL::Core::Loaders::Source subclass for a file
     # shape Ingest::DeterministicRules/Core::Ports::Classifier couldn't
     # recognize at all (tier: loader_drafting — see SFL::Boot).
-    #
-    # Safety boundary: never requires, registers, or executes the drafted
-    # file. It is written to `loaders_dir` inert — a human must review it,
-    # then manually add the `require` and a DeterministicRules table
-    # entry before it runs against real data. No code path in this class
-    # or Ingest::Orchestrator loads it automatically.
     class LoaderDrafter
       class Error < SFL::Error; end
 
-      # @param chat [#with_schema] a RubyLLM::Chat (or compatible double)
+      # @param lm [DSPy::LM] The language model configuration for this task
       # @param loaders_dir [String] where candidate loader .rb files are written
       # @param docs_dir [String] where candidate review .md docs are written
-      def initialize(chat:, loaders_dir: "lib/sfl/core/loaders", docs_dir: "docs/ingest-review")
-        @chat = chat
+      def initialize(lm:, loaders_dir: "lib/sfl/core/loaders", docs_dir: "docs/ingest-review")
+        @lm = lm
+        @predictor = DSPy::Predict.new(LLM::Signatures::LoaderDraftSignature).tap do |p|
+          p.configure { |c| c.lm = lm }
+        end
         @loaders_dir = loaders_dir
         @docs_dir = docs_dir
       end
@@ -38,19 +36,17 @@ module SFL
         raise Error, "loader draft failed for #{path}: #{e.message}"
       end
 
-      attr_reader :chat, :loaders_dir, :docs_dir
-      private :chat, :loaders_dir, :docs_dir
+      attr_reader :lm, :loaders_dir, :docs_dir
+      private :lm, :loaders_dir, :docs_dir
 
       private def fetch(sample, path)
-        prompt = Prompts.render(:loader_drafting, path:, sample:)
-        response = chat.with_schema(LLM::Schemas::LoaderDraftSchema).ask(prompt)
-        LLM::ResponseSymbolizer.call(response.content)
+        # We can still render the prompt, or just pass them as inputs. Let's just pass them as inputs.
+        # But wait, did LoaderDraftSignature expect "prompt" or "file_sample" and "filename"?
+        # It expects `file_sample` and `filename`.
+        result = @predictor.call(file_sample: sample, filename: path)
+        LLM::ResponseSymbolizer.call(result.to_h)
       end
 
-      # Untrusted LLM output: class_name feeds directly into a filesystem path below
-      # (loaders_dir/docs_dir join), so it's constrained to a bare PascalCase identifier
-      # before use — rejects path-traversal segments ("..", "/") and any other shape the
-      # schema's prompt description didn't actually enforce on its own.
       CLASS_NAME_PATTERN = /\A[A-Z][A-Za-z0-9]*\z/
 
       private def write_files(raw, source_path)
@@ -93,11 +89,6 @@ module SFL
         MARKDOWN
       end
 
-      # PascalCase -> snake_case, no external inflector dependency needed for this one shape.
-      # Known limitation: doesn't split consecutive-capital acronym runs (e.g. "JSONLChatSource"
-      # -> "jsonlchat_source", not "jsonl_chat_source") — acceptable because a human reviews and,
-      # if registering the draft, renames the class/file together; CLASS_NAME_PATTERN above only
-      # guards the security boundary (no path-traversal/separator characters), not naming taste.
       private def underscore(class_name)
         class_name.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase
       end

@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 require "dotenv"
-require "ruby_llm"
+require "dspy"
+require "dspy/o11y/langfuse"
 
 module SFL
   # Composition root (track decision 4): the ONLY place in this codebase
@@ -63,7 +64,7 @@ module SFL
     # (no more "provider/model" string to prefix-parse — track decision 8
     # made TaskConfig#provider a plain Symbol already).
     DEFAULT_PROVIDER = :openrouter
-    DEFAULT_MODEL = "mistralai/mistral-small-3.2-24b-instruct"
+    DEFAULT_MODEL = "google/gemini-2.5-flash:free"
 
     # :context_synthesis has no legacy equivalent (it's new in v2) — rather
     # than invent an unrelated default, its own default provider/model
@@ -104,22 +105,7 @@ module SFL
       mistral: "MISTRAL_API_KEY",
     }.freeze
 
-    # RubyLLM.configure setter name per provider — verified against each
-    # provider class's `configuration_options` in the installed ruby_llm
-    # 1.16.0 source (lib/ruby_llm/providers/{openai,anthropic,gemini,
-    # openrouter,mistral}.rb). RubyLLM's config is a process-global
-    # singleton (RubyLLM.config ||= Configuration.new) — even though
-    # ChatFactory's `chat_builder:` seam lets specs stub RubyLLM.chat
-    # directly, a real RubyLLM::Chat still reads its provider's
-    # credentials from this global config, so Boot must set it once, same
-    # spirit as legacy's RUBY_LLM_KEY_SETTER table.
-    RUBY_LLM_KEY_SETTER = {
-      openrouter: :openrouter_api_key=,
-      gemini: :gemini_api_key=,
-      openai: :openai_api_key=,
-      anthropic: :anthropic_api_key=,
-      mistral: :mistral_api_key=,
-    }.freeze
+    # (removed RUBY_LLM_KEY_SETTER)
 
     DEFAULT_SPACY_MODEL = "en_core_web_sm"
     DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
@@ -166,12 +152,11 @@ module SFL
       require_llm: true,
       require_tracing: true,
       tty: $stdin.tty?,
-      input: $stdin,
-      ruby_llm: RubyLLM
+      input: $stdin
     )
       Dotenv.load if load_dotenv
 
-      llm_config, chat_factory, embedder, classifier = build_llm_collaborators(env, ruby_llm) if require_llm
+      llm_config, lm_factory, embedder, classifier = build_llm_collaborators(env) if require_llm
 
       configure_tracing(env, tty:, input:) if require_tracing
 
@@ -183,35 +168,20 @@ module SFL
       api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
       api_cors_origins = resolve_api_cors_origins(env)
 
-      Result.new(db:, llm_config:, chat_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
+      Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
         api_debug_errors:, api_cors_origins:)
     end
     # rubocop:enable Metrics/ParameterLists, Metrics/MethodLength
 
-    module_function def build_llm_collaborators(env, ruby_llm)
+    module_function def build_llm_collaborators(env)
       llm_config = build_llm_config(env)
       validate_api_keys!(llm_config, env)
-      configure_ruby_llm_providers(llm_config, env, ruby_llm)
 
-      # chat_builder: routes through the injected ruby_llm seam, not ChatFactory's own hardcoded
-      # ::RubyLLM default — Boot is now the first caller that builds a chat eagerly (for
-      # `classifier` below) rather than lazily inside a later command, so it must honor the same
-      # "specs never touch the real ::RubyLLM" seam every other ENV/process-global-touching
-      # method in this module already does.
-      chat_factory = LLM::ChatFactory.new(
-        config: llm_config, chat_builder: -> (model:, provider:) { ruby_llm.chat(model:, provider:) }
-      )
-      embedder = build_embedder(llm_config, env, ruby_llm)
-      # Eagerly resolving :ingest_classification's chat here (unlike embedder, whose model/
-      # provider strings aren't touched until an actual #embed call) means a misconfigured
-      # ingest_classification model/provider fails Boot.call for every require_llm: true caller,
-      # not just ingest commands. Deliberate, not a laziness regression: matches
-      # validate_api_keys! above, which already fails boot for ANY misconfigured task's provider
-      # key regardless of whether the current command uses that task — "fail fast on any task
-      # misconfiguration at boot" is this module's established risk model, not something new here.
-      classifier = LLM::Classifier.new(chat: chat_factory.for(:ingest_classification))
+      lm_factory = LLM::LMFactory.new(config: llm_config, env:)
+      embedder = build_embedder(llm_config, env)
+      classifier = LLM::Classifier.new(lm: lm_factory.for(:ingest_classification))
 
-      [llm_config, chat_factory, embedder, classifier]
+      [llm_config, lm_factory, embedder, classifier]
     end
 
     # ENV convention for per-task config (track decision 8), decided here
@@ -315,22 +285,7 @@ module SFL
       end
     end
 
-    # Mirrors legacy's configure_ruby_llm_provider: DSPy no longer exists
-    # to mirror credentials into, but a real RubyLLM::Chat still reads
-    # from this same global config regardless of how it was built, so it
-    # must be set once here regardless.
-    module_function def configure_ruby_llm_providers(config, env, ruby_llm)
-      ruby_llm.configure do |c|
-        providers_in_use(config).each do |provider|
-          setter = RUBY_LLM_KEY_SETTER[provider]
-          next unless setter
-
-          c.public_send(setter, env.fetch(REQUIRED_KEY_ENV_BY_PROVIDER[provider]))
-        end
-      end
-    end
-
-    module_function def build_embedder(llm_config, env, ruby_llm)
+    module_function def build_embedder(llm_config, env)
       embedding_task = llm_config.for(:embedding)
       timeout_seconds = (env["SFL_EMBEDDING_TIMEOUT_SECONDS"] || DEFAULT_EMBEDDING_TIMEOUT_SECONDS).to_f
 
@@ -338,8 +293,7 @@ module SFL
         model: embedding_task.model,
         provider: embedding_task.provider,
         ollama_base_url: env["OLLAMA_BASE_URL"] || DEFAULT_OLLAMA_BASE_URL,
-        breaker: Core::Ports::TimeoutBreaker.new(timeout_seconds:),
-        ruby_llm:
+        breaker: Core::Ports::TimeoutBreaker.new(timeout_seconds:)
       )
     end
 
@@ -359,13 +313,12 @@ module SFL
 
       decision = LangfuseReachability.decide(env:, tty:, input:)
       if decision == :cancel
-        raise Error, "Cancelled: Langfuse tracing endpoint unreachable and the operator declined to continue " \
-          "without it."
+        raise Error,
+          "Cancelled: Langfuse tracing endpoint unreachable and the operator declined to continue without it."
       end
       return if decision == :skip_tracing
 
-      LLM::Tracing.configure(host: env["LANGFUSE_HOST"], public_key: env["LANGFUSE_PUBLIC_KEY"],
-        secret_key: env["LANGFUSE_SECRET_KEY"])
+      require "dspy/o11y/langfuse"
     end
 
     # Deliberately does NOT run migrations (track decision 5, unlike

@@ -4,7 +4,7 @@ require "optparse"
 require "json"
 require "fileutils"
 require "timeout"
-require "ruby_llm"
+require "dspy"
 
 module SFL
   # sfl-analyze command line interface. Owns argv parsing, terminal
@@ -217,7 +217,7 @@ module SFL
     rescue Boot::Error, Analysis::Error, Store::Error, Timeout::Error => e
       warn "[ERROR] #{e.message}"
       1
-    rescue RubyLLM::Error => e
+    rescue LLM::Error => e
       # Provider-side failures (rate limits, empty responses, auth) are
       # routine operational errors, not bugs — no backtrace.
       warn "[ERROR] LLM provider error: #{e.message}"
@@ -233,10 +233,11 @@ module SFL
       stop_flag = StopFlag.new
       install_interrupt_trap(stop_flag)
 
-      files = gather_conversation_files(input, options)
-      raise UsageError, "No .jsonl/.srt/.vtt/.ass/.json (ChatGPT/Claude export) files found in #{input}" if files.empty?
-
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
+
+      files = gather_conversation_files(input, options, boot_result)
+      raise UsageError, "No valid files found in #{input}" if files.empty?
+
       engine = build_conversation_engine(boot_result, options, stop_flag)
 
       failures = []
@@ -245,7 +246,7 @@ module SFL
 
         puts "=== #{file[:label]} ===" if files.size > 1
         process_conversation_file(file, files, options, engine, boot_result)
-      rescue Analysis::Error, Core::Loaders::Error, Store::Error, Timeout::Error, RubyLLM::Error => e
+      rescue Analysis::Error, Core::Loaders::Error, Store::Error, Timeout::Error, LLM::Error => e
         warn "[ERROR] #{file[:label]}: #{e.message}"
         failures << file[:label]
       end
@@ -288,18 +289,13 @@ module SFL
     # flat gather-native/gather-and-expand-exports/combine sequence, plus the per-export-path
     # rescue for F11 partial-failure isolation; splitting further would only relocate, not
     # reduce, this.
-    module_function def gather_conversation_files(input, options)
-      native_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.{jsonl,srt,vtt,ass}")) : [input]
-      native = native_paths.reject { |p| File.extname(p).casecmp(".json").zero? }
+    module_function def gather_conversation_files(input, options, boot_result)
+      all_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*")).select { |p| File.file?(p) } : [input]
+
+      native = all_paths.select { |p| %w[.jsonl .srt .vtt .ass].include?(File.extname(p).downcase) }
         .map { |p| { path: p, source_type: "chat_native", label: File.basename(p, ".*") } }
 
-      export_paths = File.directory?(input) ? Dir.glob(File.join(input, "**", "*.json")) : [input]
-      export_paths = export_paths.select { |p| File.extname(p).casecmp(".json").zero? }
-      # A malformed/unrecognized export must not abort gathering the rest of a directory's
-      # files (F11 partial-failure isolation, same principle as run_conversation's per-file
-      # rescue) — Core::Loaders::Error here used to propagate straight past both that rescue
-      # (this runs before it) and CLI.run's top-level rescue list (which never listed
-      # Core::Loaders::Error at all), producing a raw backtrace instead of a clean message.
+      export_paths = all_paths.select { |p| File.extname(p).casecmp(".json").zero? }
       expanded = export_paths.flat_map do |p|
         Analysis::ChatExportExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"))
       rescue Core::Loaders::Error => e
@@ -307,7 +303,21 @@ module SFL
         []
       end
 
-      native + expanded
+      dynamic_paths = all_paths.select { |p| %w[.md .txt .rtf .csv .tsv .log].include?(File.extname(p).downcase) }
+      dynamic = dynamic_paths.flat_map do |p|
+        unless boot_result.lm_factory
+          warn "[WARN] #{p}: dynamic expansion requires an LLM (omit --pass1-only)"
+          next []
+        end
+        lm = boot_result.lm_factory.for(:context_synthesis)
+        Analysis::DynamicFormatExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"), lm:)
+      rescue => e
+        warn "[ERROR] #{p}: dynamic expansion failed: #{e.message}"
+        warn e.backtrace.join("\n")
+        []
+      end
+
+      native + expanded + dynamic
     end
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
 
@@ -403,7 +413,7 @@ module SFL
 
       synthesizer = Retrieval::ContextSynthesizer.new(
         retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
-        chat: boot_result.chat_factory.for(:context_synthesis),
+        lm: boot_result.lm_factory.for(:context_synthesis),
         breaker:, instrumenter:, logger:
       )
 
@@ -462,7 +472,7 @@ module SFL
       pass_two = if options[:pass1_only]
         Core::Ports::Null::Annotator.new
       else
-        LLM::EngineBuilder.call(config: boot_result.llm_config, chat_factory: boot_result.chat_factory,
+        LLM::EngineBuilder.call(config: boot_result.llm_config, lm_factory: boot_result.lm_factory,
           breaker:, instrumenter:, logger:)
       end
 
@@ -507,7 +517,7 @@ module SFL
       logger, instrumenter, breaker = build_collaborators
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
       review_queue_repo = options[:store] ? Store::PgReviewQueueRepository.new(boot_result.db) : nil
-      chat = boot_result.chat_factory.for(:context_synthesis) if options[:images]
+      chat = boot_result.lm_factory.for(:context_synthesis) if options[:images]
       progress_bar = ArtifactProgressBar.new
 
       Analysis::KnowledgeBaseSource.new(
@@ -528,7 +538,7 @@ module SFL
       logger, = build_collaborators
       conversation_engine = build_conversation_engine(boot_result, options, stop_flag)
       kb_source = build_kb_source(boot_result, options, stop_flag)
-      loader_drafter = Ingest::LoaderDrafter.new(chat: boot_result.chat_factory.for(:loader_drafting))
+      loader_drafter = Ingest::LoaderDrafter.new(lm: boot_result.lm_factory.for(:loader_drafting))
       review_repo = Store::PgIngestReviewRepository.new(boot_result.db)
 
       Ingest::Orchestrator.new(
@@ -537,7 +547,7 @@ module SFL
     end
 
     module_function def build_collaborators
-      logger = Core::Ports::StandardLogger.new(progname: "sfl.cli")
+      logger = Core::Ports::JournaldLogger.new(progname: "sfl.cli")
       instrumenter = Core::Ports::Null::Instrumenter.new
       breaker = Core::Ports::Null::Breaker.new
       [logger, instrumenter, breaker]
@@ -594,13 +604,13 @@ module SFL
     # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat digest/generate/check/
     # write sequence, ported verbatim from legacy's own write_narrative.
     module_function def write_narrative(result, output_dir, boot_result)
-      unless boot_result.chat_factory
+      unless boot_result.lm_factory
         warn "[WARN] narrative generation skipped: --narrative requires an LLM (omit --pass1-only)"
         return
       end
 
       digest = Analysis::NarrativeGenerator::Digest.from_result(result)
-      narrator = LLM::Narrators::NarrativeGenerator.new(chat: boot_result.chat_factory.for(:context_synthesis))
+      narrator = LLM::Narrators::NarrativeGenerator.new(lm: boot_result.lm_factory.for(:context_synthesis))
       report = Analysis::NarrativeGenerator.new(narrator:).generate(digest)
       source_clauses = result.turns.flat_map(&:clauses)
       narrative_text = report_sections_text(report)
