@@ -21,15 +21,15 @@ module SFL
       # chat:/synthesizer: fallback-lambda pair mirroring legacy's own synthesizer: nil default.
       def initialize(
         retriever:,
-        chat: nil,
+        lm: nil,
         synthesizer: nil,
         breaker: Core::Ports::Null::Breaker.new,
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new
       )
         @retriever = retriever
-        @synthesizer = synthesizer || (chat && LLM::Synthesizers::ContextSynthesizer.new(chat:))
-        raise ArgumentError, "must provide chat: or explicit synthesizer:" unless @synthesizer
+        @synthesizer = synthesizer || (lm && LLM::Synthesizers::ContextSynthesizer.new(lm:))
+        raise ArgumentError, "must provide lm: or explicit synthesizer:" unless @synthesizer
 
         @breaker = breaker
         @instrumenter = instrumenter

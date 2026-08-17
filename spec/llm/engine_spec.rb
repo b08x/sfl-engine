@@ -177,8 +177,7 @@ RSpec.describe SFL::LLM::Engine do
   end
 
   describe "logging" do
-    let(:io) { StringIO.new }
-    let(:logger) { SFL::Core::Ports::StandardLogger.new(io:, level: Logger::DEBUG) }
+    let(:logger) { instance_spy(SFL::Core::Ports::JournaldLogger) }
 
     it "logs debug on start and info with mood/tenor/latency on completion" do
       clause_annotator = instance_double(SFL::LLM::Annotators::ClauseAnnotator, call: valid_raw)
@@ -186,9 +185,13 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(io.string).to include("pass_two started")
-      expect(io.string).to include("pass_two completed")
-      expect(io.string).to include("mood=declarative")
+      expect(logger).to have_received(:debug) do |&block|
+        expect(block.call).to include("pass_two started")
+      end
+      expect(logger).to have_received(:info) do |&block|
+        expect(block.call).to include("pass_two completed")
+        expect(block.call).to include("mood=declarative")
+      end
     end
 
     it "logs a warning when a value is rejected by its contract" do
@@ -199,7 +202,9 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(io.string).to include("invalid interpersonal")
+      expect(logger).to have_received(:warn) do |&block|
+        expect(block.call).to include("invalid interpersonal")
+      end
     end
 
     it "logs a warning when the mood value is an unrecognized schema gap" do
@@ -210,7 +215,9 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(io.string).to include("unknown mood")
+      expect(logger).to have_received(:warn) do |&block|
+        expect(block.call).to include("unknown mood")
+      end
     end
   end
 end

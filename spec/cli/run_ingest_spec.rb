@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "ruby_llm"
+require "dspy"
 
 RSpec.describe SFL::CLI do
-  let(:chat_factory) { instance_double(SFL::LLM::ChatFactory) }
+  let(:lm_factory) { instance_double(SFL::LLM::LMFactory) }
   let(:classifier) { instance_double(SFL::LLM::Classifier) }
-  let(:loader_drafting_chat) { instance_double(RubyLLM::Chat) }
+  let(:loader_drafting_lm) { instance_double(DSPy::LM) }
   let(:boot_result) do
     SFL::Boot::Result.new(
-      db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config), chat_factory:,
+      db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config), lm_factory:,
       embedder: instance_double(SFL::LLM::Embedder), classifier:, pass1_command: nil, spacy_model: "en_core_web_sm"
     )
   end
@@ -26,7 +26,7 @@ RSpec.describe SFL::CLI do
     allow(SFL::LLM::EngineBuilder).to receive(:call).and_return(instance_double(SFL::LLM::Engine))
     allow(SFL::Analysis::Engine).to receive(:new).and_return(conversation_engine)
     allow(SFL::Analysis::KnowledgeBaseSource).to receive(:new).and_return(kb_source)
-    allow(chat_factory).to receive(:for).with(:loader_drafting).and_return(loader_drafting_chat)
+    allow(lm_factory).to receive(:for).with(:loader_drafting).and_return(loader_drafting_lm)
     allow(SFL::Ingest::LoaderDrafter).to receive(:new).and_return(loader_drafter)
     allow(SFL::Store::PgIngestReviewRepository).to receive(:new).and_return(review_repo)
     allow(SFL::Ingest::Orchestrator).to receive(:new).and_return(orchestrator)
@@ -52,7 +52,7 @@ RSpec.describe SFL::CLI do
     it "builds the Orchestrator with the classifier, loader_drafter, review_repo, and dispatch targets" do
       described_class.run_ingest("./inbox", options)
 
-      expect(SFL::Ingest::LoaderDrafter).to have_received(:new).with(chat: loader_drafting_chat)
+      expect(SFL::Ingest::LoaderDrafter).to have_received(:new).with(lm: loader_drafting_lm)
       expect(SFL::Store::PgIngestReviewRepository).to have_received(:new).with(boot_result.db)
       expect(SFL::Ingest::Orchestrator).to have_received(:new).with(
         conversation_engine:, kb_source:, classifier:, loader_drafter:, review_repo:, logger: anything

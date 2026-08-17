@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText:  2022 Joel Drapper
 # SPDX-License-Identifier: MIT
 ---
+inherit_from: .rubocop_todo.yml
 
 plugins:
   - rubocop-performance

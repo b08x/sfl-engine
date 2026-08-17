@@ -25,6 +25,7 @@ module SFL
     "kb_markdown_formatter" => "KBMarkdownFormatter",
     "kb_annotated_doc_writer" => "KBAnnotatedDocWriter",
     "kb_annotated_doc_formatter" => "KBAnnotatedDocFormatter",
+    "lm_factory" => "LMFactory",
   }.freeze
   private_constant :INFLECTIONS
 

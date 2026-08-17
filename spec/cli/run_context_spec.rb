@@ -4,11 +4,11 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe SFL::CLI do
-  let(:chat_factory) { instance_double(SFL::LLM::ChatFactory) }
-  let(:chat) { instance_double(RubyLLM::Chat) }
+  let(:lm_factory) { instance_double(SFL::LLM::LMFactory) }
+  let(:lm) { instance_double(DSPy::LM) }
   let(:boot_result) do
     SFL::Boot::Result.new(
-      db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config), chat_factory:,
+      db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config), lm_factory:,
       embedder: instance_double(SFL::LLM::Embedder), pass1_command: nil, spacy_model: "en_core_web_sm"
     )
   end
@@ -16,7 +16,7 @@ RSpec.describe SFL::CLI do
 
   before do
     allow(SFL::Boot).to receive(:call).and_return(boot_result)
-    allow(chat_factory).to receive(:for).with(:context_synthesis).and_return(chat)
+    allow(lm_factory).to receive(:for).with(:context_synthesis).and_return(lm)
     allow(SFL::Store::PgHybridRetriever).to receive(:new).and_return(instance_double(SFL::Store::PgHybridRetriever))
     allow(SFL::Retrieval::ContextSynthesizer).to receive(:new).and_return(synthesizer)
     allow($stdout).to receive(:puts)
@@ -25,7 +25,7 @@ RSpec.describe SFL::CLI do
   describe ".run_context" do
     let(:options) { { output_dir: nil, limit: 5, filters: { mood: "declarative" }, disable_tracing: false } }
 
-    it "boots with require_llm: true and builds ContextSynthesizer from a PgHybridRetriever + context_synthesis chat" do
+    it "boots with require_llm: true and builds ContextSynthesizer from a PgHybridRetriever + context_synthesis lm" do
       empty_result = instance_double(SFL::Core::Types::SynthesisResult, retrieved_count: 0)
       allow(synthesizer).to receive(:synthesize).and_return(empty_result)
 
@@ -35,7 +35,7 @@ RSpec.describe SFL::CLI do
       expect(SFL::Store::PgHybridRetriever).to have_received(:new).with(db: boot_result.db,
         embedder: boot_result.embedder)
       expect(SFL::Retrieval::ContextSynthesizer).to have_received(:new)
-        .with(hash_including(chat:))
+        .with(hash_including(lm:))
       expect(synthesizer).to have_received(:synthesize).with("does it work?", filters: { mood: "declarative" },
         limit: 5)
     end

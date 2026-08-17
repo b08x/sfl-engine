@@ -6,7 +6,6 @@ source "https://rubygems.org"
 # actually installed and verified against (issue #4: 3.4.4 was the aspirational legacy-repo
 # target, but asdf ignores .ruby-version without opting into legacy_version_file, so every
 # session had silently been running on 4.0.1 the whole time; 4.0.1 is now the documented one).
-ruby "4.0.1"
 
 # Core loading & typing (track decision 1: single app, no gemspec)
 gem "amatch", "~> 0.4" # Jaro-Winkler fuzzy matching for ClassificationRegistry
@@ -16,13 +15,16 @@ gem "dry-struct", "~> 1.6"
 gem "dry-types", "~> 1.7"
 gem "zeitwerk", "~> 2.6"
 
-# Pass 2 LLM annotation (track decision 7: replaces DSPy)
-gem "ruby_llm", "~> 1.16"
-gem "ruby_llm-schema", "~> 0.4"
+# Pass 2 LLM annotation (track decision 7: reverted from ruby_llm to DSPy)
+gem "dspy", "~> 1.0"
+gem "dspy-anthropic", "~> 1.0"
+gem "dspy-o11y", "~> 1.0"
+gem "dspy-o11y-langfuse", "~> 1.0"
+gem "dspy-openai", "~> 1.0"
+gem "sorbet-runtime"
 
 # Tracing continuity to Langfuse via OTel (track decision 7), replacing dspy-o11y-langfuse
 gem "opentelemetry-exporter-otlp", "~> 0.34"
-gem "opentelemetry-instrumentation-ruby_llm", "~> 0.7"
 gem "opentelemetry-sdk", "~> 1.12"
 
 # Loaders (Phase 1 backlog item: markdown/pdf/subtitle/canvas/image/export/csv/json Source ducks)
@@ -100,3 +102,7 @@ group :perf do
 end
 
 gem "gem-skill", "~> 0.2.0"
+
+gem "rllama", "~> 1.2"
+
+gem "journald-logger", "~> 3.1"

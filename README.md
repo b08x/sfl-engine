@@ -65,7 +65,7 @@ Input → Pass 1 (spaCy) → Pass 2 (LLM) → Store (Postgres + pgvector)
 
 **Pass 1** (spaCy subprocess sidecar): Syntactic parsing. Extracts clause boundaries, process types (material, mental, relational, verbal, behavioral, existential), participants, and circumstances. Rule-based, deterministic, fast.
 
-**Pass 2** (LLM via ruby_llm): Semantic annotation. Classifies mood (declarative, interrogative, imperative, exclamative), modality weight (0–1 certainty scalar), tenor (formality register), and speaker attitude (social proof, authority, emotional, neutral). Model-configurable per task.
+**Pass 2** (LLM via dspy.rb): Semantic annotation. Classifies mood (declarative, interrogative, imperative, exclamative), modality weight (0–1 certainty scalar), tenor (formality register), and speaker attitude (social proof, authority, emotional, neutral). Model-configurable per task.
 
 **Storage** (Postgres + pgvector): Ideational and interpersonal payloads live in separate tables. Independently indexable. Independently filterable.
 
@@ -92,7 +92,7 @@ No single domain solves the problem. SFL provides the metadata. CBT provides the
 lib/sfl/
 ├── core/      # types, ports, pass1 sidecar client, pass2 engine, pipeline, loaders
 ├── store/     # Sequel/pg/pgvector: repositories, migrations, retrieval
-├── llm/       # ruby_llm + ruby_llm-schema annotators, per-task model/provider config
+├── llm/       # dspy.rb + dspy-signature annotators, per-task model/provider config
 ├── prompts/   # plain folder of prompt templates
 ├── cli/       # non-interactive/scriptable analyzer commands
 ├── gui/       # glimmer-dsl-libui desktop GUI (opt-in require)

@@ -11,7 +11,7 @@ Non-gem single application (no gemspec, no `gem install`; clone and run). See `R
 - **Zeitwerk autoloader** rooted at `lib/` (see `lib/sfl.rb`): one `SFL.loader` setup at require-time
 - **`SFL::Boot`** (lib/sfl/boot.rb): sole ENV reader; all other classes take config via constructor injection
 - **Pass 1**: spaCy subprocess sidecar (no in-process Python; track decision 2)
-- **Pass 2**: ruby_llm-based annotation (replaces DSPy; track decision 7)
+- **Pass 2**: dspy.rb-based annotation (replaces ruby_llm; track decision 8)
 - **Storage**: Postgres/pgvector via Sequel (track decision 5: no auto-migration — run `rake db:migrate` manually)
 - **GUI**: glimmer-dsl-libui (opt-in require; ignored by Zeitwerk, see `lib/sfl.rb:40`)
 - **HTTP API**: Falcon server via `exe/sfl-api` → `config.ru`
@@ -23,7 +23,7 @@ Non-gem single application (no gemspec, no `gem install`; clone and run). See `R
 lib/sfl/
 ├── core/      # types, ports, pass1 sidecar, pipeline, loaders
 ├── store/     # Sequel/pg/pgvector repositories, migrations, retrieval
-├── llm/       # ruby_llm + ruby_llm-schema annotators, per-task config
+├── llm/       # dspy.rb + dspy-signature annotators, per-task config
 ├── prompts/   # plain folder of prompt templates
 ├── cli/       # non-interactive/scriptable analyzer commands
 ├── gui/       # glimmer-dsl-libui desktop GUI (opt-in require)

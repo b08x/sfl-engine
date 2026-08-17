@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "ruby_llm"
+require "dspy"
 
 RSpec.describe SFL::CLI do
   let(:boot_result) do
     SFL::Boot::Result.new(
       db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config),
-      chat_factory: instance_double(SFL::LLM::ChatFactory), embedder: instance_double(SFL::LLM::Embedder),
+      lm_factory: instance_double(SFL::LLM::LMFactory), embedder: instance_double(SFL::LLM::Embedder),
       pass1_command: nil, spacy_model: "en_core_web_sm"
     )
   end

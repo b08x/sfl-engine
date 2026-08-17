@@ -1,28 +1,33 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "ruby_llm"
+require "dspy"
 
 RSpec.describe SFL::LLM::Classifier do
-  subject(:classifier) { described_class.new(chat: fake_chat) }
+  subject(:classifier) { described_class.new(lm: fake_lm) }
 
-  let(:fake_chat) { instance_double(RubyLLM::Chat) }
+  let(:fake_lm) { instance_double(DSPy::LM) }
+  let(:fake_predictor) { instance_double(DSPy::Predict) }
+
+  before do
+    allow(DSPy::Predict).to receive(:new).with(SFL::LLM::Signatures::ClassificationSignature).and_return(fake_predictor)
+    allow(fake_predictor).to receive(:configure)
+  end
 
   describe "#classify" do
     it "returns a ClassificationResult built from the LLM's structured response" do
-      fake_response = instance_double(RubyLLM::Message, content: {
-        "format" => "generic_jsonl_chat",
-        "mode" => nil,
-        "confidence" => 0.2,
-        "reasoning" => "JSONL rows resembling a chat log, but no loader recognizes this shape",
+      fake_response = double("Result", to_h: {
+        format: "generic_jsonl_chat",
+        mode: nil,
+        confidence: 0.2,
+        reasoning: "JSONL rows resembling a chat log, but no loader recognizes this shape"
       })
-      allow(fake_chat).to receive_messages(with_schema: fake_chat, ask: fake_response)
+      allow(fake_predictor).to receive(:call).and_return(fake_response)
 
       result = classifier.classify("path: weird_chat.jsonl\n...", "weird_chat.jsonl")
 
-      expect(fake_chat).to have_received(:with_schema).with(SFL::LLM::Schemas::ClassificationSchema)
-      expect(fake_chat).to have_received(:ask) do |prompt|
-        expect(prompt).to include("weird_chat.jsonl")
+      expect(fake_predictor).to have_received(:call) do |**args|
+        expect(args[:path]).to eq("weird_chat.jsonl")
       end
       expect(result).to be_a(SFL::Core::Types::ClassificationResult)
       expect(result.format).to eq("generic_jsonl_chat")
@@ -32,8 +37,7 @@ RSpec.describe SFL::LLM::Classifier do
     end
 
     it "returns a low-confidence unknown result, not a raised error, when the LLM call fails" do
-      allow(fake_chat).to receive(:with_schema).and_return(fake_chat)
-      allow(fake_chat).to receive(:ask).and_raise(RubyLLM::Error, "rate limited")
+      allow(fake_predictor).to receive(:call).and_raise(SFL::LLM::Error, "rate limited")
 
       result = classifier.classify("some sample", "some/path.txt")
 
@@ -47,10 +51,10 @@ RSpec.describe SFL::LLM::Classifier do
     it "returns a low-confidence unknown result, not a raised error, when the LLM's response " \
       "violates ClassificationResult's own contract (e.g. an out-of-range confidence) — matching " \
       "LLM::Engine#annotate's identical degrade-on-any-failure boundary" do
-      fake_response = instance_double(RubyLLM::Message, content: {
-        "format" => "markdown", "mode" => "documentation", "confidence" => 1.5, "reasoning" => "r"
+      fake_response = double("Result", to_h: {
+        format: "markdown", mode: "documentation", confidence: 1.5, reasoning: "r"
       })
-      allow(fake_chat).to receive_messages(with_schema: fake_chat, ask: fake_response)
+      allow(fake_predictor).to receive(:call).and_return(fake_response)
 
       result = classifier.classify("some sample", "some/path.txt")
 

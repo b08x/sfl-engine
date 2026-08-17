@@ -5,29 +5,12 @@ require "ruby_llm"
 require "stringio"
 
 RSpec.describe SFL::Boot do
-  # rubocop:disable RSpec/VerifiedDoubles -- ruby_llm: is a duck-typed injectable seam
-  # (#configure/#embed), not a stand-in for the real ::RubyLLM module — see
-  # spec/llm/embedder_spec.rb for the same rationale.
-  let(:ruby_llm_config) do
-    double(
-      "ruby_llm_config",
-      "openrouter_api_key=": nil, "gemini_api_key=": nil, "openai_api_key=": nil, "anthropic_api_key=": nil,
-      "mistral_api_key=": nil, "ollama_api_base=": nil, "default_embedding_model=": nil
-    )
-  end
-  # chat: stub covers build_llm_collaborators' eager chat_factory.for(:ingest_classification)
-  # call (builds Result#classifier) — routed through the injected ruby_llm seam, not a real
-  # RubyLLM::Chat, same rationale as every other double in this file.
-  let(:ruby_llm) { double("ruby_llm", chat: double("chat")) }
   let(:base_env) do
     {
       "DATABASE_URL" => "postgresql:///irrelevant-for-these-examples",
       "OPENROUTER_API_KEY" => "or-key",
     }
   end
-  # rubocop:enable RSpec/VerifiedDoubles
-
-  before { allow(ruby_llm).to receive(:configure).and_yield(ruby_llm_config) }
 
   # Every example here passes require_db: false, load_dotenv: false, require_tracing: false
   # unless a spec is specifically exercising that concern — this is the unit-level slice the
@@ -36,7 +19,7 @@ RSpec.describe SFL::Boot do
   # same opt-in pattern spec/support/store_test_db.rb already establishes for spec/store.
   def boot(env:, **overrides)
     described_class.call(
-      env:, load_dotenv: false, require_db: false, require_tracing: false, ruby_llm:,
+      env:, load_dotenv: false, require_db: false, require_tracing: false,
       **overrides
     )
   end
@@ -45,7 +28,7 @@ RSpec.describe SFL::Boot do
     it "loads .env via Dotenv when load_dotenv: true" do
       allow(Dotenv).to receive(:load)
 
-      described_class.call(env: base_env, load_dotenv: true, require_db: false, require_tracing: false, ruby_llm:)
+      described_class.call(env: base_env, load_dotenv: true, require_db: false, require_tracing: false)
 
       expect(Dotenv).to have_received(:load)
     end
@@ -67,9 +50,9 @@ RSpec.describe SFL::Boot do
       pass_two_batch = result.llm_config.for(:pass_two_batch_annotation)
 
       expect(pass_two.provider).to eq(:openrouter)
-      expect(pass_two.model).to eq("mistralai/mistral-small-3.2-24b-instruct")
+      expect(pass_two.model).to eq("google/gemini-2.5-flash:free")
       expect(pass_two_batch.provider).to eq(:openrouter)
-      expect(pass_two_batch.model).to eq("mistralai/mistral-small-3.2-24b-instruct")
+      expect(pass_two_batch.model).to eq("google/gemini-2.5-flash:free")
     end
 
     it "defaults context_synthesis to whatever pass_two_annotation resolved to" do
@@ -123,38 +106,12 @@ RSpec.describe SFL::Boot do
       expect(result.llm_config.for(:pass_two_annotation).params).to eq(temperature: 0.3)
     end
 
-    it "builds a ready-to-use ChatFactory from the resolved config" do
-      result = boot(env: base_env)
-
-      expect(result.chat_factory).to be_a(SFL::LLM::ChatFactory)
-    end
-
     it "builds a real Embedder wired to OLLAMA_BASE_URL/the resolved embedding model" do
       env = base_env.merge("OLLAMA_BASE_URL" => "http://tinybot:11434")
 
       result = boot(env:)
 
       expect(result.embedder).to be_a(SFL::LLM::Embedder)
-      expect(ruby_llm_config).to have_received(:ollama_api_base=).with("http://tinybot:11434/v1")
-    end
-
-    it "sets the RubyLLM provider API key for every distinct provider actually in use" do
-      env = base_env.merge("SFL_TASK_CONTEXT_SYNTHESIS_PROVIDER" => "anthropic",
-        "SFL_TASK_CONTEXT_SYNTHESIS_MODEL" => "claude-x", "ANTHROPIC_API_KEY" => "anthropic-key")
-
-      boot(env:)
-
-      expect(ruby_llm_config).to have_received(:openrouter_api_key=).with("or-key")
-      expect(ruby_llm_config).to have_received(:anthropic_api_key=).with("anthropic-key")
-    end
-
-    it "sets mistral_api_key= when :mistral is selected as a task provider" do
-      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER" => "mistral",
-        "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "mistral-small-latest", "MISTRAL_API_KEY" => "mistral-key")
-
-      boot(env:)
-
-      expect(ruby_llm_config).to have_received(:mistral_api_key=).with("mistral-key")
     end
 
     it "raises Boot::Error when MISTRAL_API_KEY is missing for a mistral-provider task" do
@@ -183,12 +140,12 @@ RSpec.describe SFL::Boot do
       expect { boot(env: base_env) }.not_to raise_error
     end
 
-    it "returns nil llm_config/chat_factory/embedder when require_llm: false" do
+    it "returns nil llm_config/embedder/classifier when require_llm: false" do
       result = boot(env: base_env, require_llm: false)
 
       expect(result.llm_config).to be_nil
-      expect(result.chat_factory).to be_nil
       expect(result.embedder).to be_nil
+      expect(result.classifier).to be_nil
     end
   end
 
@@ -209,22 +166,20 @@ RSpec.describe SFL::Boot do
 
     it "configures tracing when the endpoint is reachable" do
       allow(SFL::Boot::LangfuseReachability).to receive(:reachable?).and_return(true)
-      allow(SFL::LLM::Tracing).to receive(:configure)
+      allow(described_class).to receive(:require)
 
       boot(env: tracing_env, require_tracing: true)
 
-      expect(SFL::LLM::Tracing).to have_received(:configure).with(
-        host: "http://example.invalid", public_key: "pk", secret_key: "sk"
-      )
+      expect(described_class).to have_received(:require).with("dspy/o11y/langfuse")
     end
 
     it "skips tracing (without raising) when unreachable and non-interactive" do
       allow(SFL::Boot::LangfuseReachability).to receive(:reachable?).and_return(false)
-      allow(SFL::LLM::Tracing).to receive(:configure)
+      allow(described_class).to receive(:require)
 
       expect { boot(env: tracing_env, require_tracing: true, tty: false) }.to output.to_stderr
 
-      expect(SFL::LLM::Tracing).not_to have_received(:configure)
+      expect(described_class).not_to have_received(:require).with("dspy/o11y/langfuse")
     end
 
     it "raises Boot::Error when unreachable, interactive, and the operator declines" do

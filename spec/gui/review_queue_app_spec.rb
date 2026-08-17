@@ -14,7 +14,7 @@ RSpec.describe SFL::GUI::ReviewQueueApp do
 
   let(:repo) { instance_double(SFL::Store::PgReviewQueueRepository) }
   let(:pipeline) { instance_double(SFL::Core::Pipeline) }
-  let(:logger) { instance_spy(SFL::Core::Ports::StandardLogger) }
+  let(:logger) { instance_spy(SFL::Core::Ports::JournaldLogger) }
 
   let(:pending_row) do
     { id: "row-1", document_id: "doc-1", modality: "text", generated_text: "flagged text" }
@@ -101,7 +101,7 @@ RSpec.describe SFL::GUI::ReviewQueueApp do
       expect(pipeline).to have_received(:compile).with("flagged text", document_id: "doc-1", store: true, embed: true)
     end
 
-    it "uses the injected logger rather than building a StandardLogger" do
+    it "uses the injected logger rather than building a JournaldLogger" do
       expect(app.logger).to be(logger)
     end
   end

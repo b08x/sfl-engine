@@ -33,7 +33,7 @@ module SFL
       # @param logger [#debug,#info,#warn,#error, nil]
       # @raise [MissingReviewerNameError] if SFL_REVIEWER_NAME is unset or blank
       def initialize(repo: nil, pipeline: nil, logger: nil)
-        @logger = logger || Core::Ports::StandardLogger.new(progname: "sfl.gui")
+        @logger = logger || Core::Ports::JournaldLogger.new(progname: "sfl.gui")
         # Checked before build_collaborators on purpose: booting the DB and the
         # LLM only to then refuse to start wastes seconds and muddies the error.
         reviewer_name = reviewer_name_from_env

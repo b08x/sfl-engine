@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "ruby_llm"
+require "dspy"
 
 RSpec.describe SFL::CLI do
   describe ".run" do
@@ -32,8 +32,8 @@ RSpec.describe SFL::CLI do
         .to output(/\[ERROR\] compile failed/).to_stderr
     end
 
-    it "prints a provider-error message and returns 1 for a RubyLLM::Error, no backtrace" do
-      allow(described_class).to receive(:run_context).and_raise(RubyLLM::RateLimitError, "slow down")
+    it "prints a provider-error message and returns 1 for a StandardError, no backtrace" do
+      allow(described_class).to receive(:run_context).and_raise(SFL::LLM::Error, "slow down")
 
       expect { expect(described_class.run(%w[context q])).to eq(1) }
         .to output(/\[ERROR\] LLM provider error/).to_stderr

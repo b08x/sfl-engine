@@ -58,7 +58,7 @@ module SFL
         logger, instrumenter, breaker = CLI.build_collaborators
         pipeline = CLI.build_pipeline(boot_result, { store: true, resume: false }, breaker:, instrumenter:, logger:)
         pass_two = LLM::EngineBuilder.call(
-          config: boot_result.llm_config, chat_factory: boot_result.chat_factory, breaker:, instrumenter:, logger:
+          config: boot_result.llm_config, lm_factory: boot_result.lm_factory, breaker:, instrumenter:, logger:
         )
         clause_store = Store::PgClauseStore.new(boot_result.db)
         annotation_review_repo = Store::PgAnnotationReviewRepository.new(boot_result.db)
@@ -68,7 +68,7 @@ module SFL
           retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
           synthesizer: Retrieval::ContextSynthesizer.new(
             retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
-            chat: boot_result.chat_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
+            lm: boot_result.lm_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
           ),
           clause_store:,
           review_queue_repo: Store::PgReviewQueueRepository.new(boot_result.db),

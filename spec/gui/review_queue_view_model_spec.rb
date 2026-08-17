@@ -93,7 +93,7 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
     end
 
     it "logs the non-Sequel failure via the injected logger" do
-      logger = instance_spy(SFL::Core::Ports::StandardLogger)
+      logger = instance_spy(SFL::Core::Ports::JournaldLogger)
       vm = described_class.new(repo:, pipeline:, reviewer_name: "bob", logger:)
       allow(repo).to receive(:pending).and_raise(Errno::EHOSTUNREACH)
 
@@ -472,7 +472,7 @@ RSpec.describe SFL::GUI::ReviewQueueViewModel do
     # is unchanged from before that split and still passes, which is the actual
     # evidence that the composition is behaviour-preserving.
     it "logs the raised exception via the injected logger" do
-      logger = instance_spy(SFL::Core::Ports::StandardLogger)
+      logger = instance_spy(SFL::Core::Ports::JournaldLogger)
       vm = described_class.new(repo:, pipeline:, reviewer_name: "bob", logger:)
       allow(repo).to receive(:pending).and_return(items: [pending_row], total: 1)
       vm.select(pending_row)

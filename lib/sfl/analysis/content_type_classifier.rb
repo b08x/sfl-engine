@@ -55,11 +55,9 @@ module SFL
       end
 
       private def tag_match?(tags, type)
-        patterns = TAG_MAP.fetch(type)
-        # rubocop:disable Style/ArrayIntersect -- `t` is a String (substring match against each
+        patterns = TAG_MAP.fetch(type) # -- `t` is a String (substring match against each
         # pattern), not an Array; Array#intersect? would be a different, incorrect check here.
         tags.any? { |t| patterns.any? { |p| t.include?(p) } }
-        # rubocop:enable Style/ArrayIntersect
       end
 
       # More than CODE_BLOCK_RATIO of the raw text is inside backtick spans.

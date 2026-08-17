@@ -1,86 +1,44 @@
 # frozen_string_literal: true
 
+require "net/http"
+require "json"
+require "uri"
+
 module SFL
   module LLM
-    # RubyLLM-backed Core::Ports::Embedder adapter, :ollama by default —
-    # the first *real* (non-Null/Fake) Embedder in this codebase; only
-    # Null::Embedder (always an empty vector) and Fake::Embedder
-    # (deterministic test double) existed before this (see Rakefile's
-    # `embeddings:redrive` task, which raised with a TODO pointing at
-    # exactly this gap).
-    #
-    # `provider:` is injectable (any RubyLLM-registered provider Boot has
-    # already configured credentials for — see
-    # SFL::Boot::REQUIRED_KEY_ENV_BY_PROVIDER/RUBY_LLM_KEY_SETTER) so
-    # SFL_TASK_EMBEDDING_PROVIDER can actually take effect; ollama_api_base
-    # is still always configured globally regardless of which provider is
-    # selected, since nothing else in the Boot path sets it and a later
-    # ollama-provider call (chat or embedding) needs it available.
-    #
-    # Ports legacy's Compiler::Embedder
-    # (sfl-compiler/lib/sfl/compiler/retrieval/embedder.rb) via
-    # RubyLLM.embed(text, model:, provider:) — legacy's own Embedder never
-    # supported provider selection either; the two deliberate contract
-    # changes below predate the provider-injectability fix above:
+    # Native Net::HTTP-backed Core::Ports::Embedder adapter for Ollama.
+    # Replaces the RubyLLM embedder, calling the local Ollama /api/embeddings
+    # endpoint directly to eliminate gem bloat and dependency issues.
     #
     # 1. The `circuit_breaker` gem is dropped in favor of this codebase's
-    #    own Core::Ports::Breaker port, injected as `breaker:` the same
-    #    way LLM::Engine and Retrieval::ContextSynthesizer already do
-    #    (D6: "three uncoordinated circuit-breaker mechanisms" was one of
-    #    the original audit findings — a third, uncoordinated resilience
-    #    mechanism here would repeat exactly that anti-pattern).
+    #    own Core::Ports::Breaker port, injected as `breaker:`.
     #
-    # 2. A failed embed call RAISES (SFL::LLM::Error) instead of legacy's
-    #    silent `nil` return. Core::Ports::Embedder's own contract
-    #    documents `#embed(text) -> Array<Float>` unconditionally — there
-    #    is no sanctioned nil/empty-on-failure case for a caller to check.
-    #    A caller that received a swallowed failure as a same-shaped-as-
-    #    success `nil`/`[]` and stored it as if it were a real embedding
-    #    is exactly the silent-degradation failure mode track decision D9
-    #    ("no silent degradation") rules out elsewhere in this codebase
-    #    (Engine/ContextSynthesizer degrade to explicit, provenance-
-    #    tagged defaults — they never fabricate a value indistinguishable
-    #    from a real one). Null::Embedder already exists as the sanctioned
-    #    "I explicitly don't want a real embedding" seam — callers that
-    #    want that behavior should inject Null::Embedder, not rely on this
-    #    class quietly becoming one on failure.
+    # 2. A failed embed call RAISES (SFL::LLM::Error) instead of silently
+    #    returning nil/empty arrays.
     #
     # Configuration is fully injected (`model:`, `ollama_base_url:`) per
-    # track decision 4 — this class never reads ENV itself; SFL::Boot
-    # resolves EMBEDDING_MODEL/OLLAMA_BASE_URL and passes them in.
+    # track decision 4 — this class never reads ENV itself.
     class Embedder
       include Core::Ports::Embedder
 
       # @param model [String] e.g. "embeddinggemma:latest"
-      # @param ollama_base_url [String] e.g. "http://localhost:11434" — always configured
-      #   globally (RubyLLM.config is a process singleton) regardless of `provider:`, since
-      #   nothing else in this codebase's Boot path sets it and a later ollama-provider call
-      #   (chat or embedding) needs it available.
-      # @param provider [Symbol] e.g. :ollama (default), :mistral, or any other
-      #   RubyLLM-registered provider whose credentials Boot has already configured —
-      #   this class never reads ENV/validates keys itself (track decision 4).
+      # @param ollama_base_url [String] e.g. "http://localhost:11434"
+      # @param provider [Symbol] ignored, always assumed local/ollama
       # @param breaker [#call] Core::Ports::Breaker-compatible
       # @param logger [#debug,#info,#warn,#error] Core::Ports::Logger-compatible
-      # @param ruby_llm [Module] injectable seam so specs never touch the real ::RubyLLM
-      # rubocop:disable Metrics/ParameterLists -- one independently-injectable collaborator/
-      # config value per kwarg (matches this codebase's own convention elsewhere, e.g.
-      # SFL::Boot.call's require_db:/require_llm:/... seam).
       def initialize(
         model:,
         ollama_base_url:,
         provider: :ollama,
         breaker: Core::Ports::Null::Breaker.new,
-        logger: Core::Ports::Null::Logger.new,
-        ruby_llm: RubyLLM
+        logger: Core::Ports::Null::Logger.new
       )
         @model = model
         @provider = provider
         @breaker = breaker
         @logger = logger
-        @ruby_llm = ruby_llm
-        configure_ruby_llm(ollama_base_url)
+        @base_uri = URI(ollama_base_url.chomp("/"))
       end
-      # rubocop:enable Metrics/ParameterLists
 
       # @param text [String]
       # @return [Array<Float>]
@@ -102,45 +60,44 @@ module SFL
       def embed_batch(texts)
         return [] if texts.empty?
 
+        # Ollama /api/embeddings supports an array of strings in its `prompt` param (or `prompt` string)
+        # depending on version, but typically `prompt` for single, `prompt` array or repeated /api/embeddings.
+        # Actually /api/embed (new endpoint) supports `input: []`. We will use /api/embed which takes `input`.
         breaker.call("embedder.embed_batch") { fetch_batch(texts) }
       rescue => e
         fail_embed("embed_batch", e)
       end
 
-      attr_reader :model, :provider, :breaker, :logger, :ruby_llm
-      private :model, :provider, :breaker, :logger, :ruby_llm
-
-      private def configure_ruby_llm(ollama_base_url)
-        ruby_llm.configure do |config|
-          config.ollama_api_base = openai_compatible_base(ollama_base_url)
-          config.default_embedding_model = model
-        end
-      end
-
-      # RubyLLM::Providers::Ollama subclasses OpenAI and only speaks
-      # OpenAI-style routes — verified against the installed ruby_llm
-      # 1.16.0 provider source: Ollama#api_base returns
-      # `@config.ollama_api_base` with NO fallback suffix (unlike
-      # OpenAI#api_base, which defaults to ".../v1" on its own), and
-      # OpenAI::Embeddings#embedding_url resolves to the bare relative
-      # path "embeddings" against whatever api_base is configured. Without
-      # the /v1 suffix here, requests land on bare /embeddings instead of
-      # /v1/embeddings, which Ollama's OpenAI-compatible surface doesn't
-      # route. This detail still holds in 1.16.0 — not assumed carried
-      # over from legacy.
-      private def openai_compatible_base(base_url)
-        base = base_url.chomp("/")
-        base.end_with?("/v1") ? base : "#{base}/v1"
-      end
+      attr_reader :model, :provider, :breaker, :logger, :base_uri
+      private :model, :provider, :breaker, :logger, :base_uri
 
       private def fetch(text)
-        response = ruby_llm.embed(text, model:, provider:)
-        response.vectors
+        response = post_json("/api/embed", { model:, input: text })
+        # /api/embed returns { "embeddings": [[...]] }
+        embeddings = response.fetch("embeddings")
+        embeddings.first
       end
 
       private def fetch_batch(texts)
-        response = ruby_llm.embed(texts, model:, provider:)
-        response.vectors
+        response = post_json("/api/embed", { model:, input: texts })
+        response.fetch("embeddings")
+      end
+
+      private def post_json(path, payload)
+        uri = URI.join(base_uri.to_s, path)
+        request = Net::HTTP::Post.new(uri)
+        request.content_type = "application/json"
+        request.body = JSON.generate(payload)
+
+        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https") do |http|
+          http.request(request)
+        end
+
+        raise Error, "HTTP #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
+
+        JSON.parse(response.body)
+      rescue JSON::ParserError => e
+        raise Error, "Invalid JSON response: #{e.message}"
       end
 
       private def fail_embed(context, error)
