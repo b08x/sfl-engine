@@ -1,33 +1,33 @@
 # frozen_string_literal: true
 
+require "dspy"
+
 module SFL
   module LLM
     module Annotators
       # Calls the LLM for a single clause's Pass 2 annotation. Takes a
       # structured context Hash built directly from Types objects by the
-      # caller (SFL::LLM::Engine) — never a formatted string it has to
-      # re-parse. This is the I3 fix: the legacy SFLAnnotator#parse_context
-      # existed only because the engine handed it a pre-formatted string;
-      # here there's no string boundary to cross in the first place.
+      # caller (SFL::LLM::Engine).
       class ClauseAnnotator
-        # @param chat [#with_schema] a RubyLLM::Chat (or compatible double)
-        def initialize(chat:)
-          @chat = chat
+        # @param lm [DSPy::LM] The language model configuration for this task
+        def initialize(lm:)
+          @lm = lm
+          @predictor = DSPy::Predict.new(Signatures::ClauseAnnotationSignature).tap do |p|
+            p.configure { |c| c.lm = lm }
+          end
         end
 
         # @param context [Hash] :text, :root_verb, :process_type, :participants, :pos_tags,
-        #   :dependencies, :semantic_coherence_score (optional) — see
-        #   lib/sfl/prompts/templates/pass_two_annotation.txt.erb for the exact shape
+        #   :dependencies, :semantic_coherence_score (optional)
         # @return [Hash] raw annotation fields, symbol-keyed
         def call(context)
-          prompt = Prompts.render(:pass_two_annotation, **context)
-          response = chat.with_schema(Schemas::ClauseAnnotationSchema).ask(prompt)
-          ResponseSymbolizer.call(response.content)
+          result = @predictor.call(**context)
+          ResponseSymbolizer.call(result.to_h)
         end
 
         private
 
-        attr_reader :chat
+        attr_reader :lm
       end
     end
   end

@@ -1,33 +1,31 @@
 # frozen_string_literal: true
 
+require "dspy"
+
 module SFL
   module LLM
     module Annotators
       # Calls the LLM once for many clauses' Pass 2 annotations — the
-      # batched counterpart to ClauseAnnotator. One call per clause
-      # measured far fewer clauses/min than the equivalent batched call in
-      # the legacy engine; batching cuts the call count substantially at
-      # the cost of a single larger prompt/response.
+      # batched counterpart to ClauseAnnotator.
       class BatchClauseAnnotator
-        # @param chat [#with_schema] a RubyLLM::Chat (or compatible double)
-        def initialize(chat:)
-          @chat = chat
+        # @param lm [DSPy::LM] The language model configuration for this task
+        def initialize(lm:)
+          @lm = lm
+          @predictor = DSPy::Predict.new(Signatures::BatchClauseAnnotationSignature).tap do |p|
+            p.configure { |c| c.lm = lm }
+          end
         end
 
-        # @param contexts [Array<Hash>] each a :index plus the same keys ClauseAnnotator
-        #   takes — see lib/sfl/prompts/templates/pass_two_batch_annotation.txt.erb
-        # @return [Array<Hash>] one Hash per annotation the LLM returned, symbol-keyed,
-        #   each carrying the :index it answers — not guaranteed to cover every input
-        #   index, and callers must not assume response order matches input order
+        # @param contexts [Array<Hash>] each a :index plus the same keys ClauseAnnotator takes
+        # @return [Array<Hash>] one Hash per annotation the LLM returned, symbol-keyed
         def call(contexts)
-          prompt = Prompts.render(:pass_two_batch_annotation, clauses: contexts)
-          response = chat.with_schema(Schemas::BatchClauseAnnotationSchema).ask(prompt)
-          ResponseSymbolizer.call(response.content).fetch(:annotations)
+          result = @predictor.call(clauses: contexts)
+          ResponseSymbolizer.call(result.to_h).fetch(:annotations)
         end
 
         private
 
-        attr_reader :chat
+        attr_reader :lm
       end
     end
   end
