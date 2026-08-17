@@ -88,7 +88,7 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/AbcSize -- context-building (index/instrument/breaker) plus
+      # -- context-building (index/instrument/breaker) plus
       # index-keying the response is one pipeline step; splitting it further would scatter
       # a single request/response round trip across method boundaries.
       private def fetch_batch(pairs, context)
@@ -101,12 +101,13 @@ module SFL
         end
         raw.to_h { |entry| [entry[:index], entry] }
       rescue => e
-        logger.warn { "pass_two batch failed (#{e.message}) — defaults applied to #{pairs.size} clauses" }
+        logger.warn do
+          "pass_two batch failed (#{format_error(e)})\n" \
+            "— defaults applied to #{pairs.size} clauses"
+        end
         {}
       end
-      # rubocop:enable Metrics/AbcSize
-
-      # rubocop:disable Metrics/AbcSize -- six independent Hash entries built from clause/
+      # -- six independent Hash entries built from clause/
       # ideational data; each is a one-line map/join already extracted as far as it reasonably
       # goes (root_verb_for is the one that had real branching logic to pull out).
       private def build_context(clause, ideational, extra)
@@ -120,8 +121,6 @@ module SFL
           semantic_coherence_score: extra[:semantic_coherence_score],
         }
       end
-      # rubocop:enable Metrics/AbcSize
-
       private def root_verb_for(clause)
         root = clause.tokens[clause.root_index]
         return "unknown" unless root
@@ -141,11 +140,11 @@ module SFL
         )
       end
 
-      # rubocop:disable Metrics/MethodLength -- normalize + log + build a seven-attribute
+      # -- normalize + log + build a seven-attribute
       # struct is the same three-step shape textual_from uses; nothing left to extract that
       # conclusion_for/safe_reasoning_trace_from haven't already pulled out.
       private def interpersonal_from(clause, raw)
-        mood, status = Core::ClassificationRegistry.normalize(:mood, raw[:mood])
+        mood, status = Core::ClassificationRegistry.normalize(:mood, coerce_to_string(raw[:mood]))
         log_classification_gap(:mood, status, raw[:mood], mood, clause)
         conclusion = conclusion_for(mood, raw)
 
@@ -154,8 +153,8 @@ module SFL
           mood:,
           modality_weight: raw[:modality_weight],
           tenor: raw[:tenor],
-          speaker_attitude: raw[:speaker_attitude],
-          reasoning: raw[:reasoning],
+          speaker_attitude: coerce_to_string(raw[:speaker_attitude]),
+          reasoning: coerce_to_string(raw[:reasoning]),
           annotation_source: "llm",
           reasoning_trace: safe_reasoning_trace_from(raw, conclusion, clause)
         )
@@ -163,8 +162,6 @@ module SFL
         logger.warn { "pass_two invalid interpersonal for clause #{clause.id}: #{e.message} — defaults applied" }
         nil
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def conclusion_for(mood, raw)
         {
           mood:,
@@ -188,12 +185,12 @@ module SFL
         nil
       end
 
-      # rubocop:disable Metrics/MethodLength -- one struct literal, six required attributes
+      # -- one struct literal, six required attributes
       private def reasoning_trace_from(raw, conclusion)
         premises = (raw[:premises] || []).map do |p|
           Core::Types::Premise.new(type: p[:type], source: p[:source], value: p[:value], weight: p[:weight])
         end
-        inference_rule = raw[:inference_rule] || "unknown"
+        inference_rule = coerce_to_string(raw[:inference_rule] || "unknown")
 
         Core::Types::ReasoningTrace.new(
           premises:,
@@ -204,29 +201,25 @@ module SFL
           generated_at: Time.now
         )
       end
-      # rubocop:enable Metrics/MethodLength
-
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- normalize + log + construct is
+      # -- normalize + log + construct is
       # the same three-step shape as interpersonal_from; splitting it further than that
       # (already-extracted) shared shape would fragment one classification-then-build step.
       private def textual_from(clause, raw)
-        theme_type, status = Core::ClassificationRegistry.normalize(:theme_type, raw[:theme_type])
+        theme_type, status = Core::ClassificationRegistry.normalize(:theme_type, coerce_to_string(raw[:theme_type]))
         log_classification_gap(:theme_type, status, raw[:theme_type], theme_type, clause)
 
         Core::Types::TextualPayload.new(
           clause_id: clause.id,
-          topical_theme: raw[:topical_theme] || clause.text.split.first,
-          textual_theme: raw[:textual_theme],
-          interpersonal_theme: raw[:interpersonal_theme],
-          rheme: raw[:rheme],
+          topical_theme: coerce_to_string(raw[:topical_theme] || clause.text.split.first),
+          textual_theme: coerce_to_string(raw[:textual_theme]),
+          interpersonal_theme: coerce_to_string(raw[:interpersonal_theme]),
+          rheme: coerce_to_string(raw[:rheme]),
           theme_type:
         )
       rescue Dry::Struct::Error => e
         logger.warn { "pass_two invalid textual for clause #{clause.id}: #{e.message} — defaults applied" }
         nil
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def default_result(clause, reason)
         Core::Types::AnnotationResult.new(
           interpersonal: Degradation.default_interpersonal(clause.id, reason:),
@@ -260,11 +253,26 @@ module SFL
       end
 
       private def log_failure(clause, error)
-        logger.error { "pass_two failed (clause_id=#{clause.id}): #{error.class}: #{error.message}" }
+        logger.error do
+          "pass_two failed (clause_id=#{clause.id}): #{format_error(error)}"
+        end
+      end
+
+      private def format_error(error)
+        "#{error.class}: #{error.message}\n#{error.backtrace&.take(15)&.join("\n")}"
       end
 
       private def now
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      # LLMs sometimes return Arrays for String fields (e.g. ["declarative"]).
+      # Coerce to a single String for downstream code that expects it.
+      private def coerce_to_string(value)
+        case value
+        when Array then value.first.to_s
+        else value.to_s
+        end
       end
     end
     # rubocop:enable Metrics/ClassLength

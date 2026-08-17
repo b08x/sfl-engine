@@ -19,7 +19,8 @@ module SFL
         # @param contexts [Array<Hash>] each a :index plus the same keys ClauseAnnotator takes
         # @return [Array<Hash>] one Hash per annotation the LLM returned, symbol-keyed
         def call(contexts)
-          result = @predictor.call(clauses: contexts)
+          clauses_json = contexts.map.with_index { |c, i| "#{i}: #{c.to_json}" }.join("\n")
+          result = @predictor.call(clauses: clauses_json)
           ResponseSymbolizer.call(result.to_h).fetch(:annotations)
         end
 

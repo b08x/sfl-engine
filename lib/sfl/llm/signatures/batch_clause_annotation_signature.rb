@@ -14,18 +14,18 @@ module SFL
 
         class IndexedAnnotation < T::Struct
           const :index, Integer, description: "Matches the input clause index"
-          const :mood, String
+          const :mood, T.any(String, Array)
           const :modality_weight, Float
           const :tenor, Float
-          const :speaker_attitude, String
-          const :topical_theme, String
-          const :textual_theme, T.nilable(String)
-          const :interpersonal_theme, T.nilable(String)
-          const :rheme, T.nilable(String)
-          const :theme_type, T.nilable(String)
-          const :reasoning, String
+          const :speaker_attitude, T.any(String, Array)
+          const :topical_theme, T.any(String, Array)
+          const :textual_theme, T.nilable(T.any(String, Array))
+          const :interpersonal_theme, T.nilable(T.any(String, Array))
+          const :rheme, T.nilable(T.any(String, Array))
+          const :theme_type, T.nilable(T.any(String, Array))
+          const :reasoning, T.any(String, Array)
           const :premises, T::Array[ClauseAnnotationSignature::Premise]
-          const :inference_rule, String
+          const :inference_rule, T.any(String, Array)
           const :confidence, Float
         end
 

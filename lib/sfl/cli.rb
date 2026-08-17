@@ -313,7 +313,7 @@ module SFL
         Analysis::DynamicFormatExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"), lm:)
       rescue => e
         warn "[ERROR] #{p}: dynamic expansion failed: #{e.message}"
-        warn e.backtrace.join("\n")
+        warn e.backtrace&.join("\n")
         []
       end
 
@@ -547,7 +547,8 @@ module SFL
     end
 
     module_function def build_collaborators
-      logger = Core::Ports::JournaldLogger.new(progname: "sfl.cli")
+      require_relative "core/ports/stderr_logger"
+      logger = Core::Ports::StderrLogger.new(level: ::Logger::INFO)
       instrumenter = Core::Ports::Null::Instrumenter.new
       breaker = Core::Ports::Null::Breaker.new
       [logger, instrumenter, breaker]

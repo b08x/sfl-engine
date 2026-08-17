@@ -29,12 +29,14 @@ RSpec.describe SFL::LLM::Annotators::BatchClauseAnnotator do
     allow(fake_predictor).to receive(:configure)
   end
 
-  it "renders every clause's context Hash into the batch prompt" do
+  it "renders every clause's context Hash into the batch prompt as numbered JSON lines" do
     allow(fake_predictor).to receive(:call).and_return(fake_response)
 
     annotator.call(contexts)
 
-    expect(fake_predictor).to have_received(:call).with(clauses: contexts)
+    expect(fake_predictor).to have_received(:call).with(
+      clauses: "0: {\"index\":0,\"text\":\"It works.\",\"root_verb\":\"works\",\"subjects\":\"It\",\"clause_type\":\"independent\",\"conjunction\":null}"
+    )
   end
 
   it "returns the symbolized annotations array" do

@@ -2,7 +2,6 @@
 
 require "dotenv"
 require "dspy"
-require "dspy/o11y/langfuse"
 
 module SFL
   # Composition root (track decision 4): the ONLY place in this codebase
@@ -64,7 +63,7 @@ module SFL
     # (no more "provider/model" string to prefix-parse — track decision 8
     # made TaskConfig#provider a plain Symbol already).
     DEFAULT_PROVIDER = :openrouter
-    DEFAULT_MODEL = "google/gemini-2.5-flash:free"
+    DEFAULT_MODEL = "openrouter/minimax/minimax-m2.7"
 
     # :context_synthesis has no legacy equivalent (it's new in v2) — rather
     # than invent an unrelated default, its own default provider/model
@@ -108,7 +107,7 @@ module SFL
     # (removed RUBY_LLM_KEY_SETTER)
 
     DEFAULT_SPACY_MODEL = "en_core_web_sm"
-    DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
+    DEFAULT_OLLAMA_BASE_URL = "http://tinybot:11434"
     DEFAULT_EMBEDDING_TIMEOUT_SECONDS = 30.0
 
     # bin/setup-python (a companion script, provisioned separately) writes
@@ -126,7 +125,7 @@ module SFL
     # time (see #resolve_pass1_env) — the interpreter alone isn't enough.
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
 
-    # rubocop:disable Metrics/ParameterLists, Metrics/MethodLength -- one flag per
+    # rubocop:disable Metrics/ParameterLists, -- one flag per
     # independently-skippable startup concern (mirrors legacy Bootstrap.call's
     # require_db:/require_llm:/require_observability: shape) plus the four DI seams
     # (env:/tty:/input:/ruby_llm:) every ENV-touching or process-global-touching method in this
@@ -171,7 +170,7 @@ module SFL
       Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
         api_debug_errors:, api_cors_origins:)
     end
-    # rubocop:enable Metrics/ParameterLists, Metrics/MethodLength
+    # rubocop:enable Metrics/ParameterLists
 
     module_function def build_llm_collaborators(env)
       llm_config = build_llm_config(env)
@@ -194,8 +193,7 @@ module SFL
     # Hash for anything else (top_p, top_k, max_tokens, ...), and there is
     # no established v2 convention yet for exposing arbitrary param keys
     # via ENV var names; add one here if/when a task actually needs it,
-    # rather than speculatively generalizing now.
-    # rubocop:disable Metrics/MethodLength -- six independent per-task TaskConfig builds (two of
+    # rather than speculatively generalizing now. # -- six independent per-task TaskConfig builds (two of
     # them, ingest_classification/loader_drafting, needing an explanatory comment on their
     # borrowed default), then one Config.new — no natural sub-grouping to extract without
     # scattering related task-default reasoning across multiple methods.
@@ -229,8 +227,6 @@ module SFL
         loader_drafting:,
       })
     end
-    # rubocop:enable Metrics/MethodLength
-
     module_function def pass_two_task_config(name, env)
       task_config_from_env(name, env, default_provider: DEFAULT_PROVIDER, default_model: DEFAULT_MODEL)
     end
@@ -318,7 +314,11 @@ module SFL
       end
       return if decision == :skip_tracing
 
-      require "dspy/o11y/langfuse"
+      LLM::Tracing.configure(
+        host: env["LANGFUSE_HOST"],
+        public_key: env["LANGFUSE_PUBLIC_KEY"],
+        secret_key: env["LANGFUSE_SECRET_KEY"]
+      )
     end
 
     # Deliberately does NOT run migrations (track decision 5, unlike
