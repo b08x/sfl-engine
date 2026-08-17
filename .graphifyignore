@@ -1,3 +1,4 @@
+.rubocop.yml
 .sfl-python/
 .sfl-cache/
 .ruby-lsp/
@@ -14,3 +15,20 @@ sqlite_mcp_server.db
 .dockerignore
 .env
 docs/superpowers/
+.oom/
+.playwright-mcp/
+bench/
+coverage/
+docker/
+output/
+sift_ingest_architecture_report.md
+AGENTS.md
+README.md
+ROADMAP.md
+spec/
+.bundle/
+.superpowers/
+.sfl-python/
+.ruby-lsp/
+experiments/
+docs/
