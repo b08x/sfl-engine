@@ -131,6 +131,17 @@ RSpec.describe SFL::LLM::Engine do
   end
 
   describe "#annotate_batch" do
+    it "does not render the cumulative timing report for every batch" do
+      batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator, call: [])
+      instrumenter = instance_spy(SFL::Core::Ports::TimingInstrumenter)
+      allow(instrumenter).to receive(:instrument).and_yield
+      engine = described_class.new(clause_annotator: double, batch_clause_annotator:, instrumenter:)
+
+      engine.annotate_batch([[clause, ideational]])
+
+      expect(instrumenter).not_to have_received(:report_json)
+    end
+
     it "returns [] for an empty pairs list without calling the batch annotator" do
       batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
       allow(batch_clause_annotator).to receive(:call)

@@ -14,9 +14,11 @@ module SFL
         logger: Core::Ports::Null::Logger.new
       )
         Engine.new(
-          clause_annotator: Annotators::ClauseAnnotator.new(lm: lm_factory.for(:pass_two_annotation)),
+          clause_annotator: Annotators::ClauseAnnotator.new(
+            lm: lm_factory.for(:pass_two_annotation), instrumenter:
+          ),
           batch_clause_annotator: Annotators::BatchClauseAnnotator.new(
-            lm: lm_factory.for(:pass_two_batch_annotation)
+            lm: lm_factory.for(:pass_two_batch_annotation), instrumenter:
           ),
           breaker:,
           instrumenter:,

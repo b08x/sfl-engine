@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SFL classification corpus",
+  "type": "object",
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "description": {"type": "string"},
+    "entries": {
+      "type": "array",
+      "minItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["id", "raw_classification", "canonical_label", "expected_parsed_output", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^(compound|fragment)-[0-9]{3}$"},
+          "raw_classification": {"type": "string"},
+          "canonical_label": {"enum": ["compound", "fragment"]},
+          "expected_parsed_output": {"type": ["object", "null"]},
+          "confidence": {"enum": ["high", "medium", "low"]}
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ module SFL
         attribute :textual, TextualPayload.optional.default(nil)
         attribute :document_id, Types::String.optional
         attribute :compiled_at, Types::Time
+        attribute :untrusted, Types::Bool.default(false)
       end
     end
   end

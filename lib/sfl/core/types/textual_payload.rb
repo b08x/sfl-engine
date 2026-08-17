@@ -12,6 +12,9 @@ module SFL
         attribute :rheme, Types::String.optional
         attribute :theme_type,
           Types::String.enum(*ClassificationRegistry.canonical_values(:theme_type)).optional
+        attribute :raw_classification, Types::String.optional.default(nil)
+        attribute :classification_status, Types::ClassificationStatus.optional.default(nil)
+        attribute :untrusted, Types::Bool.default(false)
       end
     end
   end

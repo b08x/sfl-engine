@@ -10,8 +10,9 @@ module SFL
       # caller (SFL::LLM::Engine).
       class ClauseAnnotator
         # @param lm [DSPy::LM] The language model configuration for this task
-        def initialize(lm:)
+        def initialize(lm:, instrumenter: Core::Ports::Null::Instrumenter.new)
           @lm = lm
+          @instrumenter = instrumenter
           @predictor = DSPy::Predict.new(Signatures::ClauseAnnotationSignature).tap do |p|
             p.configure { |c| c.lm = lm }
           end
@@ -21,13 +22,17 @@ module SFL
         #   :dependencies, :semantic_coherence_score (optional)
         # @return [Hash] raw annotation fields, symbol-keyed
         def call(context)
-          result = @predictor.call(**context)
-          ResponseSymbolizer.call(result.to_h)
+          raw = instrumenter.instrument("pass_two.provider_request", provider: lm.class.name) do
+            @predictor.call(**context)
+          end
+          serialized = instrumenter.instrument("pass_two.parse.deserialization") { raw.to_h }
+          normalized = instrumenter.instrument("pass_two.parse.normalization") { ResponseSymbolizer.call(serialized) }
+          instrumenter.instrument("pass_two.parse.classification") { normalized }
         end
 
         private
 
-        attr_reader :lm
+        attr_reader :lm, :instrumenter
       end
     end
   end

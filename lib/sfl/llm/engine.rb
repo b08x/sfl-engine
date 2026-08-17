@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require "securerandom"
 
 module SFL
   module LLM
@@ -35,8 +36,8 @@ module SFL
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new
       )
-        @clause_annotator = clause_annotator || (chat && Annotators::ClauseAnnotator.new(chat:))
-        @batch_clause_annotator = batch_clause_annotator || (chat && Annotators::BatchClauseAnnotator.new(chat:))
+        @clause_annotator = clause_annotator || (chat && Annotators::ClauseAnnotator.new(lm: chat, instrumenter:))
+        @batch_clause_annotator = batch_clause_annotator || (chat && Annotators::BatchClauseAnnotator.new(lm: chat, instrumenter:))
         raise ArgumentError, "must provide chat: or explicit clause_annotator:/batch_clause_annotator:" \
           unless @clause_annotator && @batch_clause_annotator
 
@@ -68,14 +69,19 @@ module SFL
       def annotate_batch(pairs, context: {})
         return [] if pairs.empty?
 
-        raw_by_index = fetch_batch(pairs, context)
+        batch_id = SecureRandom.uuid
+        raw_by_index = instrumenter.instrument("pass_two.batch", clause_count: pairs.size, batch_id:) do
+          fetch_batch(pairs, context)
+        end
 
         pairs.each_with_index.map do |(clause, _ideational), index|
-          raw = raw_by_index[index]
-          next annotation_result_for(clause, raw) if raw
+          instrumenter.instrument("pass_two.clause", clause_id: clause.id, batch_id:) do
+            raw = raw_by_index[index]
+            next annotation_result_for(clause, raw) if raw
 
-          logger.warn { "pass_two missing annotation for clause #{clause.id} (index #{index}) — defaults applied" }
-          default_result(clause, "No annotation returned for this clause — defaults applied")
+            logger.warn { "pass_two missing annotation for clause #{clause.id} (index #{index}) — defaults applied" }
+            default_result(clause, "No annotation returned for this clause — defaults applied")
+          end
         end
       end
 
@@ -144,7 +150,8 @@ module SFL
       # struct is the same three-step shape textual_from uses; nothing left to extract that
       # conclusion_for/safe_reasoning_trace_from haven't already pulled out.
       private def interpersonal_from(clause, raw)
-        mood, status = Core::ClassificationRegistry.normalize(:mood, coerce_to_string(raw[:mood]))
+        raw_mood = coerce_to_string(raw[:mood])
+        mood, status = Core::ClassificationRegistry.normalize(:mood, raw_mood)
         log_classification_gap(:mood, status, raw[:mood], mood, clause)
         conclusion = conclusion_for(mood, raw)
 
@@ -156,6 +163,9 @@ module SFL
           speaker_attitude: coerce_to_string(raw[:speaker_attitude]),
           reasoning: coerce_to_string(raw[:reasoning]),
           annotation_source: "llm",
+          raw_classification: raw_mood,
+          classification_status: status.to_s,
+          untrusted: status == :unknown,
           reasoning_trace: safe_reasoning_trace_from(raw, conclusion, clause)
         )
       rescue Dry::Struct::Error => e
@@ -205,7 +215,8 @@ module SFL
       # the same three-step shape as interpersonal_from; splitting it further than that
       # (already-extracted) shared shape would fragment one classification-then-build step.
       private def textual_from(clause, raw)
-        theme_type, status = Core::ClassificationRegistry.normalize(:theme_type, coerce_to_string(raw[:theme_type]))
+        raw_theme_type = coerce_to_string(raw[:theme_type])
+        theme_type, status = Core::ClassificationRegistry.normalize(:theme_type, raw_theme_type)
         log_classification_gap(:theme_type, status, raw[:theme_type], theme_type, clause)
 
         Core::Types::TextualPayload.new(
@@ -214,7 +225,10 @@ module SFL
           textual_theme: coerce_to_string(raw[:textual_theme]),
           interpersonal_theme: coerce_to_string(raw[:interpersonal_theme]),
           rheme: coerce_to_string(raw[:rheme]),
-          theme_type:
+          theme_type:,
+          raw_classification: raw_theme_type,
+          classification_status: status.to_s,
+          untrusted: status == :unknown
         )
       rescue Dry::Struct::Error => e
         logger.warn { "pass_two invalid textual for clause #{clause.id}: #{e.message} — defaults applied" }

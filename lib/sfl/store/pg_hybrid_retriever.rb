@@ -112,6 +112,7 @@ module SFL
           Sequel[:interpersonal_payloads][:tenor],
           Sequel[:interpersonal_payloads][:modality_weight],
           Sequel[:interpersonal_payloads][:annotation_source],
+          Sequel[:interpersonal_payloads][:untrusted],
           Sequel[:ideational_payloads][:process_type],
         ]
       end
@@ -151,7 +152,8 @@ module SFL
           tenor: row[:tenor],
           process_type: row[:process_type],
           modality_weight: row[:modality_weight],
-          annotation_source: row[:annotation_source]
+          annotation_source: row[:annotation_source],
+          untrusted: row[:untrusted] || false
         )
       end
       # rubocop:enable Metrics/MethodLength

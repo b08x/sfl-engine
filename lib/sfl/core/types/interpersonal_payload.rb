@@ -13,6 +13,9 @@ module SFL
         attribute :reasoning, Types::String.optional
         attribute :annotation_source, Types::AnnotationSource
         attribute :reasoning_trace, ReasoningTrace.optional.default(nil)
+        attribute :raw_classification, Types::String.optional.default(nil)
+        attribute :classification_status, Types::ClassificationStatus.optional.default(nil)
+        attribute :untrusted, Types::Bool.default(false)
       end
     end
   end

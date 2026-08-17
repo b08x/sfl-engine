@@ -169,6 +169,9 @@ module SFL
           speaker_attitude: interpersonal.speaker_attitude,
           reasoning: interpersonal.reasoning,
           annotation_source: interpersonal.annotation_source,
+          raw_classification: interpersonal.raw_classification,
+          classification_status: interpersonal.classification_status,
+          untrusted: interpersonal.untrusted,
           reasoning_trace: reasoning_trace_jsonb(interpersonal.reasoning_trace),
           created_at: clause.compiled_at,
         }
@@ -186,6 +189,9 @@ module SFL
           speaker_attitude: interpersonal.speaker_attitude,
           reasoning: interpersonal.reasoning,
           annotation_source: interpersonal.annotation_source,
+          raw_classification: interpersonal.raw_classification,
+          classification_status: interpersonal.classification_status,
+          untrusted: interpersonal.untrusted,
           reasoning_trace: reasoning_trace_jsonb(interpersonal.reasoning_trace),
         }
       end
@@ -273,6 +279,9 @@ module SFL
           speaker_attitude: row[:speaker_attitude],
           reasoning: row[:reasoning],
           annotation_source: row[:annotation_source],
+          raw_classification: row[:raw_classification],
+          classification_status: row[:classification_status],
+          untrusted: row[:untrusted] || false,
           reasoning_trace: reconstruct_reasoning_trace(row[:reasoning_trace])
         )
       end

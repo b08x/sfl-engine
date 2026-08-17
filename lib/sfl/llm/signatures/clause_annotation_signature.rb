@@ -27,8 +27,13 @@ module SFL
         end
 
         input do
-          const :context, String, description: "Surrounding context of the clause"
-          const :clause, String, description: "The single clause to analyze"
+          const :text, String, description: "The text of the clause to analyze"
+          const :root_verb, String, description: "The root verb and its part-of-speech"
+          const :process_type, String, description: "Ideational process type"
+          const :participants, String, description: "Roles and text of participants"
+          const :pos_tags, String, description: "Token-level POS tags"
+          const :dependencies, String, description: "Dependency parsing arcs"
+          const :semantic_coherence_score, T.nilable(Float), description: "Semantic coherence score"
         end
 
         output do

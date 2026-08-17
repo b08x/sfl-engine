@@ -44,12 +44,6 @@ module SFL
       REVIEW_DECISIONS = Core::Types::ReviewDecision.values.freeze
       REVIEW_QUEUE_DECISIONS = Core::Types::ReviewQueueDecision.values.freeze
 
-      # Default dev-only allowlist: same rationale as legacy's Server — no
-      # rack-cors dependency for three headers, revisit if a production
-      # origin needs adding. Overridable per deployment (issue #35) via
-      # Boot::Result#api_cors_origins / SFL_API_CORS_ORIGINS — a
-      # containerized webui won't reliably serve from either literal here.
-      DEFAULT_CORS_ORIGINS = %w[http://localhost:3000 http://127.0.0.1:3000].freeze
       CORS_HEADERS = {
         "access-control-allow-methods" => "GET, POST, OPTIONS",
         "access-control-allow-headers" => "content-type",
@@ -61,9 +55,8 @@ module SFL
       #   real deployment; the generic response + logged request_id is the supported way to
       #   correlate a client-reported failure with server-side logs.
       # @param cors_origins [Array<String>] allowed Origin values (Boot::Result#api_cors_origins,
-      #   SFL_API_CORS_ORIGINS — issue #35). Defaults to the two localhost origins bare-metal
-      #   dev has always used.
-      def initialize(ctx, debug_errors: false, cors_origins: DEFAULT_CORS_ORIGINS)
+      #   SFL_API_CORS_ORIGINS — issue #35).
+      def initialize(ctx, debug_errors: false, cors_origins: [])
         @ctx = ctx
         @debug_errors = debug_errors
         @cors_origins = cors_origins

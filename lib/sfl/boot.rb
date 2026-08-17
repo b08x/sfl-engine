@@ -56,14 +56,9 @@ module SFL
       loader_drafting
     ].freeze
 
-    # Default provider/model for the two Pass 2 tasks, carried over from
-    # legacy's single DSPY_PROVIDER default
-    # ("openrouter/mistralai/mistral-small-3.2-24b-instruct" in this repo's
-    # own .env) split into TaskConfig's separate provider:/model: fields
-    # (no more "provider/model" string to prefix-parse — track decision 8
-    # made TaskConfig#provider a plain Symbol already).
+    # Default provider for the two Pass 2 tasks, carried over from
+    # legacy's single DSPY_PROVIDER default.
     DEFAULT_PROVIDER = :openrouter
-    DEFAULT_MODEL = "openrouter/minimax/minimax-m2.7"
 
     # :context_synthesis has no legacy equivalent (it's new in v2) — rather
     # than invent an unrelated default, its own default provider/model
@@ -73,11 +68,10 @@ module SFL
     # point than a second invented default. See #build_llm_config.
 
     # :embedding's default model mirrors legacy's Compiler::Embedder
-    # default ("embeddinggemma:latest") and reuses the EMBEDDING_MODEL env
+    # default and reuses the EMBEDDING_MODEL env
     # var this repo's .env already sets, as a fallback layer beneath the
     # new SFL_TASK_EMBEDDING_MODEL var (see #build_llm_config).
     DEFAULT_EMBEDDING_PROVIDER = :ollama
-    DEFAULT_EMBEDDING_MODEL = "embeddinggemma:latest"
 
     # ENV var per provider whose absence is a hard Boot::Error — mirrors
     # legacy's KEY_ENV_BY_PREFIX, but keyed by the plain provider Symbol
@@ -125,7 +119,7 @@ module SFL
     # time (see #resolve_pass1_env) — the interpreter alone isn't enough.
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
 
-    # rubocop:disable Metrics/ParameterLists, -- one flag per
+    # rubocop:disable Metrics/ParameterLists -- one flag per
     # independently-skippable startup concern (mirrors legacy Bootstrap.call's
     # require_db:/require_llm:/require_observability: shape) plus the four DI seams
     # (env:/tty:/input:/ruby_llm:) every ENV-touching or process-global-touching method in this
@@ -228,13 +222,13 @@ module SFL
       })
     end
     module_function def pass_two_task_config(name, env)
-      task_config_from_env(name, env, default_provider: DEFAULT_PROVIDER, default_model: DEFAULT_MODEL)
+      task_config_from_env(name, env, default_provider: DEFAULT_PROVIDER, default_model: nil)
     end
 
     module_function def embedding_task_config(env)
       task_config_from_env(
         :embedding, env,
-        default_provider: DEFAULT_EMBEDDING_PROVIDER, default_model: env["EMBEDDING_MODEL"] || DEFAULT_EMBEDDING_MODEL
+        default_provider: DEFAULT_EMBEDDING_PROVIDER, default_model: env["EMBEDDING_MODEL"]
       )
     end
 
@@ -250,10 +244,10 @@ module SFL
 
     # @param env [#[]] environment source
     # @return [Array<String>] SFL_API_CORS_ORIGINS split on commas and trimmed, or
-    #   API::Server::DEFAULT_CORS_ORIGINS when unset (issue #35).
+    #   empty array when unset (issue #35).
     module_function def resolve_api_cors_origins(env)
       raw = presence(env["SFL_API_CORS_ORIGINS"])
-      return API::Server::DEFAULT_CORS_ORIGINS unless raw
+      return [] unless raw
 
       raw.split(",").map(&:strip).reject(&:empty?)
     end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "sorbet-runtime"
+
 module SFL
   module LLM
     # ruby_llm's structured-output response is a String-keyed Hash (JSON
@@ -9,6 +11,7 @@ module SFL
     module ResponseSymbolizer
       module_function def call(value)
         case value
+        when T::Struct then call(value.serialize)
         when Hash then value.to_h { |k, v| [k.to_sym, call(v)] }
         when Array then value.map { |v| call(v) }
         else value

@@ -79,7 +79,7 @@ module SFL
       # and the Data Quality preamble describing that split (nil when
       # nothing was excluded).
       private def partition_citable(rows, include_fallback)
-        citable = include_fallback ? rows : rows.select { |row| llm_sourced?(row) }
+        citable = rows.select { |row| (include_fallback || llm_sourced?(row)) && !row.untrusted }
         [citable, data_quality_preamble(rows.size - citable.size, rows.size)]
       end
 

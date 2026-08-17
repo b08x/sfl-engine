@@ -28,7 +28,7 @@ RSpec.describe SFL::API::Server do
   end
 
   def app
-    described_class.new(ctx)
+    described_class.new(ctx, cors_origins: %w[http://localhost:3000 http://127.0.0.1:3000])
   end
 
   # rubocop:disable Metrics/MethodLength -- one full AnnotatedClause fixture literal, not
@@ -90,14 +90,13 @@ RSpec.describe SFL::API::Server do
       expect(last_response.headers["access-control-allow-methods"]).to include("POST")
     end
 
-    it "accepts a deployment-specific allowlist instead of the default two localhost origins " \
-      "when constructed with cors_origins: (issue #35)" do
+    it "accepts an allowlist when constructed with cors_origins: (issue #35)" do
       custom_app = described_class.new(ctx, cors_origins: ["https://webui.example.com"])
-      env = Rack::MockRequest.env_for("/health", "HTTP_ORIGIN" => "http://localhost:3000")
+      env = Rack::MockRequest.env_for("/health", "HTTP_ORIGIN" => "https://webui.example.com")
 
       _status, headers, = custom_app.call(env)
 
-      expect(headers).not_to have_key("access-control-allow-origin")
+      expect(headers["access-control-allow-origin"]).to eq("https://webui.example.com")
     end
   end
 

@@ -33,6 +33,7 @@ module SFL
         attribute :process_type, Types::ProcessType.optional.default(nil)
         attribute :modality_weight, Types::ModalityWeight.optional.default(nil)
         attribute :annotation_source, Types::AnnotationSource.optional.default(nil)
+        attribute :untrusted, Types::Bool.default(false)
       end
     end
   end

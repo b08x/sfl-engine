@@ -8,112 +8,85 @@ Non-gem single application (no gemspec, no `gem install`; clone and run). See `R
 
 ## Critical Architecture Facts
 
-- **Zeitwerk autoloader** rooted at `lib/` (see `lib/sfl.rb`): one `SFL.loader` setup at require-time
-- **`SFL::Boot`** (lib/sfl/boot.rb): sole ENV reader; all other classes take config via constructor injection
-- **Pass 1**: spaCy subprocess sidecar (no in-process Python; track decision 2)
-- **Pass 2**: dspy.rb-based annotation (replaces ruby_llm; track decision 8)
-- **Storage**: Postgres/pgvector via Sequel (track decision 5: no auto-migration — run `rake db:migrate` manually)
-- **GUI**: glimmer-dsl-libui (opt-in require; ignored by Zeitwerk, see `lib/sfl.rb:40`)
-- **HTTP API**: Falcon server via `exe/sfl-api` → `config.ru`
-- **CLI**: `exe/sfl-analyze` with subcommands (conversation, documentation, knowledge-base, context)
+- **Zeitwerk autoloader** rooted at `lib/` (see `lib/sfl.rb`): one `SFL.loader` setup at require-time; `lib/sfl/gui` is ignored and opt-in.
+- **`SFL::Boot`** (`lib/sfl/boot.rb`) is the sole ENV reader; other classes take config via constructor injection.
+- **Pass 1** is a spaCy subprocess sidecar (no in-process Python); **Pass 2** uses dspy.rb annotation.
+- **Storage** is Postgres/pgvector via Sequel; migrations are never automatic.
+- **HTTP API**: Falcon via `exe/sfl-api` → `config.ru`. **CLI**: `exe/sfl-analyze` subcommands conversation, documentation, knowledge-base, context.
 
 ## Directory Layout
 
 ```
-lib/sfl/
-├── core/      # types, ports, pass1 sidecar, pipeline, loaders
-├── store/     # Sequel/pg/pgvector repositories, migrations, retrieval
-├── llm/       # dspy.rb + dspy-signature annotators, per-task config
-├── prompts/   # plain folder of prompt templates
-├── cli/       # non-interactive/scriptable analyzer commands
-├── gui/       # glimmer-dsl-libui desktop GUI (opt-in require)
-└── chat/      # interactive chatbot agent (RubyLLM::Tool wrappers)
+lib/sfl/{core,store,llm,analysis,cli,gui,chat}/
+# core: types, ports, sidecar, pipeline, loaders
+# store: Sequel/pg/pgvector repositories, migrations, retrieval
+# llm: dspy.rb annotators and per-task config
+# cli/gui/chat: scriptable CLI, opt-in desktop GUI, interactive agent
 ```
 
-`experiments/` is quarantined — never autoloaded, never shipped.
+`experiments/` is quarantined — never autoloaded or shipped.
 
 ## Developer Commands
 
 ```bash
-# Full verification (default rake task)
-bundle exec rake          # runs spec + rubocop
+# Prerequisites and local services
+docker compose up -d                 # Postgres 5433, Redis 6380
+bin/setup-python                     # vendor spaCy into .sfl-python/
+bin/setup-config                     # interactive .env wizard
 
-# Individual verification
-bundle exec rspec                          # all specs
-bundle exec rspec spec/path/to/file.rb     # single file
-bundle exec rspec spec/path/to/file.rb:42  # single example
-bundle exec rubocop                        # linter only
-bundle exec rubocop --auto-correct         # auto-fix
+# Full verification (Rakefile default: spec + rubocop + Zeitwerk check)
+bundle exec rake
+bundle exec rspec                     # all specs
+bundle exec rspec spec/path/to/file.rb
+bundle exec rspec spec/path/to/file.rb:42
+bundle exec rubocop
+bundle exec rubocop --auto-correct
 
-# Database
-rake db:migrate                     # run pending Sequel migrations
-rake embeddings:redrive             # re-drive pending/failed embeddings
+# Database (explicit; Boot never migrates)
+bundle exec rake db:migrate
+bundle exec rake embeddings:redrive
+bundle exec rake zeitwerk:check
 
-# Server
-bundle exec exe/sfl-api             # starts Falcon on port 3001 (default), 0.0.0.0 by default (#33)
-PORT=3002 bundle exec exe/sfl-api   # custom port
-# NOT `bundle exec sfl-api` -- no gemspec/executables list (track decision 1), so there is no
-# binstub for Bundler to resolve that bare command name to (live-verified 2026-08-02, #34).
-
-# Setup
-bin/setup-python                    # vendor spaCy into .sfl-python/
-bin/setup-config                    # interactive .env setup wizard
+# CLI and API
+bundle exec exe/sfl-analyze conversation input.jsonl --store
+bundle exec exe/sfl-analyze documentation ./docs/ --store
+bundle exec exe/sfl-analyze context "what happened?" --limit 10
+bundle exec exe/sfl-api                 # Falcon on 0.0.0.0:3001
+PORT=3002 bundle exec exe/sfl-api
+HOST=localhost bundle exec exe/sfl-api  # loopback bind
 ```
+
+Do not use `bundle exec sfl-analyze` or `bundle exec sfl-api`: this checkout has no gemspec/executables list; run the `exe/` scripts directly. Containerized API commands are `docker compose --profile app build api`, `docker compose --profile app up -d api`, and `docker compose --profile app run --rm migrate`.
 
 ## Key Conventions
 
-### Ruby Version
-- `.ruby-version` / `.tool-versions`: 4.0.1 (production target — issue #4)
-- `.rubocop.yml`: `TargetRubyVersion: 4.0`
-- Hash value omission (`{ turn_id:, total: }`) and anonymous `**` forwarding are valid syntax
+- `.ruby-version` pins **4.0.1**; `.tool-versions` currently says **Ruby 4.0.4**. `.rubocop.yml` targets Ruby 4.0; resolve the version-file discrepancy before changing toolchain assumptions.
+- Every Ruby file has `# frozen_string_literal: true`; use double-quoted strings and 2-space indentation. Shopify-style RuboCop plugins are enabled.
+- Hash value omission (`{ turn_id:, total: }`) and anonymous `**` forwarding are valid syntax.
+- Keep Zeitwerk paths/names aligned; custom inflections live in `lib/sfl.rb:8-29`.
 
-### Code Style
-- `frozen_string_literal: true` in every file (enforced by RuboCop)
-- Double quotes for strings (`Style/StringLiterals: double_quotes`)
-- 2-space indentation (enforced)
-- Shopify-style RuboCop config (plugins: rubocop-shopify, rubocop-performance, rubocop-rspec, etc.)
+## Testing and Configuration
 
-### Testing
-- RSpec with `--require spec_helper --format documentation --color`
-- SimpleCov enabled (branch coverage, skips spec/ dir)
-- `spec/examples.txt` persists example status (for `--only-failures`)
-- Relaxed cops: `RSpec/MultipleExpectations: Max: 10`, `RSpec/ExampleLength: Max: 20`
-- Shared examples in `spec/support/shared_examples/`
-
-### ENV Loading
-- `.env` loaded by `Dotenv.load` inside `SFL::Boot.call` (never at require-time)
-- API keys: `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY`
-- Database: `DATABASE_URL=postgresql://sfl:sfl@localhost:5433/sfl_engine_dev`
-- Per-task LLM config: `SFL_TASK_<TASK_NAME>_MODEL` / `_PROVIDER` / `_TEMPERATURE`
-
-## Docker Services
-
-`docker-compose.yml` provides Postgres (port 5433) and Redis (port 6380). `SFL::DockerServices.ensure_running!` (called from `exe/sfl-analyze` and `config.ru`) starts them only when `SFL_AUTO_START_DOCKER=1` is set (issue #17 — auto-start used to be unconditional, which fought an external `DATABASE_URL`); otherwise run `docker compose up -d` yourself.
+- `.rspec` loads `spec_helper`, uses documentation format and color. SimpleCov branch coverage is enabled; `spec/examples.txt` persists example status.
+- Shared examples live in `spec/support/shared_examples/`; RuboCop relaxes `RSpec/MultipleExpectations` to 10 and `RSpec/ExampleLength` to 20.
+- `.env` is loaded by `Dotenv.load` inside `SFL::Boot.call`, never at require-time. Use `.env.example` as the documented template; do not print or commit secrets.
+- Configure `DATABASE_URL` for Postgres (Compose uses port 5433), `SFL_TASK_<TASK_NAME>_MODEL`, `_PROVIDER`, and `_TEMPERATURE`; API keys include `OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `MISTRAL_API_KEY`.
 
 ## Gotchas
 
-- **No auto-migration**: Boot never runs migrations; always `rake db:migrate` first on fresh DB
-- **Pass 1 requires spaCy**: Run `bin/setup-python` to vendor; without it, Pass 1 sidecar fails loudly
-- **Langfuse tracing**: Prompted interactively if `LANGFUSE_*` set but unreachable; use `--disable-tracing` to skip
-- **Timezones**: `SFL_BATCH_SIZE` and other ENV vars must be set before `Dotenv.load` (Boot reads at call-time, not require-time)
-- **Zeitwerk inflections**: Custom inflections in `lib/sfl.rb:12-28` — don't add files relying on default camelizing without checking
+- Fresh databases require `bundle exec rake db:migrate`; `docker compose up -d` starts only Postgres/Redis. App services require `--profile app`.
+- Pass 1 requires `bin/setup-python`; without the sidecar it fails loudly.
+- `SFL_AUTO_START_DOCKER=1` is an explicit opt-in for CLI/API Docker auto-start; otherwise start services manually.
+- Langfuse tracing can prompt when configured but unreachable; use CLI `--disable-tracing` to skip it. ENV must be set before `Dotenv.load` (Boot reads at call-time).
 
 ## Existing Instruction Files
 
-- `README.md`: Architectural vision — the interdisciplinary synthesis (SFL, CBT, neuroscience, philosophy, Unix, cybersecurity)
-- `rebuild-blueprint-with-plugin.md`: Full SIFT audit and phased backlog
-- `docs/architectural-lineage.md`: The intellectual foundations — how each domain maps to engineering patterns
-- `docs/use-cases/llm-role-isolation.md`: The Rhetorical Firewall hypothesis
-- `ROADMAP.md`: Future phases (Rolling Synthesis, Cognitive Gas, Semantic Convergence)
-- `.rubocop.yml`: Comprehensive RuboCop config (Shopify-style)
-- `.rspec`: RSpec defaults
-- `.env`: Environment variable documentation
+`README.md` (architecture and usage), `rebuild-blueprint-with-plugin.md` (SIFT backlog), `docs/` (lineage, use cases, assessments), `ROADMAP.md`, `.rubocop.yml`, `.rspec`, `.env.example`, and `docker-compose.yml`.
 
 ## Per-Task LLM Configuration
 
-| Task | ENV Prefix | Default Provider | Default Model |
-|------|-----------|------------------|---------------|
-| pass_two_annotation | `SFL_TASK_PASS_TWO_ANNOTATION_` | openrouter | mistralai/mistral-small-3.2-24b-instruct |
-| pass_two_batch_annotation | `SFL_TASK_PASS_TWO_BATCH_ANNOTATION_` | openrouter | mistralai/mistral-small-3.2-24b-instruct |
-| context_synthesis | `SFL_TASK_CONTEXT_SYNTHESIS_` | (inherits from pass_two_annotation) | (inherits) |
-| embedding | `SFL_TASK_EMBEDDING_` | ollama | embeddinggemma:latest |
+| Task | ENV Prefix | Default |
+|------|-----------|---------|
+| Pass 2 annotation / batch | `SFL_TASK_PASS_TWO_ANNOTATION_` / `SFL_TASK_PASS_TWO_BATCH_ANNOTATION_` | openrouter / `mistralai/mistral-small-3.2-24b-instruct` |
+| Context synthesis | `SFL_TASK_CONTEXT_SYNTHESIS_` | inherits Pass 2 |
+| Embedding | `SFL_TASK_EMBEDDING_` | ollama / `embeddinggemma:latest` |

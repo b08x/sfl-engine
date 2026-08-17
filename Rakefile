@@ -6,7 +6,22 @@ require "rubocop/rake_task"
 RSpec::Core::RakeTask.new(:spec)
 RuboCop::RakeTask.new(:rubocop)
 
-task default: %i[spec rubocop]
+namespace :zeitwerk do
+  desc "Check project structure for Zeitwerk compatibility"
+  task :check do
+    require "zeitwerk"
+    require_relative "lib/sfl"
+
+    begin
+      SFL.loader.eager_load
+      puts "Zeitwerk check passed."
+    rescue NameError => e
+      abort "Zeitwerk check failed: #{e.message}"
+    end
+  end
+end
+
+task default: %i[spec rubocop zeitwerk:check]
 
 namespace :db do
   desc "Run pending Sequel migrations against DATABASE_URL (db/migrations)"

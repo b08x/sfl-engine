@@ -144,6 +144,14 @@ module SFL
       private def annotate_with_cache(pairs, document_id, semantic_coherence_score)
         keyed = pairs.map { |clause, ideational| [cache_key_for(document_id, clause), clause, ideational] }
         hits, miss_keys = cache.partition(keyed.map { |key, _clause, _ideational| key })
+
+        # Self-heal poisoned caches: treat untrusted cache entries as misses
+        trusted_hits = hits.select do |_, clause|
+          Types::TRUSTED_ANNOTATION_SOURCES.include?(clause.interpersonal.annotation_source)
+        end
+        miss_keys += (hits.keys - trusted_hits.keys)
+        hits = trusted_hits
+
         fresh_by_key = fresh_annotations(keyed, miss_keys, semantic_coherence_score)
 
         logger.info { "pipeline cache (document_id=#{document_id}): #{hits.size} hits, #{miss_keys.size} misses" }
@@ -159,7 +167,7 @@ module SFL
         end, semantic_coherence_score)
 
         misses.zip(annotated).to_h do |(key, _clause, _ideational), annotated_clause|
-          cache.write(key, annotated_clause)
+          cache.write(key, annotated_clause) if Types::TRUSTED_ANNOTATION_SOURCES.include?(annotated_clause.interpersonal.annotation_source)
           [key, annotated_clause]
         end
       end
@@ -172,15 +180,19 @@ module SFL
       end
 
       private def build_annotated_clause(clause, ideational, annotation_result)
+        interpersonal = annotation_result.interpersonal
+        interpersonal = Types::InterpersonalPayload.new(interpersonal.to_h.merge(untrusted: true)) if annotation_result.textual&.untrusted
+
         Types::AnnotatedClause.new(
           id: SecureRandom.uuid,
           text: clause.text,
           syntactic: clause,
           ideational:,
-          interpersonal: annotation_result.interpersonal,
+          interpersonal:,
           textual: annotation_result.textual,
           document_id: clause.document_id,
-          compiled_at: Time.now
+          compiled_at: Time.now,
+          untrusted: annotation_result.interpersonal.untrusted || annotation_result.textual&.untrusted == true
         )
       end
 
@@ -213,6 +225,13 @@ module SFL
           logger.info do
             "pipeline completed (document_id=#{document_id.inspect}, clause_count=#{clause_count}, " \
               "latency_ms=#{elapsed_ms})"
+          end
+          # Serialize once per completed pipeline, not once per Pass 2 batch:
+          # report_json walks every accumulated span, so logging it inside
+          # annotate_batch made long multi-turn runs repeatedly serialize the
+          # entire history and added avoidable work to the measured path.
+          logger.info do
+            "pass_two timing_breakdown=#{instrumenter.report_json}" if instrumenter.respond_to?(:report_json)
           end
         else
           logger.error { "pipeline failed (document_id=#{document_id.inspect}): #{result.failure.inspect}" }

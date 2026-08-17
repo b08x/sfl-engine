@@ -9,6 +9,9 @@ RSpec.describe SFL::Boot do
     {
       "DATABASE_URL" => "postgresql:///irrelevant-for-these-examples",
       "OPENROUTER_API_KEY" => "or-key",
+      "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "openrouter/gemini-pro",
+      "SFL_TASK_PASS_TWO_BATCH_ANNOTATION_MODEL" => "openrouter/gemini-pro",
+      "EMBEDDING_MODEL" => "embeddinggemma:latest",
     }
   end
 
@@ -43,18 +46,6 @@ RSpec.describe SFL::Boot do
   end
 
   describe "per-task LLM config (require_llm: true, the default)" do
-    it "defaults pass_two_annotation and pass_two_batch_annotation to the same provider/model" do
-      result = boot(env: base_env)
-
-      pass_two = result.llm_config.for(:pass_two_annotation)
-      pass_two_batch = result.llm_config.for(:pass_two_batch_annotation)
-
-      expect(pass_two.provider).to eq(:openrouter)
-      expect(pass_two.model).to eq("google/gemini-2.5-flash:free")
-      expect(pass_two_batch.provider).to eq(:openrouter)
-      expect(pass_two_batch.model).to eq("google/gemini-2.5-flash:free")
-    end
-
     it "defaults context_synthesis to whatever pass_two_annotation resolved to" do
       env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "openrouter/some-model",
         "SFL_TASK_PASS_TWO_ANNOTATION_PROVIDER" => "openrouter")
@@ -72,22 +63,6 @@ RSpec.describe SFL::Boot do
       result = boot(env:)
 
       expect(result.llm_config.for(:context_synthesis).model).to eq("openrouter/different-model")
-    end
-
-    it "defaults embedding to the ollama provider and EMBEDDING_MODEL (or embeddinggemma:latest)" do
-      result = boot(env: base_env)
-
-      embedding = result.llm_config.for(:embedding)
-      expect(embedding.provider).to eq(:ollama)
-      expect(embedding.model).to eq("embeddinggemma:latest")
-    end
-
-    it "prefers EMBEDDING_MODEL over the hardcoded embedding default" do
-      env = base_env.merge("EMBEDDING_MODEL" => "some-other-model:latest")
-
-      result = boot(env:)
-
-      expect(result.llm_config.for(:embedding).model).to eq("some-other-model:latest")
     end
 
     it "prefers SFL_TASK_EMBEDDING_MODEL over EMBEDDING_MODEL" do
@@ -166,20 +141,24 @@ RSpec.describe SFL::Boot do
 
     it "configures tracing when the endpoint is reachable" do
       allow(SFL::Boot::LangfuseReachability).to receive(:reachable?).and_return(true)
-      allow(described_class).to receive(:require)
+      allow(SFL::LLM::Tracing).to receive(:configure)
 
       boot(env: tracing_env, require_tracing: true)
 
-      expect(described_class).to have_received(:require).with("dspy/o11y/langfuse")
+      expect(SFL::LLM::Tracing).to have_received(:configure).with(
+        host: "http://example.invalid",
+        public_key: "pk",
+        secret_key: "sk"
+      )
     end
 
     it "skips tracing (without raising) when unreachable and non-interactive" do
       allow(SFL::Boot::LangfuseReachability).to receive(:reachable?).and_return(false)
-      allow(described_class).to receive(:require)
+      allow(SFL::LLM::Tracing).to receive(:configure)
 
       expect { boot(env: tracing_env, require_tracing: true, tty: false) }.to output.to_stderr
 
-      expect(described_class).not_to have_received(:require).with("dspy/o11y/langfuse")
+      expect(SFL::LLM::Tracing).not_to have_received(:configure)
     end
 
     it "raises Boot::Error when unreachable, interactive, and the operator declines" do
@@ -215,10 +194,10 @@ RSpec.describe SFL::Boot do
   end
 
   describe "api_cors_origins (issue #35)" do
-    it "defaults to API::Server::DEFAULT_CORS_ORIGINS when SFL_API_CORS_ORIGINS is unset" do
+    it "defaults to an empty array when SFL_API_CORS_ORIGINS is unset" do
       result = boot(env: base_env)
 
-      expect(result.api_cors_origins).to eq(SFL::API::Server::DEFAULT_CORS_ORIGINS)
+      expect(result.api_cors_origins).to eq([])
     end
 
     it "splits SFL_API_CORS_ORIGINS on commas and trims surrounding whitespace" do

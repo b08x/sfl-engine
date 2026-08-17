@@ -549,7 +549,7 @@ module SFL
     module_function def build_collaborators
       require_relative "core/ports/stderr_logger"
       logger = Core::Ports::StderrLogger.new(level: ::Logger::INFO)
-      instrumenter = Core::Ports::Null::Instrumenter.new
+      instrumenter = Core::Ports::TimingInstrumenter.new
       breaker = Core::Ports::Null::Breaker.new
       [logger, instrumenter, breaker]
     end

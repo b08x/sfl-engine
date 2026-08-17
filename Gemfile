@@ -103,6 +103,4 @@ end
 
 gem "gem-skill", "~> 0.2.0"
 
-gem "rllama", "~> 1.2"
-
 gem "journald-logger", "~> 3.1"
