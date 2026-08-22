@@ -2,6 +2,7 @@
 
 require "time"
 require "securerandom"
+require "timeout"
 
 module SFL
   module LLM
@@ -25,6 +26,27 @@ module SFL
     class Engine
       include Core::Ports::Annotator
 
+      # Bounded retry policy for Pass 2 provider calls.
+      #
+      # A transient provider-side failure (429, 5xx, socket timeout) is the
+      # single most common way an entire batch becomes 0.5 placeholders: one
+      # bad round trip, 134 defaulted clauses, exit 0. Retrying it a few times
+      # with exponential backoff recovers the run instead. A non-retryable
+      # failure (400/401/403/404, a schema/coercion rejection, a bug in this
+      # codebase) is not transient — retrying it three times only triples the
+      # latency before the same outcome, so it fails fast.
+      MAX_ATTEMPTS = 3
+      BASE_BACKOFF_SECONDS = 0.5
+      RETRYABLE_HTTP_STATUSES = [408, 409, 425, 429, 500, 502, 503, 504].freeze
+      RETRYABLE_ERRORS = [Timeout::Error, IOError, SystemCallError].freeze
+
+      # Bugs in this codebase (a typo'd method, a wrong-arity call, a bad
+      # constant) must never be laundered into a "provider failure" and
+      # degraded from: they are not transient, there is nothing to retry, and
+      # a placeholder annotation would hide them forever. Only operational
+      # failures degrade.
+      PROGRAMMER_ERRORS = [NameError, ArgumentError, TypeError, KeyError].freeze
+
       # rubocop:disable Metrics/ParameterLists -- six independently-injectable collaborators
       # (an annotator pair, and the three cross-cutting ports every Engine in this codebase
       # takes), each named for exactly what it replaces in a test double.
@@ -34,7 +56,8 @@ module SFL
         batch_clause_annotator: nil,
         breaker: Core::Ports::Null::Breaker.new,
         instrumenter: Core::Ports::Null::Instrumenter.new,
-        logger: Core::Ports::Null::Logger.new
+        logger: Core::Ports::Null::Logger.new,
+        sleeper: Kernel.method(:sleep)
       )
         @clause_annotator = clause_annotator || (chat && Annotators::ClauseAnnotator.new(lm: chat, instrumenter:))
         @batch_clause_annotator = batch_clause_annotator || (chat && Annotators::BatchClauseAnnotator.new(lm: chat, instrumenter:))
@@ -44,6 +67,7 @@ module SFL
         @breaker = breaker
         @instrumenter = instrumenter
         @logger = logger
+        @sleeper = sleeper
       end
       # rubocop:enable Metrics/ParameterLists
 
@@ -58,9 +82,11 @@ module SFL
         result = annotation_result_for(clause, fetch_single(clause, ideational, context))
         log_completion(clause, result, started_at)
         result
+      rescue *PROGRAMMER_ERRORS
+        raise
       rescue => e
         log_failure(clause, e)
-        default_result(clause, "LLM call failed: #{e.message}")
+        default_result(clause, "LLM call failed: #{e.class}: #{e.message}")
       end
 
       # @param pairs [Array<[SFL::Core::Types::SyntacticClause, SFL::Core::Types::IdeationalPayload]>]
@@ -70,28 +96,78 @@ module SFL
         return [] if pairs.empty?
 
         batch_id = SecureRandom.uuid
-        raw_by_index = instrumenter.instrument("pass_two.batch", clause_count: pairs.size, batch_id:) do
+        raw_by_index, batch_error = instrumenter.instrument("pass_two.batch", clause_count: pairs.size, batch_id:) do
           fetch_batch(pairs, context)
         end
 
-        pairs.each_with_index.map do |(clause, _ideational), index|
+        missing = []
+        results = pairs.each_with_index.map do |(clause, _ideational), index|
           instrumenter.instrument("pass_two.clause", clause_id: clause.id, batch_id:) do
             raw = raw_by_index[index]
             next annotation_result_for(clause, raw) if raw
 
-            logger.warn { "pass_two missing annotation for clause #{clause.id} (index #{index}) — defaults applied" }
-            default_result(clause, "No annotation returned for this clause — defaults applied")
+            missing << index
+            default_result(clause, missing_annotation_reason(index, batch_error))
+          end
+        end
+
+        log_batch_coverage(pairs, missing, batch_error, batch_id)
+        results
+      end
+
+      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper
+      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper
+
+      private def fetch_single(clause, ideational, context)
+        with_retries("pass_two.annotate") do
+          instrumenter.instrument("pass_two.annotate", clause_id: clause.id) do
+            breaker.call("pass_two.annotate") { clause_annotator.call(build_context(clause, ideational, context)) }
           end
         end
       end
 
-      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger
-      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger
+      # Bounded exponential backoff. Only a retryable failure earns a second
+      # attempt; everything else propagates on the first one, so a 400 costs
+      # one provider call rather than three.
+      private def with_retries(label)
+        attempt = 0
+        begin
+          attempt += 1
+          yield
+        rescue => e
+          raise unless attempt < MAX_ATTEMPTS && retryable?(e)
 
-      private def fetch_single(clause, ideational, context)
-        instrumenter.instrument("pass_two.annotate", clause_id: clause.id) do
-          breaker.call("pass_two.annotate") { clause_annotator.call(build_context(clause, ideational, context)) }
+          delay = BASE_BACKOFF_SECONDS * (2 ** (attempt - 1))
+          logger.warn do
+            "#{label} attempt #{attempt}/#{MAX_ATTEMPTS} failed (#{e.class}: #{e.message}) — retrying in #{delay}s"
+          end
+          sleeper.call(delay)
+          retry
         end
+      end
+
+      private def retryable?(error)
+        return false if PROGRAMMER_ERRORS.any? { |klass| error.is_a?(klass) }
+        return false if error.is_a?(Dry::Struct::Error)
+        return true if RETRYABLE_ERRORS.any? { |klass| error.is_a?(klass) }
+
+        status = http_status_from(error)
+        status ? RETRYABLE_HTTP_STATUSES.include?(status) : false
+      end
+
+      # DSPy/ruby_llm adapter errors carry the provider status inside their
+      # message ("OpenAI adapter error: {status: 400, ...}") rather than as a
+      # typed attribute, so the status is read off #status when the error
+      # exposes one and parsed out of the message otherwise. An error with no
+      # recognizable status is treated as non-retryable: failing fast and
+      # loudly is the correct default for an unclassifiable failure.
+      private def http_status_from(error)
+        return error.status.to_i if error.respond_to?(:status) && error.status
+
+        message = error.message.to_s
+        match = message.match(/status(?:_code)?['"]?\s*[:=>]+\s*['"]?(\d{3})/i) ||
+          message.match(/\b(?:HTTP\s*)?([45]\d{2})\b/)
+        match && match[1].to_i
       end
 
       # -- context-building (index/instrument/breaker) plus
@@ -102,16 +178,43 @@ module SFL
           build_context(clause, ideational, context).merge(index:)
         end
 
-        raw = instrumenter.instrument("pass_two.annotate_batch", clause_count: pairs.size) do
-          breaker.call("pass_two.annotate_batch") { batch_clause_annotator.call(contexts) }
+        raw = with_retries("pass_two.annotate_batch") do
+          instrumenter.instrument("pass_two.annotate_batch", clause_count: pairs.size) do
+            breaker.call("pass_two.annotate_batch") { batch_clause_annotator.call(contexts) }
+          end
         end
-        raw.to_h { |entry| [entry[:index], entry] }
+        [raw.to_h { |entry| [entry[:index], entry] }, nil]
+      rescue *PROGRAMMER_ERRORS
+        raise
       rescue => e
-        logger.warn do
-          "pass_two batch failed (#{format_error(e)})\n" \
-            "— defaults applied to #{pairs.size} clauses"
+        [{}, e]
+      end
+
+      private def missing_annotation_reason(index, batch_error)
+        return "No annotation returned for index #{index} — defaults applied" unless batch_error
+
+        "Pass 2 batch call failed after #{MAX_ATTEMPTS} attempt(s) " \
+          "(#{batch_error.class}: #{batch_error.message}) — defaults applied"
+      end
+
+      # The defect this replaces: a whole-batch provider failure logged one
+      # WARN, returned {}, and 134 clauses silently became 0.5 placeholders in
+      # a report that still exited 0. Coverage is now always stated, a total
+      # failure is an ERROR rather than a WARN, and every defaulted clause
+      # carries `annotation_source: "fallback"` — which SFL::CLI counts and
+      # turns into a non-zero exit code.
+      private def log_batch_coverage(pairs, missing, batch_error, batch_id)
+        return if missing.empty?
+
+        pct = (missing.size * 100.0 / pairs.size).round(1)
+        detail = batch_error ? " — batch call failed: #{format_error(batch_error)}" : ""
+        message = "pass_two batch #{batch_id}: #{missing.size}/#{pairs.size} clauses (#{pct}%) defaulted#{detail}"
+
+        if missing.size == pairs.size
+          logger.error { message }
+        else
+          logger.warn { "#{message} (missing indices: #{missing.take(20).join(', ')})" }
         end
-        {}
       end
       # -- six independent Hash entries built from clause/
       # ideational data; each is a one-line map/join already extracted as far as it reasonably

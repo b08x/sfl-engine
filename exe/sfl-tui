@@ -1,0 +1,32 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Running from a repo checkout (no gemspec — track decision 1), same as
+# exe/sfl-analyze / exe/sfl-review — bundler doesn't add this app's lib/ to the
+# load path on its own.
+lib = File.expand_path("../lib", __dir__)
+$LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
+
+require_relative "../lib/sfl"
+# "sfl/tui/app", not require_relative: lib/sfl/tui IS Zeitwerk-managed (unlike
+# lib/sfl/gui, which the loader ignores). Loading a managed file by path
+# bypasses the loader's own bookkeeping and can register the constant twice.
+require "sfl/tui/app"
+
+# Everything below that can write to the terminal runs BEFORE the alt screen is
+# entered. Once bubbletea puts the terminal into raw mode, a stray write to
+# $stdout/$stderr lands inside the rendered frame and desynchronises the
+# renderer's cursor arithmetic — so Docker's compose output, and any boot
+# failure, must be printed here or not at all.
+SFL::DockerServices.ensure_running!
+
+context = begin
+  SFL::TUI::App.build
+rescue SFL::Boot::Error => e
+  # Plain stderr text, same shape as the other binstubs: the TUI never
+  # started, so there is no frame to corrupt and nothing to restore.
+  warn("sfl-tui: #{e.message}")
+  exit 1
+end
+
+SFL::TUI::App.run(context)

@@ -143,7 +143,6 @@ module SFL
         result.metadata[:actors_list_label] || "Speakers"
       end
 
-      # rubocop:disable Metrics/AbcSize -- one flat profile-row table builder, ported verbatim from legacy.
       private def speaker_profiles_table
         return "_No speaker profiles available_" if result.speaker_profiles.empty?
 
@@ -152,14 +151,31 @@ module SFL
         header += "|#{'-' * (name_pad + 2)}|-----------|-------|----------|--------------|\n"
 
         rows = result.speaker_profiles.map do |name, profile|
-          "| #{name.to_s.ljust(name_pad)} | #{profile.avg_tenor.round(3)} (#{tenor_label(profile.avg_tenor)}) | " \
-            "[#{profile.tenor_range.map { |v| v.round(2) }.join(', ')}] | " \
-            "#{profile.tenor_variance.round(4)} | #{profile.avg_modality.round(3)} |"
+          "| #{name.to_s.ljust(name_pad)} | #{tenor_cell(profile.avg_tenor)} | " \
+            "#{range_cell(profile.tenor_range)} | " \
+            "#{numeric_cell(profile.tenor_variance, 4)} | #{numeric_cell(profile.avg_modality, 3)} |"
         end
 
         header + rows.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize
+
+      # A nil aggregate means no clause behind that row survived the provenance
+      # filter (SpeakerProfiler#annotated?/CorrelationAnalyzer#annotated?) — the
+      # honest rendering is "insufficient data", never a 0.5 the reader would
+      # take for a measurement.
+      INSUFFICIENT_DATA = "_insufficient data_"
+
+      private def numeric_cell(value, precision)
+        value.nil? ? INSUFFICIENT_DATA : value.round(precision).to_s
+      end
+
+      private def tenor_cell(tenor)
+        tenor.nil? ? INSUFFICIENT_DATA : "#{tenor.round(3)} (#{tenor_label(tenor)})"
+      end
+
+      private def range_cell(range)
+        range.nil? ? INSUFFICIENT_DATA : "[#{range.map { |v| v.round(2) }.join(', ')}]"
+      end
 
       # rubocop:disable Metrics/AbcSize -- one flat cohesion-row table builder, ported verbatim from legacy.
       private def cohesion_table
@@ -189,7 +205,8 @@ module SFL
         rows = result.correlations.filter_map do |process_type, data|
           next unless data.is_a?(Hash) && data[:count]
 
-          "| #{process_type} | #{data[:avg_tenor].round(3)} | #{data[:avg_modality].round(3)} | #{data[:count]} |"
+          "| #{process_type} | #{numeric_cell(data[:avg_tenor], 3)} | " \
+            "#{numeric_cell(data[:avg_modality], 3)} | #{data[:count]} |"
         end
 
         header + rows.join("\n")

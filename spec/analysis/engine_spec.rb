@@ -346,7 +346,9 @@ RSpec.describe SFL::Analysis::Engine do
       factory = double("topic_modeler_factory") # rubocop:disable RSpec/VerifiedDoubles
       allow(factory).to receive(:call).with(k: 3).and_return(fake_modeler)
       engine = described_class.new(pipeline:, topic_modeler_factory: factory)
-      units = [build_unit("d1"), build_unit("d2"), build_unit("d3")]
+      # 9 units keeps k: 3 at exactly MIN_DOCS_PER_TOPIC documents per topic, so the
+      # requested k passes the clamp through untouched — see the clamp specs below.
+      units = Array.new(9) { |i| build_unit("d#{i + 1}") }
       source = FakeAnalysisSource.new(units)
 
       engine.analyze(source, label: "x", topics: 3)
@@ -366,6 +368,62 @@ RSpec.describe SFL::Analysis::Engine do
       engine.analyze(source, label: "x", topics: 0)
 
       expect(factory).to have_received(:call).with(k: nil)
+    end
+  end
+
+  # A requested topic count larger than the corpus can support is the failure that produced ten
+  # near-random partitions (two of them near-duplicates) from an 8-turn conversation. The clamp
+  # must reduce k *and* say so — a silently-different k is exactly the invisible-degradation bug
+  # this codebase is trying to stop shipping.
+  describe "#analyze -> topic_k clamping" do
+    before { allow(pipeline).to receive(:compile).and_return(Success([])) }
+
+    let(:fake_modeler) do
+      double("topic_modeler", fit: nil, turns: [], topic_labels: {}, detect_topic_shifts: []) # rubocop:disable RSpec/VerifiedDoubles -- TopicModeler stand-in shaped exactly like the real class's public surface fit_topics uses
+    end
+    let(:factory) do
+      instance_double(Proc, call: fake_modeler)
+    end
+    let(:logger) { instance_double(SFL::Core::Ports::StderrLogger, warn: nil) }
+
+    def analyze_with(unit_count, topics)
+      engine = described_class.new(pipeline:, topic_modeler_factory: factory, logger:)
+      source = FakeAnalysisSource.new(Array.new(unit_count) { |i| build_unit("d#{i + 1}") })
+      engine.analyze(source, label: "x", topics:)
+    end
+
+    it "clamps a requested k that exceeds one topic per MIN_DOCS_PER_TOPIC documents" do
+      analyze_with(8, 10)
+
+      expect(factory).to have_received(:call).with(k: 2)
+    end
+
+    it "warns with both the requested and the applied k so the reduction is never silent" do
+      analyze_with(8, 10)
+
+      expect(logger).to have_received(:warn).with(
+        a_string_matching(/requested 10 topics, using 2\b/).and(a_string_matching(/8 documents/))
+      )
+    end
+
+    it "never clamps below MIN_TOPIC_K, since k=1 yields no dominant topic at all" do
+      analyze_with(3, 5)
+
+      expect(factory).to have_received(:call).with(k: 2)
+    end
+
+    it "passes a k the corpus can support through untouched and stays silent" do
+      analyze_with(30, 10)
+
+      expect(factory).to have_received(:call).with(k: 10)
+      expect(logger).not_to have_received(:warn)
+    end
+
+    it "leaves HDP mode (topics: 0) unclamped — HDP infers its own topic count" do
+      analyze_with(3, 0)
+
+      expect(factory).to have_received(:call).with(k: nil)
+      expect(logger).not_to have_received(:warn)
     end
   end
 

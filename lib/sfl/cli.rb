@@ -68,6 +68,13 @@ module SFL
         --topics N                   Number of topics for LDA; 0 = HDP (auto-discover)
         --resume                     Reuse cached Pass 2 results from previous runs
         --store                      Persist clauses + embeddings for `context`
+        --allow-fallback             Exit 0 even when Pass 2 fell back to
+                                      placeholder values for some clauses.
+                                      OFF by default: a report whose tenor/
+                                      modality scores are placeholders is a
+                                      failed run, not a successful one, and
+                                      must not be mistaken for one by a
+                                      script reading the exit code.
 
       knowledge-base:
         --store                      Persist clauses + embeddings for `context`
@@ -121,6 +128,7 @@ module SFL
         store: false,
         narrative: false,
         topics: nil,
+        allow_fallback: false,
       }
       OptionParser.new do |opt|
         opt.on("--output-dir DIR") { |v| options[:output_dir] = v }
@@ -128,6 +136,7 @@ module SFL
         opt.on("--resume") { options[:resume] = true }
         opt.on("--store") { options[:store] = true }
         opt.on("--narrative") { options[:narrative] = true }
+        opt.on("--allow-fallback") { options[:allow_fallback] = true }
         opt.on("--topics N", Integer) { |v| options[:topics] = v }
         add_tracing_option(opt, options)
       end.parse!(argv)
@@ -207,10 +216,13 @@ module SFL
     # rubocop:disable Metrics/MethodLength -- one dispatch line plus three rescue clauses, each
     # mapping a distinct failure category to a message/exit-code pair; ported verbatim from
     # legacy's own CLI.run.
+    # A run_* method that returns an Integer owns its own exit code — the path
+    # run_conversation uses to report "artifacts written, but Pass 2 degraded"
+    # (exit 1 with output on disk). Anything else still means 0.
     module_function def run(argv)
       parsed = parse(argv)
-      __send__(:"run_#{parsed[:command]}", parsed[:input], parsed[:options])
-      0
+      status = __send__(:"run_#{parsed[:command]}", parsed[:input], parsed[:options])
+      status.is_a?(Integer) ? status : 0
     rescue UsageError => e
       warn e.message
       1
@@ -245,12 +257,13 @@ module SFL
         break if stop_flag.stopped?
 
         puts "=== #{file[:label]} ===" if files.size > 1
-        process_conversation_file(file, files, options, engine, boot_result)
+        failures.concat(Array(process_conversation_file(file, files, options, engine, boot_result)))
       rescue Analysis::Error, Core::Loaders::Error, Store::Error, Timeout::Error, LLM::Error => e
         warn "[ERROR] #{file[:label]}: #{e.message}"
         failures << file[:label]
       end
       warn "[WARN] #{failures.size}/#{files.size} conversations failed: #{failures.join(', ')}" if failures.any?
+      exit_status_for(failures)
     ensure
       Signal.trap("INT", "DEFAULT")
     end
@@ -263,6 +276,17 @@ module SFL
     # `files.each` had no per-file rescue, so a 900-conversation export
     # that hit one bad conversation early produced 1-2 reports instead of
     # 900 (live-verified gap, 2026-08-02).
+    #
+    # Degradation is a failure, and it is recorded AFTER the artifacts are
+    # written, not instead of them: a report whose interpersonal values are
+    # Pass 2 placeholders is still useful for debugging Pass 1, but a caller
+    # reading the exit code must never be told the run succeeded. The
+    # threshold is deliberately ANY fallback clause — 100%-fallback was only
+    # the most visible case of the same lie. --pass1-only is exempt because
+    # placeholder values are exactly what it asks for; --allow-fallback is the
+    # explicit opt-out for batch runs that accept partial degradation.
+    # @return [String, nil] a label for the aggregated failure list when this
+    #   file's report is degraded, nil when it is sound
     module_function def process_conversation_file(file, files, options, engine, boot_result)
       source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
       result = engine.analyze(source, label: file[:label], store: options[:store],
@@ -272,9 +296,19 @@ module SFL
       else
         options[:output_dir]
       end
-      finish_report(result, output_dir)
+      defaulted = finish_report(result, output_dir)
+      degraded = "#{file[:label]} (#{defaulted} fallback clauses)" if fail_on_fallback?(options, defaulted)
       write_narrative(result, output_dir, boot_result) if options[:narrative]
       print_interrupt_status(result, file[:path], :conversation) if result.metadata[:interrupted]
+      degraded
+    end
+
+    module_function def fail_on_fallback?(options, defaulted)
+      defaulted.positive? && !options[:pass1_only] && !options[:allow_fallback]
+    end
+
+    module_function def exit_status_for(failures)
+      failures.empty? ? 0 : 1
     end
     # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
@@ -631,6 +665,10 @@ module SFL
 
     # rubocop:disable Metrics/AbcSize -- one flat write/warn/print sequence, ported verbatim from
     # legacy's own finish_report.
+    # @return [Integer] how many clauses carry fallback/stub values —
+    #   process_conversation_file turns a positive count into a non-zero exit
+    #   code (see its comment), so this number is the run's verdict, not just a
+    #   line of console output.
     module_function def finish_report(result, output_dir)
       paths = Formatters::ReportWriter.write(result, output_dir)
 
@@ -644,6 +682,7 @@ module SFL
 
       puts "\nGenerated:"
       paths.each { |format, path| puts "  #{format.to_s.upcase}: #{path}" }
+      defaulted
     end
     # rubocop:enable Metrics/AbcSize
   end

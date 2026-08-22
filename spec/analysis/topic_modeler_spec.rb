@@ -88,6 +88,36 @@ RSpec.describe SFL::Analysis::TopicModeler do
     end
   end
 
+  # Regression: PragmaticTokenizer's `en` stoplist spells its contractions with the ASCII
+  # apostrophe, so curly-apostrophe contractions from LLM-generated prose survived stopword
+  # removal and surfaced as topic terms in two separate topics of a real run.
+  describe "Unicode punctuation normalization before tokenization" do
+    subject(:modeler) { deterministic_modeler }
+
+    def tokenize(text) = modeler.__send__(:tokenize, text)
+
+    it "removes curly-apostrophe contractions exactly as it removes their ASCII spelling" do
+      expect(tokenize("it’s the sound, don’t you think")).to eq(tokenize("it's the sound, don't you think"))
+    end
+
+    it "leaves no curly apostrophe in any emitted token" do
+      expect(tokenize("it’s that’s they’re prosody")).to eq(["prosody"])
+    end
+
+    it "splits words joined by an em or en dash instead of emitting one unmatched compound" do
+      expect(tokenize("phonology—prosody and syntax–semantics"))
+        .to contain_exactly("phonology", "prosody", "syntax", "semantics")
+    end
+
+    it "does not treat a curly ellipsis as part of the adjoining word" do
+      expect(tokenize("prosody… phonology")).to eq(%w[prosody phonology])
+    end
+
+    it "leaves ordinary ASCII text unchanged" do
+      expect(tokenize("cats dogs pets")).to eq(%w[cats dogs pets])
+    end
+  end
+
   describe "#detect_topic_shifts" do
     it "returns [] when the model hasn't been fitted yet" do
       expect(deterministic_modeler.detect_topic_shifts).to eq([])

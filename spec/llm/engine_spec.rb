@@ -176,14 +176,89 @@ RSpec.describe SFL::LLM::Engine do
       expect(results[1].interpersonal.annotation_source).to eq("fallback")
     end
 
-    it "defaults every clause when the batch call itself raises" do
-      batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
-      allow(batch_clause_annotator).to receive(:call).and_raise(StandardError, "boom")
-      engine = described_class.new(clause_annotator: double, batch_clause_annotator:)
+    # Replaces "defaults every clause when the batch call itself raises",
+    # which asserted the defect as the contract: a single transient provider
+    # error became a full report of 0.5 placeholders, logged at WARN, exit 0.
+    # A batch failure must now be retried when it is transient, must fail fast
+    # when it is not, and must never be invisible when it does default clauses.
+    describe "batch failure handling" do
+      let(:logger) { instance_spy(SFL::Core::Ports::JournaldLogger) }
+      let(:sleeps) { [] }
+      let(:sleeper) { -> (seconds) { sleeps << seconds } }
 
-      results = engine.annotate_batch([[clause, ideational]])
+      def engine_with(batch_clause_annotator)
+        described_class.new(clause_annotator: double, batch_clause_annotator:, logger:, sleeper:)
+      end
 
-      expect(results).to all(have_attributes(interpersonal: have_attributes(annotation_source: "fallback")))
+      it "retries a transient provider failure with exponential backoff and defaults nothing on recovery" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        attempts = [
+          -> { raise StandardError, "OpenAI adapter error: {status: 429, message: rate limited}" },
+          -> { [valid_raw.merge(index: 0)] },
+        ]
+        allow(batch_clause_annotator).to receive(:call) { attempts.shift.call }
+
+        results = engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]])
+
+        expect(results[0].interpersonal.annotation_source).to eq("llm")
+        expect(sleeps).to eq([SFL::LLM::Engine::BASE_BACKOFF_SECONDS])
+        expect(logger).not_to have_received(:error)
+      end
+
+      it "retries a timeout up to MAX_ATTEMPTS, then defaults with the cause named in each clause's provenance" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        allow(batch_clause_annotator).to receive(:call).and_raise(Timeout::Error, "annotate_batch exceeded 60s")
+
+        results = engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]])
+
+        expect(batch_clause_annotator).to have_received(:call).exactly(SFL::LLM::Engine::MAX_ATTEMPTS).times
+        expect(sleeps.size).to eq(SFL::LLM::Engine::MAX_ATTEMPTS - 1)
+        expect(results[0].interpersonal.annotation_source).to eq("fallback")
+        expect(results[0].interpersonal.reasoning).to include("Timeout::Error", "annotate_batch exceeded 60s")
+      end
+
+      it "fails fast on a non-retryable 400 instead of spending three provider calls on it" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        allow(batch_clause_annotator).to receive(:call)
+          .and_raise(StandardError, "OpenAI adapter error: {status: 400, message: unknown model}")
+
+        engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]])
+
+        expect(batch_clause_annotator).to have_received(:call).once
+        expect(sleeps).to be_empty
+      end
+
+      it "logs a total batch failure at ERROR with its coverage — never silently, never at WARN" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        allow(batch_clause_annotator).to receive(:call)
+          .and_raise(StandardError, "OpenAI adapter error: {status: 400, message: unknown model}")
+
+        engine_with(batch_clause_annotator).annotate_batch([[clause, ideational], [clause, ideational]])
+
+        expect(logger).to have_received(:error) do |&block|
+          expect(block.call).to include("2/2 clauses (100.0%) defaulted", "unknown model")
+        end
+      end
+
+      it "counts a partial provider response — the missing indices are logged, not invisible" do
+        batch_clause_annotator = instance_double(
+          SFL::LLM::Annotators::BatchClauseAnnotator, call: [valid_raw.merge(index: 0)]
+        )
+
+        engine_with(batch_clause_annotator).annotate_batch([[clause, ideational], [clause, ideational]])
+
+        expect(logger).to have_received(:warn) do |&block|
+          expect(block.call).to include("1/2 clauses (50.0%) defaulted", "missing indices: 1")
+        end
+      end
+
+      it "re-raises a bug in this codebase rather than laundering it into a fallback annotation" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        allow(batch_clause_annotator).to receive(:call).and_raise(NoMethodError, "undefined method 'foo' for nil")
+
+        expect { engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]]) }
+          .to raise_error(NoMethodError)
+      end
     end
   end
 

@@ -1,6 +1,7 @@
 graphify-out/
 output/
 .claude/skills/
+.claude/design/
 /specs/
 /.specs/
 .superpowers/
@@ -26,3 +27,8 @@ cost.json
 .opencode/
 .omm/
 .claude/worktrees/
+scratch/
+tui-implementation-plan.md
+.trackboi/
+drafts/
+session-ses_*

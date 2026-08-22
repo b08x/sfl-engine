@@ -13,6 +13,7 @@ module SFL
     "sfl" => "SFL",
     "api" => "API",
     "cli" => "CLI",
+    "tui" => "TUI",
     "gui" => "GUI",
     "llm" => "LLM",
     "trusted_annotation_sources" => "TRUSTED_ANNOTATION_SOURCES",

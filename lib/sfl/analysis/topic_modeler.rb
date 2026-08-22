@@ -27,6 +27,62 @@ module SFL
     # rubocop:disable Metrics/ClassLength -- ported verbatim from legacy; one topic-modeling
     # adapter around tomoto, each responsibility (fit/tokenize/coherence/shifts) its own method.
     class TopicModeler
+      # PragmaticTokenizer's `en` stoplist (Languages::English::STOP_WORDS,
+      # read directly from the installed gem — not assumed) spells its
+      # contractions with the ASCII apostrophe: "it's", "don't", "that's".
+      # LLM-generated prose uses U+2019 RIGHT SINGLE QUOTATION MARK
+      # throughout, so "it’s" never matched and survived into the topic
+      # terms (it appeared in two different topics of a real run).
+      #
+      # The fix normalizes the *input* rather than adding curly-apostrophe
+      # variants to a second stoplist: the gem's list stays the single
+      # authoritative source of what counts as a stopword, and one mapping
+      # table fixes every entry in it at once (plus the curly quotes,
+      # dashes, ellipsis, and non-breaking spaces that defeat token
+      # boundaries the same way). `expand_contractions: true` was the
+      # alternative considered and rejected — it only rewrites the
+      # ~100-entry CONTRACTIONS hash, leaving every other curly-punctuation
+      # failure in place.
+      #
+      # Deliberately NOT Unicode NFKC: NFKC leaves U+2019 alone, so it does
+      # not solve the problem this map exists for.
+      UNICODE_PUNCTUATION_MAP = {
+        "\u2018" => "'",  # left single quote
+        "\u2019" => "'",  # right single quote — the LLM apostrophe
+        "\u201A" => "'",  # single low-9 quote
+        "\u201B" => "'",  # single high-reversed-9 quote
+        "\u02BC" => "'",  # modifier letter apostrophe
+        "\u2032" => "'",  # prime
+        "\u201C" => '"',  # left double quote
+        "\u201D" => '"',  # right double quote
+        "\u201E" => '"',  # double low-9 quote
+        "\u2033" => '"',  # double prime
+        "\u2013" => " - ",  # en dash
+        "\u2014" => " - ",  # em dash
+        "\u2015" => " - ",  # horizontal bar
+        "\u2212" => " - ",  # minus sign
+        "\u2026" => "...",  # horizontal ellipsis
+        "\u00A0" => " ",  # no-break space
+        "\u2007" => " ",  # figure space
+        "\u202F" => " ",  # narrow no-break space
+        "\u200B" => "", # zero-width space
+      }.freeze
+
+      UNICODE_PUNCTUATION_RE = Regexp.union(UNICODE_PUNCTUATION_MAP.keys).freeze
+
+      # No domain stoplist is applied on purpose. The contentless-looking
+      # terms observed in a real run ("sound", "result", "terms", "thing")
+      # are not safe to hard-code away in a *linguistics* corpus tool:
+      # "sound" is phonology, "terms" is terminology, "result" is a
+      # findings word — deleting them destroys real signal in exactly the
+      # conversations this tool exists to analyze. ("thing"/"things" is
+      # already in the gem's own stoplist and needs no help.) Those terms
+      # became salient because k=10 over 8 documents forced the model to
+      # pad topics with whatever vocabulary was left — the `k` clamp below
+      # removes that pressure. The principled, corpus-derived lever for
+      # genuinely ubiquitous terms already exists and is caller-tunable:
+      # `rm_top:`, which drops the N globally most frequent words as
+      # measured on the corpus at hand rather than guessed in advance.
       TOKENIZER_OPTIONS = {
         language: "en",
         remove_urls: true,
@@ -287,7 +343,17 @@ module SFL
       private def tokenize(text)
         return [] if text.nil? || text.strip.empty?
 
-        PragmaticTokenizer::Tokenizer.new(TOKENIZER_OPTIONS).tokenize(text)
+        PragmaticTokenizer::Tokenizer.new(TOKENIZER_OPTIONS).tokenize(normalize_punctuation(text))
+      end
+
+      # Maps Unicode punctuation to the ASCII forms the stoplist and the
+      # tokenizer's own token-boundary rules are written against. See
+      # UNICODE_PUNCTUATION_MAP for why this is normalization rather than a
+      # second stoplist. Upstream (DynamicFormatExpander) already handles
+      # escape decoding and newline normalization; this is only about
+      # characters that defeat *lexical* matching.
+      private def normalize_punctuation(text)
+        text.gsub(UNICODE_PUNCTUATION_RE, UNICODE_PUNCTUATION_MAP)
       end
 
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ported verbatim from legacy

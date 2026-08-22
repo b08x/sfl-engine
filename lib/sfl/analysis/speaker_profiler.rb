@@ -21,17 +21,10 @@ module SFL
       def build_profile
         raise ArgumentError, "No turns provided" if turns.empty?
 
-        speaker_name = turns.first.speaker
-        tenors = turns.map(&:avg_tenor)
-        modalities = turns.map(&:avg_modality)
-
         Core::Types::SpeakerProfile.new(
-          speaker_name:,
+          speaker_name: turns.first.speaker,
           turn_count: turns.count,
-          avg_tenor: mean(tenors),
-          tenor_range: tenors.minmax,
-          tenor_variance: variance(tenors),
-          avg_modality: mean(modalities),
+          **tenor_aggregates,
           mood_distribution: calculate_mood_distribution,
           dominant_processes: aggregate_process_types
         )
@@ -44,6 +37,34 @@ module SFL
       def self.build_profiles(all_turns)
         all_turns.group_by(&:speaker).transform_values do |speaker_turns|
           new(speaker_turns).build_profile
+        end
+      end
+
+      # Absence, not a fabricated midpoint: with no annotated turn to average
+      # there is no aggregate to report, and nil is the only honest answer.
+      private def tenor_aggregates
+        annotated = turns.select { |turn| annotated?(turn) }
+        return { avg_tenor: nil, tenor_range: nil, tenor_variance: nil, avg_modality: nil } if annotated.empty?
+
+        tenors = annotated.map(&:avg_tenor)
+        {
+          avg_tenor: mean(tenors),
+          tenor_range: tenors.minmax,
+          tenor_variance: variance(tenors),
+          avg_modality: mean(annotated.map(&:avg_modality)),
+        }
+      end
+
+      # A turn whose clauses were all defaulted by Pass 2 has an avg_tenor/
+      # avg_modality of 0.5 that measures nothing — averaging those in is what
+      # produced two speakers both reporting tenor 0.5 with variance 0.0 off a
+      # run where the provider returned nothing at all. Only turns with at
+      # least one trusted (llm/human) clause contribute to the aggregates;
+      # turn_count, mood_distribution and dominant_processes still cover every
+      # turn, because those come from Pass 1 and are not placeholders.
+      private def annotated?(turn)
+        turn.clauses.any? do |clause|
+          Core::Types::TRUSTED_ANNOTATION_SOURCES.include?(clause.interpersonal.annotation_source)
         end
       end
 

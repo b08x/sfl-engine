@@ -32,7 +32,7 @@ RSpec.describe SFL::CLI do
         expect(parsed[:input]).to eq("input.jsonl")
         expect(parsed[:options]).to eq(
           output_dir: "./output/latest", pass1_only: false, resume: false, store: false,
-          narrative: false, topics: nil, disable_tracing: false
+          narrative: false, topics: nil, allow_fallback: false, disable_tracing: false
         )
       end
 
@@ -48,13 +48,14 @@ RSpec.describe SFL::CLI do
           --narrative
           --topics
           5
+          --allow-fallback
           --disable-tracing
 ]
         parsed = described_class.parse(argv)
 
         expect(parsed[:options]).to eq(
           output_dir: "./out", pass1_only: true, resume: true, store: true,
-          narrative: true, topics: 5, disable_tracing: true
+          narrative: true, topics: 5, allow_fallback: true, disable_tracing: true
         )
       end
 
@@ -69,7 +70,7 @@ RSpec.describe SFL::CLI do
         parsed = described_class.parse(%w[documentation ./docs --store --narrative])
         expect(parsed[:options]).to eq(
           output_dir: "./output/latest", pass1_only: false, resume: false, store: true,
-          narrative: true, topics: nil, disable_tracing: false
+          narrative: true, topics: nil, allow_fallback: false, disable_tracing: false
         )
       end
     end

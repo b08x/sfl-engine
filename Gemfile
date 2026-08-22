@@ -104,3 +104,21 @@ end
 gem "gem-skill", "~> 0.2.0"
 
 gem "journald-logger", "~> 3.1"
+
+# Phase 7 TUI (lib/sfl/tui, exe/sfl-tui): the keyboard-driven console over
+# the pipeline/retrieval/review-queue collaborators, per
+# docs/tui-implementation-plan.md §1. These are the charm-ruby ports
+# (marcoroth/*-ruby) of Charm's Go libraries: pre-1.0, single-maintainer,
+# with no semver guarantee yet, so each constraint is narrowed to the
+# minor series this toolchain is installed and verified against ("~> 0.1.4"
+# admits 0.1.x, not 0.2.0) rather than a loose "~> 0.1" — a 0.2.x bump here
+# is a breaking-change risk, not a patch. The constraint is a floor on
+# blast radius, NOT the determinism mechanism: the committed Gemfile.lock
+# plus its sha256 CHECKSUMS block is what actually pins the exact versions
+# every run resolves to. Verified loading clean under Ruby 4.0.4 with the
+# prebuilt native extensions (Phase 0 spike).
+# lipgloss/glamour ship prebuilt .so; bubbles is pure Ruby.
+gem "bubbles", "~> 0.1.1" # List/Viewport/TextInput/Spinner sub-models
+gem "bubbletea", "~> 0.1.4" # Elm-style MVU runtime (Runner, Model, Message)
+gem "glamour", "~> 0.2.2" # markdown -> ANSI for the synthesis/detail panes
+gem "lipgloss", "~> 0.2.2" # pane styling + join_horizontal/join_vertical layout

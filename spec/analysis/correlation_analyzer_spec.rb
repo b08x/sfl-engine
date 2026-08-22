@@ -32,5 +32,26 @@ RSpec.describe SFL::Analysis::CorrelationAnalyzer do
       expect(result["material"][:avg_tenor]).to eq(0.5)
       expect(result["material"][:avg_modality]).to eq(0.5)
     end
+
+    it "reports nil rather than a fabricated 0.5 when every clause in a group was defaulted" do
+      c1 = build_annotated_clause(id: "c1", process_type: "material", annotation_source: "fallback")
+      c2 = build_annotated_clause(id: "c2", process_type: "material", annotation_source: "stub")
+      turns = [build_turn(clauses: [c1, c2])]
+
+      result = described_class.new(turns).correlate_process_tenor
+
+      expect(result["material"]).to include(count: 2, annotated_count: 0, avg_tenor: nil, avg_modality: nil)
+    end
+
+    it "averages only the trusted clauses in a group, not the defaulted ones dragging it to 0.5" do
+      c1 = build_annotated_clause(id: "c1", process_type: "material", tenor: 0.9, modality: 0.9)
+      c2 = build_annotated_clause(id: "c2", process_type: "material", annotation_source: "fallback",
+        tenor: 0.5, modality: 0.5)
+      turns = [build_turn(clauses: [c1, c2])]
+
+      result = described_class.new(turns).correlate_process_tenor
+
+      expect(result["material"]).to include(count: 2, annotated_count: 1, avg_tenor: 0.9, avg_modality: 0.9)
+    end
   end
 end

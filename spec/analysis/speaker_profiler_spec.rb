@@ -3,13 +3,20 @@
 require "spec_helper"
 
 RSpec.describe SFL::Analysis::SpeakerProfiler do
+  # Every turn that is meant to contribute to a tenor/modality aggregate now
+  # has to carry at least one trusted clause: the aggregates are only defined
+  # over turns Pass 2 actually annotated (see SpeakerProfiler#annotated?).
+  def annotated_turn(**)
+    build_turn(clauses: [build_annotated_clause(annotation_source: "llm")], **)
+  end
+
   describe "#build_profile" do
     it "raises ArgumentError when given no turns" do
       expect { described_class.new([]).build_profile }.to raise_error(ArgumentError, "No turns provided")
     end
 
     it "derives speaker_name from the first turn" do
-      turns = [build_turn(speaker: "Alice", avg_tenor: 0.4), build_turn(speaker: "Alice", avg_tenor: 0.6)]
+      turns = [annotated_turn(speaker: "Alice", avg_tenor: 0.4), annotated_turn(speaker: "Alice", avg_tenor: 0.6)]
 
       profile = described_class.new(turns).build_profile
 
@@ -18,7 +25,7 @@ RSpec.describe SFL::Analysis::SpeakerProfiler do
     end
 
     it "computes avg_tenor/avg_modality as the mean across turns and tenor_range as [min, max]" do
-      turns = [build_turn(avg_tenor: 0.2, avg_modality: 0.3), build_turn(avg_tenor: 0.8, avg_modality: 0.7)]
+      turns = [annotated_turn(avg_tenor: 0.2, avg_modality: 0.3), annotated_turn(avg_tenor: 0.8, avg_modality: 0.7)]
 
       profile = described_class.new(turns).build_profile
 
@@ -51,27 +58,54 @@ RSpec.describe SFL::Analysis::SpeakerProfiler do
     end
 
     it "returns zero variance when there is only a single turn (values.count < 2 guard)" do
-      profile = described_class.new([build_turn(avg_tenor: 0.7)]).build_profile
+      profile = described_class.new([annotated_turn(avg_tenor: 0.7)]).build_profile
 
       expect(profile.tenor_variance).to eq(0.0)
     end
 
     it "computes a non-zero variance across two or more distinct tenor values" do
-      turns = [build_turn(avg_tenor: 0.2), build_turn(avg_tenor: 0.8)]
+      turns = [annotated_turn(avg_tenor: 0.2), annotated_turn(avg_tenor: 0.8)]
 
       profile = described_class.new(turns).build_profile
 
       # mean = 0.5, sum_squares = 0.09 + 0.09 = 0.18, variance = 0.18 / 2 = 0.09
       expect(profile.tenor_variance).to eq(0.09)
     end
+
+    it "reports absence, not a fabricated 0.5, when every clause was defaulted by Pass 2" do
+      fallback_clause = build_annotated_clause(annotation_source: "fallback", tenor: 0.5, modality: 0.5)
+      turns = [build_turn(avg_tenor: 0.5, avg_modality: 0.5, clauses: [fallback_clause])]
+
+      profile = described_class.new(turns).build_profile
+
+      expect(profile.avg_tenor).to be_nil
+      expect(profile.avg_modality).to be_nil
+      expect(profile.tenor_range).to be_nil
+      expect(profile.tenor_variance).to be_nil
+      expect(profile.turn_count).to eq(1)
+    end
+
+    it "averages only the turns with a trusted annotation, ignoring the defaulted ones" do
+      turns = [
+        annotated_turn(avg_tenor: 0.8, avg_modality: 0.8),
+        build_turn(avg_tenor: 0.5, avg_modality: 0.5,
+          clauses: [build_annotated_clause(annotation_source: "fallback")]),
+      ]
+
+      profile = described_class.new(turns).build_profile
+
+      expect(profile.avg_tenor).to eq(0.8)
+      expect(profile.avg_modality).to eq(0.8)
+      expect(profile.tenor_variance).to eq(0.0)
+    end
   end
 
   describe ".build_profiles" do
     it "groups turns by speaker and builds one profile per speaker" do
       turns = [
-        build_turn(speaker: "Alice", avg_tenor: 0.4),
-        build_turn(speaker: "Bob", avg_tenor: 0.6),
-        build_turn(speaker: "Alice", avg_tenor: 0.8),
+        annotated_turn(speaker: "Alice", avg_tenor: 0.4),
+        annotated_turn(speaker: "Bob", avg_tenor: 0.6),
+        annotated_turn(speaker: "Alice", avg_tenor: 0.8),
       ]
 
       profiles = described_class.build_profiles(turns)
