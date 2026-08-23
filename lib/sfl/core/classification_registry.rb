@@ -96,6 +96,8 @@ module SFL
           "concessive" => "circumstantial",
           "manner" => "circumstantial",
           "marking" => "marked",
+          "fragment" => "unmarked",
+          "heading" => "unmarked",
           "null" => "unmarked",
           "none" => "unmarked",
           "n/a" => "unmarked",
@@ -106,9 +108,9 @@ module SFL
             val = val.split("+").map(&:strip).find { |p| !p.empty? } || "" if val.include?("+")
             val = val.delete_prefix("theme_").delete_suffix("_theme").delete_suffix(" theme").strip
             if val.include?(">") || val.include?(",") || val.match?(/\band\b/) ||
-                (val.include?("_") && val != "topical_unmarked")
+                val.include?("-plus-") || (val.include?("_") && val != "topical_unmarked")
 
-              parts = val.split(/[>,_]|\s+and\s+/).map(&:strip).reject(&:empty?)
+              parts = val.split(/[>,_]|\s+and\s+|-plus-/).map(&:strip).reject(&:empty?)
               val = "multiple" if parts.size > 1
             end
             val
@@ -131,7 +133,6 @@ module SFL
       # Normalizes a raw classification string to a canonical value.
       # Returns [canonical_value, status] where status is :exact,
       # :aliased, :fuzzy, or :unknown.
-      # rubocop:disable Metrics/MethodLength, Metrics/AbcSize
       def self.normalize(dimension, raw)
         config = dimension_config(dimension)
         val = raw.to_s.downcase.strip
@@ -151,7 +152,6 @@ module SFL
           [config[:default], :unknown]
         end
       end
-      # rubocop:enable Metrics/MethodLength, Metrics/AbcSize
 
       # Returns a duplicate array of the canonical values.
       def self.canonical_values(dimension)

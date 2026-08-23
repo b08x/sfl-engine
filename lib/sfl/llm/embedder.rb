@@ -60,10 +60,15 @@ module SFL
       def embed_batch(texts)
         return [] if texts.empty?
 
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         # Ollama /api/embeddings supports an array of strings in its `prompt` param (or `prompt` string)
         # depending on version, but typically `prompt` for single, `prompt` array or repeated /api/embeddings.
         # Actually /api/embed (new endpoint) supports `input: []`. We will use /api/embed which takes `input`.
-        breaker.call("embedder.embed_batch") { fetch_batch(texts) }
+        vectors = breaker.call("embedder.embed_batch") { fetch_batch(texts) }
+
+        elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
+        logger.info { "embed_batch completed (size=#{texts.size}, latency_ms=#{elapsed_ms})" }
+        vectors
       rescue => e
         fail_embed("embed_batch", e)
       end

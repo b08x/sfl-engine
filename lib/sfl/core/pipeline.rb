@@ -74,7 +74,7 @@ module SFL
       #   for every future caller to inherit correctly, not N.
       # @return [Dry::Monads::Result] Success(Array<Types::AnnotatedClause>) or
       #   Failure([:pass_one_failed, message])
-      # rubocop:disable Metrics/ParameterLists, Metrics/AbcSize -- mirrors the legacy
+      # rubocop:disable Metrics/ParameterLists
       # Pipeline#compile's own options exactly (store/embed/resume/semantic_coherence_score),
       # plus pass_one_only (see above); the five-stage bind chain is the ladder itself, not
       # something to fragment further.
@@ -93,7 +93,7 @@ module SFL
         log_completion(document_id, result, started_at)
         result
       end
-      # rubocop:enable Metrics/ParameterLists, Metrics/AbcSize
+      # rubocop:enable Metrics/ParameterLists
 
       attr_reader :pass_one, :pass_two, :ideational_extractor, :clause_store, :embedding_store,
         :embedder, :cache, :logger, :instrumenter
@@ -199,6 +199,7 @@ module SFL
       private def persist(annotated, document_id, store)
         return Success(annotated) unless store && document_id
 
+        logger.debug { "persisting #{annotated.size} clauses to database (document_id=#{document_id.inspect})" }
         clause_store.replace_document(document_id, annotated)
         Success(annotated)
       end
@@ -210,6 +211,7 @@ module SFL
       private def embed_all(annotated, document_id, embed)
         return Success(annotated) unless embed && document_id && !annotated.empty?
 
+        logger.debug { "generating embeddings for #{annotated.size} clauses (document_id=#{document_id.inspect})" }
         vectors = embedder.embed_batch(annotated.map(&:text))
         embeddings_by_clause_id = annotated.zip(vectors).to_h { |ac, vector| [ac.id, vector] }
         embedding_store.replace_document(document_id, embeddings_by_clause_id)
