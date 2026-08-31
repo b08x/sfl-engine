@@ -1,5 +1,13 @@
 # Audio/Video Loaders + Corpus-Onboarding Wizard ("Inversion") — Design
 
+> **SUPERSEDED (2026-08-31)** by
+> [`2026-08-31-media-ingest-and-onboarding-design.md`](2026-08-31-media-ingest-and-onboarding-design.md).
+> Never implemented. Retained for its Context7 gem verification and its
+> `DeterministicRules`/`KnowledgeBaseSource`/CLI wiring analysis, both carried
+> forward. Its API-default transcriber, one-Unit-per-file transcripts, and
+> LLM-driven wizard intent parsing were overtaken by the local-by-default
+> decision recorded in the substrate spec. **Do not implement from this file.**
+
 ## Overview
 
 The current corpus mixes markdown, PDF, image, audio, and video. Markdown,
