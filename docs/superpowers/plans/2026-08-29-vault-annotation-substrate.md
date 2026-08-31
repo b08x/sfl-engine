@@ -431,9 +431,12 @@ Three things changed materially:
   `{format:, mode:, source_type:}`. The resolver duplicated it. Extend
   `DeterministicRules` with `classify_audio`/`classify_video` instead.
 
-That spec also adds `VideoSource`, `DeterministicRules`/`KnowledgeBaseSource`/CLI
-wiring, and the onboarding wizard — none of which this plan covered. It needs its
-own plan before execution.
+That spec also adds `DeterministicRules`/`KnowledgeBaseSource`/CLI wiring and the
+onboarding wizard — neither of which this plan covered. It needs its own plan
+before execution. Video is out of scope there too, and gets its own pipeline
+later; the only video work that survives is a `DeterministicRules` skip rule, so
+`.mp4` files are recognised and skipped rather than falling into
+`Ingest::Orchestrator`'s text fallback, which would sample 4KB of binary as prose.
 
 ---
 

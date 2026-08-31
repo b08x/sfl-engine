@@ -1,4 +1,4 @@
-# Media Ingest + Corpus Onboarding — Design
+# Audio Ingest + Corpus Onboarding — Design
 
 **Date:** 2026-08-31
 **Status:** Approved for planning
@@ -10,8 +10,8 @@
 ## What this merge resolves
 
 Two designs were written against the same ground four days apart, and they
-disagreed. This document replaces both of their audio/video/onboarding halves
-with one coherent design.
+disagreed. This document replaces both of their audio/onboarding halves with
+one coherent design.
 
 The Aug 11 spec (`AudioSource`/`VideoSource` + "Inversion" wizard) was never
 implemented — no `lib/sfl/llm/transcribers/`, no `lib/sfl/onboarding/`, no
@@ -24,7 +24,7 @@ superseded rather than amended.
 | `#transcribe` returns | `String` (whole file) | **`Array<Segment>`** | whisper.cpp is *natively* segment-based — `context.transcribe(path, params) { |text| … }` yields per segment. Returning one string means **joining** what the backend already separated. Segments are the cheaper output, not the more expensive one. |
 | Units per audio file | one | **one per segment** | Provenance should cite a moment in a recording, not a filename. The correlation half's evidence pane shows *where* a claim came from. |
 | Transcriber namespace | `Llm::Transcribers::*` | **`Core::Ports::Transcriber`** | whisper.cpp is not an LLM. The `Llm::` namespace was correct only while the default backend was an API. Ports is where every other injected collaborator lives. |
-| Video analysis | Gemini vision, one Unit/file | **audio-track extraction + local transcription**, vision opt-in | A vision model is LLM-only and Gemini-locked. The audio track of a screen recording or talk carries the actual claims, and extracting it is deterministic. |
+| Video | `VideoSource` + Gemini vision | **out of scope entirely** | Video becomes its own pipeline, designed separately. See *Video* below — it is deferred, not forgotten, and deferring it has one consequence that must still be handled here. |
 | Wizard intent parsing | `RubyLLM::Schema` + `:corpus_onboarding` task | **dropped** | The wizard's value is the tally and the per-modality choice, both deterministic. Free-text intent extraction was the one part needing a provider. |
 | Path → loader dispatch | extend `DeterministicRules` | **extend `DeterministicRules`** (unchanged) | Correct in Aug 11. The substrate spec's separate `Ingest::SourceResolver` duplicated it and is **dropped**. |
 
@@ -48,10 +48,8 @@ Carried from Aug 11's Context7 verification, still current:
   per-call cost. Mirrors Pass 1's spaCy-sidecar precedent (track decision 2).
 - **`RubyLLM.transcribe(file, …)`** — Whisper-backed API transcription.
   `.mp3 .wav .m4a .ogg .flac`, 25 MB limit.
-- **`RubyLLM.chat(...).ask(..., with: "clip.mp4")`** — video is
-  **provider-limited to Gemini/VertexAI**, unlike image support.
-- **`kreuzberg`** does **not** support audio or video. Confirmed against its
-  own docs; it stays scoped to document formats.
+- **`kreuzberg`** does **not** support audio. Confirmed against its own docs;
+  it stays scoped to document formats.
 
 **Cost to name, not gloss:** `whispercpp` is a native C extension compiled at
 `bundle install`. Every install pays that cost regardless of which backend a
@@ -82,7 +80,7 @@ A named type rather than a bare Hash because it crosses a port boundary and
 `AudioSource` reads its fields positionally; a typo in a Hash key would
 surface as a `nil` in a Unit rather than as an error at the seam.
 
-### `Llm::Transcribers::WhisperCppTranscriber` → `Core::Transcribers::WhisperCpp`
+### `Core::Transcribers::WhisperCpp`
 
 Wraps `Whisper::Context#transcribe`, collecting the yielded segments. Config
 is a local model name or `.bin` path (`"base"`, `"base.en"`, `"small"`), **not**
@@ -103,9 +101,9 @@ quality is insufficient for a curated subset destined for a training set.
 
 It has one segment-shaped wrinkle: `RubyLLM.transcribe` returns a string, not
 segments. This adapter therefore emits **one segment spanning the whole file**
-(`start_at: 0.0`, `end_at: nil`-equivalent) rather than faking timings it does
-not have. `AudioSource` handles a single-segment transcript identically to a
-many-segment one, so nothing downstream branches on backend.
+rather than faking timings it does not have. `AudioSource` handles a
+single-segment transcript identically to a many-segment one, so nothing
+downstream branches on backend.
 
 ### `Core::Loaders::AudioSource`
 
@@ -125,59 +123,61 @@ partial-failure isolation. Plain `rescue`, not `Dry::Monads`: this layer is a
 plain-exception layer, and introducing a second error style for one class
 would be worse than matching the observed convention.
 
-## Part 2 — Video
-
-`Core::Loaders::VideoSource`, `SUPPORTED_EXTENSIONS = %w[.mp4 .mov .avi .webm]`
-(33 `.mp4` files in the target vault).
-
-**Default path is local and deterministic:** extract the audio track with
-`ffmpeg` to a temp file, hand it to the same injected `Transcriber`, emit one
-Unit per segment exactly as `AudioSource` does. For a screen recording, a
-talk, or a meeting, the audio track carries the claims; a vision model
-describing the *pixels* would not.
-
-**Opt-in vision analysis** (`--video-vision`) adds a `chat:`-injected
-description Unit per file, via a `:video_analysis` `Boot::TASK_NAMES` entry
-defaulting to `:gemini` (video input is Gemini/VertexAI-only). An override to
-a non-video-capable provider fails loudly at `chat.ask(..., with: video)`,
-which is acceptable — the graceful-degradation path already covers it.
-
-**New dependency:** `ffmpeg` as a system binary, probed at construction with a
-clear error naming the missing binary rather than a cryptic failure mid-run.
-Not a gem, and not compiled at install time.
-
-**Open question:** whether `VideoSource` should subclass or compose
-`AudioSource`. Composition is the likely answer — `VideoSource` extracts, then
-*delegates* to an `AudioSource` over the extracted track — but confirm against
-the actual `Source` duck before committing to it.
-
-## Part 3 — Dispatch and wiring
+## Part 2 — Dispatch and wiring
 
 **This replaces the substrate spec's `Ingest::SourceResolver` entirely.** That
 unit duplicated dispatch the codebase already performs.
 
-- **`Ingest::DeterministicRules`** — add `classify_audio` / `classify_video`
-  mirroring `classify_image`, both returning `mode: "knowledge_base"` (audio
-  and video are knowledge-base content; conversation transcripts are the
-  distinct, already-solved `.srt/.vtt/.ass` case under `NATIVE_CHAT_EXTENSIONS`).
+- **`Ingest::DeterministicRules`** — add `classify_audio` mirroring
+  `classify_image`, returning `mode: "knowledge_base"` (audio is
+  knowledge-base content; conversation transcripts are the distinct,
+  already-solved `.srt/.vtt/.ass` case under `NATIVE_CHAT_EXTENSIONS`).
   Wired into `.classify` the same way `ImageSource::SUPPORTED_EXTENSIONS` is.
-- **`Analysis::KnowledgeBaseSource`** — `AUDIO_EXTENSIONS` / `VIDEO_EXTENSIONS`
-  delegating to the loaders' own constants (as `IMAGE_EXTENSIONS` does), plus
-  `analyze_audio:` / `analyze_video:` opt-in constructor flags defaulting to
-  off, each raising `ArgumentError` when enabled without its collaborator —
-  mirroring the existing `"chat: is required when analyze_images: true"` guard.
-- **CLI** — `--audio`/`--no-audio`, `--video`/`--no-video` on the
-  `knowledge-base` and `ingest` subcommands, plus
-  `--transcriber whisper_cpp|ruby_llm` (**default `whisper_cpp`**) gating which
-  adapter `build_kb_source` constructs.
+- **`classify_video` returns an explicit skip** — see *Video* below. This is
+  the one piece of video handling that stays in scope.
+- **`Analysis::KnowledgeBaseSource`** — an `AUDIO_EXTENSIONS` constant
+  delegating to the loader's own constant (as `IMAGE_EXTENSIONS` does), plus
+  an `analyze_audio:` opt-in constructor flag defaulting to off, raising
+  `ArgumentError` when enabled without its collaborator — mirroring the
+  existing `"chat: is required when analyze_images: true"` guard.
+- **CLI** — `--audio`/`--no-audio` on the `knowledge-base` and `ingest`
+  subcommands, plus `--transcriber whisper_cpp|ruby_llm` (**default
+  `whisper_cpp`**) gating which adapter `build_kb_source` constructs.
 
-## Part 4 — Onboarding wizard
+## Video — deferred, with one thing that cannot be
+
+**Video gets its own pipeline, designed separately.** Nothing in this spec
+builds a `VideoSource`, extracts an audio track, or calls a vision model, and
+no `ffmpeg` dependency is introduced.
+
+**But deferring it is not the same as ignoring it, and an absent loader is not
+a safe default.** Aug 11 established the reason: a file with no deterministic
+rule falls through to `Ingest::Orchestrator`'s classifier/loader-drafter
+fallback, *which samples the first 4KB of the file as text*. For an MP4 that
+produces binary garbage handed to a classifier — and in the target vault there
+are 33 `.mp4` files waiting to do exactly that.
+
+So the single piece of video work that stays in scope:
+
+- `DeterministicRules.classify_video` returns an explicit
+  **unsupported/skip** classification for `%w[.mp4 .mov .avi .webm]`, so video
+  files are recognised and skipped by name rather than misrouted into the text
+  fallback.
+- `Onboarding::CorpusScanner` still **tallies** video files and reports them as
+  "present, not yet supported", so the count is visible rather than silently
+  absent from the summary.
+
+That is a rule and a tally, not a loader. When the video pipeline is designed,
+it replaces the skip; until then the corpus is handled correctly instead of
+accidentally.
+
+## Part 3 — Onboarding wizard
 
 Retained from Aug 11 with its one LLM dependency removed.
 
 **The gap is real and unchanged:** every `ingest` invocation requires the user
-to already know about and hand-pick `--images`/`--audio`/`--video`, with no
-visibility into what is actually in the corpus.
+to already know about and hand-pick `--images`/`--audio`, with no visibility
+into what is actually in the corpus.
 
 - **`Onboarding::CorpusScanner`** walks the target path and tallies files by
   the same extension groups `DeterministicRules` uses. **It calls
@@ -185,8 +185,9 @@ visibility into what is actually in the corpus.
   sniffing — that duplication is exactly what the dropped `SourceResolver`
   would have introduced.
 - **The wizard** (`tty-prompt`, matching `bin/setup-config`) prints the tally
-  and asks per present modality whether to enable it. **Free-text intent
-  extraction via `RubyLLM::Schema` is dropped** — it was the only part
+  and asks per supported modality whether to enable it. Unsupported-but-present
+  modalities (video) are listed in the tally without a prompt. **Free-text
+  intent extraction via `RubyLLM::Schema` is dropped** — it was the only part
   requiring a provider, and the tally plus explicit per-modality questions
   deliver the actual value.
 - **The cost shown changes meaning.** Aug 11 framed it as LLM call count.
@@ -210,11 +211,8 @@ visibility into what is actually in the corpus.
 Plain exceptions at this layer, matching `Orchestrator#process`'s existing
 `rescue … => e` rather than introducing `Dry::Monads` for these classes alone.
 
-- Transcription or video-analysis failure → warning + stub Unit with a
-  truthful `"transcription_failed"` / `"video_analysis_failed"` flag. One
-  file's failure never halts a run (F11).
-- Missing `ffmpeg` → `ArgumentError` at `VideoSource` construction naming the
-  binary, not a cryptic failure at extraction time.
+- Transcription failure → warning + stub Unit with a truthful
+  `"transcription_failed"` flag. One file's failure never halts a run (F11).
 - Uncached whisper model → the wizard offers `bin/setup-whisper`; a direct CLI
   run auto-downloads via the gem's own caching.
 - Unreadable scan directory → raises, reported as `run_ingest` already reports
@@ -233,15 +231,18 @@ and a failure context asserting the stub plus the truthful flag.
   assertions.
 - **Each adapter** gets a narrow spec asserting it satisfies
   `#transcribe(path) -> Array<TranscriptSegment>`. `WhisperCpp`'s spec stubs
-  `Whisper::Context` rather than running a real native transcription; `RubyLlm`'s
-  stubs the API call and asserts the single-whole-file-segment shape.
-- **`VideoSource`** stubs `ffmpeg` extraction and asserts delegation to the
-  transcriber, plus the missing-binary error.
+  `Whisper::Context` rather than running a real native transcription;
+  `RubyLlm`'s stubs the API call and asserts the single-whole-file-segment
+  shape.
+- **`DeterministicRules`** — assert an `.mp4` is classified as skipped, *not*
+  routed to the text fallback. This is the regression test for the deferral;
+  without it, adding video files to a corpus silently degrades ingest.
 - **A shared example for `Loaders::Source` conformance** — introduced here
-  because it now covers six classes (`Markdown`, `Pdf`, `Canvas`, `Image`,
-  `Audio`, `Video`) rather than duplicating per-class `is_a?(Source)` checks.
+  because it now covers five classes (`Markdown`, `Pdf`, `Canvas`, `Image`,
+  `Audio`) rather than duplicating per-class `is_a?(Source)` checks.
   `spec/support/shared_examples/ports.rb` is the existing precedent.
-- **`CorpusScanner`** against a fixture directory with a known extension mix.
+- **`CorpusScanner`** against a fixture directory with a known extension mix,
+  including a video file, asserting it is tallied as present-but-unsupported.
 - **The wizard** via `TTY::Prompt::Test`. A new pattern for this codebase
   (`bin/setup-config` has no spec today), kept to one wizard and one spec file
   rather than building shared test infrastructure speculatively.
@@ -251,21 +252,28 @@ and a failure context asserting the stub plus the truthful flag.
 1. `Types::TranscriptSegment` + `Ports::Transcriber` + fake/null.
 2. `Core::Transcribers::WhisperCpp` + `bin/setup-whisper` + the Gemfile entry.
 3. `Core::Loaders::AudioSource` + the `Loaders::Source` shared example.
-4. `DeterministicRules` / `KnowledgeBaseSource` / CLI wiring for audio.
-   **Audio is fully usable at this point**, before video or the wizard exist.
-5. `Core::Loaders::VideoSource` + ffmpeg extraction + its wiring.
-6. `Core::Transcribers::RubyLlm` + the `:audio_transcription` task entry (opt-in).
-7. Opt-in video vision + the `:video_analysis` task entry.
-8. `Onboarding::CorpusScanner` + `Profile` + wizard + `onboard` subcommand.
+4. `DeterministicRules` (audio classify + video skip) / `KnowledgeBaseSource` /
+   CLI wiring. **Audio is fully usable at this point**, before the wizard
+   exists, and video files are safely skipped rather than misrouted.
+5. `Core::Transcribers::RubyLlm` + the `:audio_transcription` task entry (opt-in).
+6. `Onboarding::CorpusScanner` + `Profile` + wizard + `onboard` subcommand.
 
-Steps 6–7 are the only ones touching an LLM, and both are opt-in; the corpus
-is fully ingestible after step 5 with no API key.
+Step 5 is the only one touching an LLM, and it is opt-in; the corpus is fully
+ingestible after step 4 with no API key.
 
 ## Out of scope
 
+- **The video pipeline**, in full — loader, audio-track extraction, `ffmpeg`,
+  vision analysis, and the `:video_analysis` task entry. Its own spec, later.
+  Only the skip rule and the tally above remain here. Two facts worth carrying
+  into that design when it happens: video input via `RubyLLM` is
+  **provider-limited to Gemini/VertexAI** (verified via Context7), unlike image
+  support; and extracting the audio track and transcribing it locally is likely
+  to beat vision analysis for talks, meetings and screen recordings, where the
+  claims are spoken rather than shown.
 - Speaker diarisation. Segments carry timings, not identities.
 - Re-transcribing on model change. A profile records which model produced a
   transcript; deciding when to invalidate is future work.
 - Editing a saved profile in place — re-run `onboard` to overwrite.
 - Any change to `Ingest::Orchestrator`'s per-file classification or drafting.
-  Part 4 sits in front of it at the CLI-invocation level.
+  The wizard sits in front of it at the CLI-invocation level.
