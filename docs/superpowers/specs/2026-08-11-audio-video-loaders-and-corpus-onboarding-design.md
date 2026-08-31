@@ -2,9 +2,11 @@
 
 > **SUPERSEDED (2026-08-31)** by
 > [`2026-08-31-media-ingest-and-onboarding-design.md`](2026-08-31-media-ingest-and-onboarding-design.md).
-> Never implemented. Retained for its Context7 gem verification and its
-> `DeterministicRules`/`KnowledgeBaseSource`/CLI wiring analysis, both carried
-> forward. Its API-default transcriber, one-Unit-per-file transcripts, and
+> Never implemented. Retained for its `DeterministicRules`/`KnowledgeBaseSource`/
+> CLI wiring analysis, which was carried forward. **Its video claims are stale** —
+> in particular the assertion that video input is provider-limited to
+> Gemini/VertexAI. Video is out of scope for the successor spec and its provider
+> is undecided; do not treat anything here as current on that subject. Its API-default transcriber, one-Unit-per-file transcripts, and
 > LLM-driven wizard intent parsing were overtaken by the local-by-default
 > decision recorded in the substrate spec. **Do not implement from this file.**
 

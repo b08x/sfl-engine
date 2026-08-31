@@ -24,7 +24,7 @@ superseded rather than amended.
 | `#transcribe` returns | `String` (whole file) | **`Array<Segment>`** | whisper.cpp is *natively* segment-based — `context.transcribe(path, params) { |text| … }` yields per segment. Returning one string means **joining** what the backend already separated. Segments are the cheaper output, not the more expensive one. |
 | Units per audio file | one | **one per segment** | Provenance should cite a moment in a recording, not a filename. The correlation half's evidence pane shows *where* a claim came from. |
 | Transcriber namespace | `Llm::Transcribers::*` | **`Core::Ports::Transcriber`** | whisper.cpp is not an LLM. The `Llm::` namespace was correct only while the default backend was an API. Ports is where every other injected collaborator lives. |
-| Video | `VideoSource` + Gemini vision | **out of scope entirely** | Video becomes its own pipeline, designed separately. See *Video* below — it is deferred, not forgotten, and deferring it has one consequence that must still be handled here. |
+| Video | `VideoSource` + a vision model | **out of scope entirely** | Video becomes its own pipeline, designed separately, with its own provider choice. See *Video* below — it is deferred, not forgotten, and deferring it has one consequence that must still be handled here. |
 | Wizard intent parsing | `RubyLLM::Schema` + `:corpus_onboarding` task | **dropped** | The wizard's value is the tally and the per-modality choice, both deterministic. Free-text intent extraction was the one part needing a provider. |
 | Path → loader dispatch | extend `DeterministicRules` | **extend `DeterministicRules`** (unchanged) | Correct in Aug 11. The substrate spec's separate `Ingest::SourceResolver` duplicated it and is **dropped**. |
 
@@ -264,11 +264,10 @@ ingestible after step 4 with no API key.
 ## Out of scope
 
 - **The video pipeline**, in full — loader, audio-track extraction, `ffmpeg`,
-  vision analysis, and the `:video_analysis` task entry. Its own spec, later.
-  Only the skip rule and the tally above remain here. Two facts worth carrying
-  into that design when it happens: video input via `RubyLLM` is
-  **provider-limited to Gemini/VertexAI** (verified via Context7), unlike image
-  support; and extracting the audio track and transcribing it locally is likely
+  vision analysis, and any provider choice for it. Its own spec, later; the
+  provider is undecided and deliberately not constrained here. Only the skip
+  rule and the tally above remain in scope. One observation worth carrying into
+  that design: extracting the audio track and transcribing it locally is likely
   to beat vision analysis for talks, meetings and screen recordings, where the
   claims are spoken rather than shown.
 - Speaker diarisation. Segments carry timings, not identities.
