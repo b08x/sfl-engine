@@ -4,7 +4,7 @@
 **Status:** Draft — pending user review
 **Code lands in:** `/home/b08x/WorkspaceV3/sfl-engine` (service side), `/home/b08x/WorkspaceV3/Syncopated/phantom-agent` (client side)
 **Related specs:** [Vault Annotation Substrate](2026-08-29-vault-annotation-substrate-design.md) — establishes "one substrate, two thin consumers" and explicitly defers "Agent chat / RAG Q&A over the vault" as future work for "a separate plugin later, built on this substrate's retrieval layer." This spec is that plugin's foundation, generalized beyond the vault to any consumer.
-**Umbrella brand:** `syncopatedQ` — working name for the suite this belongs to (sfl-engine, phantom-agent, `syncopated-context-compiler`, `gitagent-workbench`). Not exhaustively decided; recorded here so it isn't lost.
+**Umbrella brand:** `syncopatedQi` — working name for the suite this belongs to (sfl-engine, phantom-agent, `syncopated-context-compiler`, `gitagent-workbench`). "Qi" quietly backronyms to "Quality Intelligence" — subtext, not something to foreground. Not exhaustively decided; recorded here so it isn't lost.
 
 ---
 
@@ -172,5 +172,5 @@ graph-valued topic later should be an additive migration, not a rewrite.
    expected shape of "agent profile" in this substrate's shared-context model, once
    it's wired to call the substrate at all (it currently has no runtime coupling to
    either project).
-4. **Umbrella naming pass** — `syncopatedQ` locked as working name; actual rename of
+4. **Umbrella naming pass** — `syncopatedQi` locked as working name; actual rename of
    individual repos (if any) is separate, low-priority, mechanical work.
