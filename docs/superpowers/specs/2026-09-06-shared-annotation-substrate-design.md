@@ -171,6 +171,10 @@ graph-valued topic later should be an additive migration, not a rewrite.
    respectively, once built. `gitagent-workbench`-authored agent profiles are the
    expected shape of "agent profile" in this substrate's shared-context model, once
    it's wired to call the substrate at all (it currently has no runtime coupling to
-   either project).
+   either project). Noted for whoever picks this up: gitagent-workbench's underlying
+   functionality is solid, but its UI needs real rework before it's worth building on
+   — dense screens with horizontal scrollbars, and actions that navigate to a separate
+   window instead of staying in place. Any future wiring work should budget for an
+   interface pass, not just the integration itself.
 4. **Umbrella naming pass** — `syncopatedQi` locked as working name; actual rename of
    individual repos (if any) is separate, low-priority, mechanical work.
