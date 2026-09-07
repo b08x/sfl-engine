@@ -135,6 +135,17 @@ don't introduce anything that treats `topic` as an unindexed free-text blob only
 single owner writes to — a plain, shared, indexed scalar column is fine now; a
 graph-valued topic later should be an additive migration, not a rewrite.
 
+**Known gap, not fixed by this spec:** phantom-agent's current `topics.id` is BERTopic's
+own per-run cluster number (`topic_modeling.py:127`, `topic_id = row['Topic']`), not a
+stable identity — BERTopic renumbers topics by descending frequency on every
+`fit_transform`, so rerunning it on an updated corpus can reassign what topic `7`
+means, silently stranding every existing reference to the old meaning. Keying
+retrieval by topic only works if topic identity is stable across re-runs, which it
+is not today. This needs a real fix (a hash of the topic's canonical phrase, or a
+minted id that survives re-clustering) before the topic-graph future-work item (#2
+below) builds anything on top of it — recorded here rather than fixed now, since it's
+phantom-agent-side schema work, not part of this spec's substrate.
+
 ## Error handling
 
 - Sidecar transport failures already have a crash-and-retry-once policy
@@ -163,7 +174,9 @@ graph-valued topic later should be an additive migration, not a rewrite.
    `core/loaders/` pattern (Markdown/PDF/CSV/Canvas/Conversation Sources). Design for
    extensibility, not exhaustive source coverage.
 2. **Topic graph (RDF/Turtle + GraphQL/SPARQL-style traversal)** — topics become
-   navigable via edges between related topics, not just exact match.
+   navigable via edges between related topics, not just exact match. Blocked on the
+   topic-identity-stability gap noted in Data Model above — a graph of unstable node
+   identities doesn't hold up.
 3. **UX consumers** — `syncopated-context-compiler`'s existing "Multi-Source Import"
    and "3D Graph Visualization" features are natural front ends for #1 and #2
    respectively, once built. `gitagent-workbench`-authored agent profiles are the
