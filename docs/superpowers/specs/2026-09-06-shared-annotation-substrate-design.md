@@ -43,8 +43,6 @@ substrate, reachable as a service, and phantom-agent becomes a client of it.
 - **Tenant/agent-identity partitioning of stored data.** Considered and explicitly
   rejected: different agent profiles share the same topic-keyed context. Agent
   identity is not a partition key anywhere in this design.
-- **Disk cleanup / auditing the ~90GB of demo and prototype projects.** Unrelated,
-  destructive, and deserves its own task.
 
 ## Shape
 
