@@ -1,3 +1,6 @@
+.graphifyignore
+.agents/skills/trackboi
+.mcp.json
 graphify-out/
 output/
 .claude/skills/

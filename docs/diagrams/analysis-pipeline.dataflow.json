@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "SFL Compile Pipeline",
+    "subtitle": "Source text through spaCy Pass 1, LLM Pass 2 annotation, and dual-store persistence",
+    "output": "docs/diagrams/analysis-pipeline.html",
+    "viewBox": [
+      1080,
+      720
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "pass-one",
+        "label": "Pass 1 parse",
+        "focus": [
+          "docs",
+          "chat",
+          "sidecar",
+          "ideational"
+        ],
+        "note": "Text becomes syntactic clauses, then ideational transitivity roles."
+      },
+      {
+        "id": "pass-two",
+        "label": "Pass 2 annotate",
+        "focus": [
+          "ideational",
+          "cache",
+          "passtwo"
+        ],
+        "note": "Batch LLM annotation, with trusted cache hits replacing fresh calls."
+      },
+      {
+        "id": "persistence",
+        "label": "Dual-store write",
+        "focus": [
+          "passtwo",
+          "clauses",
+          "embeddings"
+        ],
+        "note": "Annotated clauses and their vectors are replaced per document."
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Source"
+    },
+    {
+      "label": "Pass 1 - Parse"
+    },
+    {
+      "label": "Pass 1 - Extract"
+    },
+    {
+      "label": "Pass 2 - Annotate"
+    },
+    {
+      "label": "Persist"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "docs",
+      "type": "external",
+      "label": "Documentation",
+      "sublabel": "markdown / code docs",
+      "stage": 0,
+      "row": 0,
+      "tag": "text"
+    },
+    {
+      "id": "chat",
+      "type": "external",
+      "label": "Conversation",
+      "sublabel": "chat export turns",
+      "stage": 0,
+      "row": 3,
+      "tag": "text"
+    },
+    {
+      "id": "sidecar",
+      "type": "external",
+      "label": "spaCy Sidecar",
+      "sublabel": "Python subprocess",
+      "stage": 1,
+      "row": 1,
+      "tag": "dep parse"
+    },
+    {
+      "id": "ideational",
+      "type": "backend",
+      "label": "Ideational",
+      "sublabel": "process, participants",
+      "stage": 2,
+      "row": 1,
+      "tag": "rule-based"
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "Annotation Cache",
+      "sublabel": "SHA-256 doc + index + text",
+      "stage": 2,
+      "row": 4,
+      "tag": "resume"
+    },
+    {
+      "id": "passtwo",
+      "type": "backend",
+      "label": "Pass 2 Annotator",
+      "sublabel": "DSPy batch signature",
+      "stage": 3,
+      "row": 1,
+      "tag": "mood, modality"
+    },
+    {
+      "id": "clauses",
+      "type": "database",
+      "label": "Clause Store",
+      "sublabel": "Postgres, replace_document",
+      "stage": 4,
+      "row": 0,
+      "tag": "idempotent"
+    },
+    {
+      "id": "embeddings",
+      "type": "database",
+      "label": "Embedding Store",
+      "sublabel": "pgvector, Ollama vectors",
+      "stage": 4,
+      "row": 3,
+      "tag": "batch"
+    }
+  ],
+  "flows": [
+    {
+      "id": "docs-text",
+      "from": "docs",
+      "to": "sidecar",
+      "label": "raw text",
+      "classification": "document body",
+      "variant": "emphasis"
+    },
+    {
+      "id": "chat-text",
+      "from": "chat",
+      "to": "sidecar",
+      "label": "expanded turns",
+      "classification": "speaker-tagged",
+      "variant": "default"
+    },
+    {
+      "id": "syntactic",
+      "from": "sidecar",
+      "to": "ideational",
+      "label": "SyntacticClause",
+      "classification": "dependency tree",
+      "variant": "emphasis"
+    },
+    {
+      "id": "pairs",
+      "from": "ideational",
+      "to": "passtwo",
+      "label": "annotation batch",
+      "classification": "batch context",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -24
+    },
+    {
+      "id": "cache-hits",
+      "from": "cache",
+      "to": "passtwo",
+      "label": "trusted cache hits",
+      "classification": "resume only",
+      "variant": "dashed"
+    },
+    {
+      "id": "annotated",
+      "from": "passtwo",
+      "to": "clauses",
+      "label": "AnnotatedClause",
+      "classification": "per document",
+      "variant": "emphasis"
+    },
+    {
+      "id": "vectors",
+      "from": "passtwo",
+      "to": "embeddings",
+      "label": "clause text vectors",
+      "classification": "derived",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Result ladder",
+      "items": [
+        "Pipeline#compile binds parse, pair, annotate, persist, and embed as dry-monads Results",
+        "A Pass 1 failure short-circuits every later stage with no explicit guard",
+        "Persist and embed are both skipped unless a document_id is supplied"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Two-pass split",
+      "items": [
+        "Pass 1 is deterministic: spaCy dependency parse plus rule-based transitivity extraction",
+        "Pass 2 is the only LLM hop, batched across clauses with retry and circuit breaking",
+        "pass_one_only stubs Pass 2 through Null::Annotator instead of skipping it per caller"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Cache and write semantics",
+      "items": [
+        "Cache keys hash document_id, sentence_index, and clause text so repeats never collide",
+        "Hits with an untrusted annotation_source are demoted to misses and re-annotated",
+        "Fresh trusted annotations are written back, and both stores replace per document"
+      ]
+    }
+  ]
+}
