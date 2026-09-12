@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "pgvector"
 
 RSpec.describe SFL::Store::PgClauseStore do
   subject(:store) { described_class.new(db) }

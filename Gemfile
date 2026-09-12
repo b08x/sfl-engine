@@ -15,6 +15,15 @@ source "https://rubygems.org"
 # Autoloading and dependency management
 gem "zeitwerk", "~> 2.6"
 
+# Pin below 3.0: json 3.0 removed the `create_additions` keyword entirely
+# (a deliberate security-hardening breaking change), but Sequel 5.108.0's
+# Sequel.parse_json (lib/sequel/core.rb) still calls
+# `JSON.parse(json, create_additions: false)` — harmless value, keyword
+# just doesn't exist anymore in 3.x, so every jsonb-column read raises
+# `ArgumentError: unknown keyword: create_additions`. Un-pin once Sequel
+# ships a 3.x-compatible release.
+gem "json", "~> 2.21"
+
 # Type system and data structures
 gem "dry-monads", "~> 1.6"
 gem "dry-struct", "~> 1.6"
@@ -139,6 +148,7 @@ gem "roda", "~> 3.107"
 # TTY toolkit
 gem "tty-progressbar", "~> 0.18"
 gem "tty-prompt", "~> 0.23"
+gem "tty-spinner", "~> 0.9"
 
 # Alternative progress bar
 gem "informers", "~> 1.3"
