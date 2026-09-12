@@ -27,10 +27,10 @@ Phases 0–5 of the rebuild are complete. The system is functional with a robust
 ```
 
 - Full two-pass pipeline (spaCy sidecar + LLM annotation)
-- Postgres/pgvector store with hybrid retrieval
+- Postgres/pgvector store with hybrid retrieval, now with parent/child clause chunking and per-clause readability scoring
 - Unified analysis engine across three source types
-- CLI and HTTP API
-- 655 specs passing, RuboCop clean
+- CLI and HTTP API (Roda-based, see Phase 7)
+- 832 specs passing, RuboCop clean
 
 **What remains**: Phase 6 (hardening) and forward-looking research.
 
@@ -46,7 +46,7 @@ The final phase before the system is considered production-ready.
 
 ---
 
-## Phase 7 — Microservice API & Async Routes (Future)
+## Phase 7 — Microservice API & Async Routes
 
 Transform the SFL Engine into a high-concurrency backend service powered by Roda and Falcon, designed to serve asynchronous NLP processing tasks.
 
@@ -62,6 +62,7 @@ flowchart TD
         D[Compilation Endpoints]
         E[Retrieval Endpoints]
         F[Synthesis Endpoints]
+        Gr[Graph Endpoints]
     end
     
     subgraph Workers & Sidecars
@@ -70,14 +71,16 @@ flowchart TD
     end
 
     A & B -->|HTTP/REST| C
-    C --> D & E & F
+    C --> D & E & F & Gr
     D -.->|IPC / Async| G
     E -.->|Query| H
 ```
 
-- **Roda Routing**: Implement strict `Roda` route trees mapped to `lib/sfl/api` endpoints, separating concerns into discrete sub-apps (`/pipeline`, `/retrieve`, `/clauses`).
-- **Async Execution**: Leverage Falcon's async I/O to handle long-running LLM annotation (Pass 2) and sidecar inferences without blocking the event loop.
-- **Microservice Integration**: Provide unified API access points allowing external platforms (like the Syncopated Context Compiler) to offload semantic chunking and RAG workflows entirely to the `sfl-engine` container.
+**Done:** `config.ru` now boots a real `Roda` app (`app/sfl.rb`), with every route from the old Rack `lib/sfl/api/server.rb` ported into `app/routes/*.rb` — `/health`, `/pipeline/compile`, `/retrieve`, `/synthesize`, `/clauses`, `/review-queue` — plus new `GET /graph/nodes` and `GET /graph/edges` (backed by `Store::PgGraphRepository`) for parent/child chunk structure and semantic-similarity edges. `Providers::Engine` wraps the same `SFL::API::Context.build` the CLI already used, so Roda and CLI share one composition path (`boot.rb`) instead of two. `exe/sfl-api`'s `falcon serve -c config.ru` is unchanged as a command but now serves this Roda app. The old `lib/sfl/api/server.rb`/`config.ru_bak` Rack shell is still present pending full request-spec parity before removal — see `docs/dockerization-strategy.md`'s status notes.
+
+**Remaining:**
+- **Async Execution**: Leverage Falcon's async I/O to handle long-running LLM annotation (Pass 2) and sidecar inferences without blocking the event loop — routes today are synchronous.
+- **Microservice Integration**: Provide unified API access points allowing external platforms (like the Syncopated Context Compiler) to offload semantic chunking and RAG workflows entirely to the `sfl-engine` container, including the BERTopic sidecar shown above (not yet built).
 
 ---
 

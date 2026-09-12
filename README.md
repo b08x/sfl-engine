@@ -91,15 +91,24 @@ No single domain solves the problem. SFL provides the metadata. CBT provides the
 ```
 lib/sfl/
 ├── core/      # types, ports, pass1 sidecar client, pass2 engine, pipeline, loaders
-├── store/     # Sequel/pg/pgvector: repositories, migrations, retrieval
+├── store/     # Sequel/pg/pgvector: repositories, migrations, retrieval, graph queries
 ├── llm/       # dspy.rb + dspy-signature annotators, per-task model/provider config
 ├── prompts/   # plain folder of prompt templates
 ├── cli/       # non-interactive/scriptable analyzer commands
 ├── gui/       # glimmer-dsl-libui desktop GUI (opt-in require)
 └── chat/      # interactive chatbot agent (RubyLLM::Tool wrappers)
+
+app/
+├── sfl.rb          # the Roda application (config.ru's `run Sfl`)
+├── routes/         # one file per hash_branch: health, pipeline, retrieve,
+│                   # synthesize, clauses, review_queue, graph
+└── config/
+    └── providers/  # DB/mailer/logger boot + Providers::Engine (wraps
+                     # SFL::API::Context.build so Roda and the CLI share
+                     # one composition path)
 ```
 
-One Zeitwerk loader rooted at `lib/` (see `lib/sfl.rb`). `experiments/` is quarantined — never autoloaded, never shipped.
+One Zeitwerk loader rooted at `lib/` (see `lib/sfl.rb`); a second, separately-tagged loader rooted at `app/` (see `boot.rb`). `experiments/` is quarantined — never autoloaded, never shipped.
 
 ## Getting Started
 
@@ -131,6 +140,12 @@ bundle exec exe/sfl-api                 # Falcon on 0.0.0.0:3001 (default)
 PORT=3002 bundle exec exe/sfl-api       # custom port
 HOST=localhost bundle exec exe/sfl-api  # bare-metal-only, loopback bind
 ```
+
+`config.ru` runs a Roda app (`app/sfl.rb`), not a raw Rack handler — same
+command as above, same routes as before (`/health`, `/pipeline/compile`,
+`/retrieve`, `/synthesize`, `/clauses`, `/review-queue`), plus new
+`GET /graph/nodes` and `GET /graph/edges` for the parent/child chunk
+structure and semantic-similarity edges the context-compiler frontend needs.
 
 Or containerized (see `docs/dockerization-strategy.md`):
 
@@ -190,6 +205,8 @@ Phases 0–5 of the rebuild blueprint are implemented: the two-pass pipeline, Po
 All P0 (blocking/security/data-integrity) issues from that assessment are now fixed and closed: clause re-annotation and review-audit recording are transactionally atomic (`API::ClauseReviewService`), unexpected API errors are sanitized before reaching clients (a generic response + logged `request_id`, raw detail opt-in only via `SFL_API_DEBUG_ERRORS`), the toolchain is pinned and reproducible (Ruby 4.0.1 via `.tool-versions`), Docker Compose auto-start is opt-in (`SFL_AUTO_START_DOCKER=1`) rather than unconditional, the API binds `0.0.0.0` and its CORS origins are env-configurable for containerized deployment, and `sfl-api` now runs as a proper container (`docker/api.Dockerfile`, spaCy baked in) — see `docs/dockerization-strategy.md`.
 
 Remaining recommendations from the assessment cover extracting API route orchestration into application services, decomposing `SFL::Boot` configuration policy, adding architecture-level dependency tests, reusing the API hybrid retriever, and moving migration-history commentary into decision records. See the [GitHub issue backlog](https://github.com/b08x/sfl-engine/issues).
+
+The HTTP API has since moved onto Roda (`app/sfl.rb`, `app/routes/`) — see [ROADMAP.md's Phase 7](ROADMAP.md#phase-7--microservice-api--async-routes) for what shipped and what's still open. Clauses also carry an optional self-referential `parent_clause_id` (parent/child chunking) and Lingua::EN::Readability scores, both surfaced through the new `GET /graph/nodes`/`GET /graph/edges` endpoints; embeddings target leaf chunks only.
 
 This remains infrastructure and a research-oriented engineering artifact, not a validated outcome study. No external corpus has yet established that stance filtering improves LLM reasoning outcomes or adversarial robustness.
 

@@ -17,6 +17,23 @@ not a reference to the `Context` constant. Moved to `Context.build` instead,
 which is Zeitwerk-safe by construction. `webui` remains unbuilt pending
 #22/#23.
 
+**Status update (2026-09-12):** `config.ru` no longer builds `SFL::API::Context`
+or calls `SFL::DockerServices.ensure_running!` directly — it's now just
+`require_relative "boot"` + `run Sfl`, where `Sfl` (`app/sfl.rb`) is a real
+Roda app and `boot.rb` (repo root) is the new composition root: it boots
+`Providers::DB::Conn` (which now delegates to `Store::Database.connect`/
+`.setup_extensions`, so the pool_class/pg_json/vector/pg_trgm guarantees
+this document's blockers section assumes still hold), calls
+`SFL::DockerServices.ensure_running!` (same opt-in `SFL_AUTO_START_DOCKER=1`
+gate, just relocated) and `SFL::Boot.call` for LLM/tracing, then boots
+`Providers::Engine`, which wraps `SFL::API::Context.build` so Roda routes
+and the CLI share one composition path. `exe/sfl-api`'s `falcon serve -c
+config.ru` is otherwise unchanged and still applies everywhere below. Every
+route `lib/sfl/api/server.rb` served has been ported to `app/routes/*.rb`,
+plus new `GET /graph/nodes`/`GET /graph/edges`; the old Rack shell
+(`lib/sfl/api/server.rb`, `config.ru_bak`) stays in the tree until it has
+full Roda request-spec parity, then gets deleted.
+
 **What this document is for**: the plan for running `sfl-api` and the future
 web frontend (see `docs/claude-design-ui-prompt.md` and issues #22-#32) as
 proper containerized services alongside the Postgres/Redis containers that
