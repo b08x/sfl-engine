@@ -25,7 +25,7 @@ module SFL
     #   (issue #2 — re-annotation write + audit record in one transaction).
     Context = Struct.new(
       :pipeline, :retriever, :synthesizer, :clause_store, :review_queue_repo,
-      :annotation_review_repo, :pass_two, :clause_review_service,
+      :annotation_review_repo, :pass_two, :clause_review_service, :graph_repository,
       keyword_init: true
     )
 
@@ -67,14 +67,15 @@ module SFL
           retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
           synthesizer: Retrieval::ContextSynthesizer.new(
             retriever: Store::PgHybridRetriever.new(db: boot_result.db, embedder: boot_result.embedder),
-            lm: boot_result.lm_factory.for(:context_synthesis), breaker:, instrumenter:, logger:
+            lm: boot_result.lm_factory.for(:context_synthesis), clause_store:, breaker:, instrumenter:, logger:
           ),
           clause_store:,
           review_queue_repo: Store::PgReviewQueueRepository.new(boot_result.db),
           annotation_review_repo:,
           pass_two:,
           clause_review_service: ClauseReviewService.new(db: boot_result.db, clause_store:, annotation_review_repo:,
-            pass_two:)
+            pass_two:),
+          graph_repository: Store::PgGraphRepository.new(db: boot_result.db)
         )
       end
     end

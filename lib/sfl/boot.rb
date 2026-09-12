@@ -4,49 +4,21 @@ require "dotenv"
 require "dspy"
 
 module SFL
-  # Composition root (track decision 4): the ONLY place in this codebase
-  # that reads ENV, and only at call time — every other class takes its
-  # config as injected constructor arguments (confirm by skimming
-  # LLM::Config, LLM::TaskConfig, LLM::Tracing.configure,
-  # Store::Database.connect: all take explicit args; Database.connect's
-  # `url ||= ENV.fetch("DATABASE_URL")` fallback exists but Boot always
-  # passes `url` explicitly, so that fallback is dead code in practice).
+  # Composition root: the ONLY place in this codebase that reads ENV (at call
+  # time only). All other classes receive their config via injected constructor
+  # arguments.
   #
-  # Replaces legacy's Compiler::Bootstrap.call against v2's actual
-  # collaborators. Three structural differences from legacy, each
-  # explained at the point it matters below:
+  # Key differences from legacy:
+  # - Per-task LLM config instead of global DSPY_PROVIDER/model
+  # - No auto-migration: #connect_db only connects + installs extensions
+  # - Pass 1 runs as a subprocess sidecar, avoiding require-time Python hazards
   #
-  # 1. Per-task LLM config (track decision 8) instead of one global
-  #    DSPY_PROVIDER/model — see TASK_NAMES and #task_config_from_env.
-  # 2. No auto-migration (track decision 5) — #connect_db only connects +
-  #    installs extensions; `rake db:migrate` is the only place
-  #    migrations run.
-  # 3. No global PYTHON/PYTHONPATH ENV mutation — Pass 1 is a subprocess
-  #    sidecar (track decision 2), not an in-process PyCall require, so
-  #    there is no require-time hazard to pre-empt the way legacy's
-  #    `configure_vendored_python` had to.
-  #
-  # Not ported at all: SafeOpenAIClientProxy/SafeChatProxy/
-  # SafeCompletionsProxy (DSPy-adapter-specific, moot), apply_request_timeout/
-  # apply_generation_params (superseded by TaskConfig#params +
-  # ChatFactory#apply_params), configure_jobs/Gush/Sidekiq wiring (Phase 5,
-  # not this phase), the global yajl/json_gem require-time patch (nothing
-  # in v2 does this).
-  # rubocop:disable Metrics/ModuleLength -- a composition root's job is fanning out to every
-  # collaborator it wires (LLM::Config, ChatFactory, Embedder, Tracing, Database,
-  # SpacySidecarParser's command:) plus per-step ENV documentation; splitting further than the
-  # per-concern private methods already here would scatter one conceptual "boot the app" unit
-  # across files with no natural seams (Result/Error/LangfuseReachability already got their own
-  # files precisely because they ARE separable concerns — this is what's left after that split).
+  # rubocop:disable Metrics/ModuleLength -- composition root wires many collaborators;
+  # splitting would scatter related logic across files without natural seams
   module Boot
-    # Every task name any `chat_factory.for(:...)`/`config.for(:...)` call
-    # site in this codebase currently uses (grepped, not guessed):
-    # EngineBuilder resolves :pass_two_annotation/:pass_two_batch_annotation,
-    # LLM::Config's own doc comment names :embedding and :context_synthesis
-    # as the other two members of the per-task map. If a future call site
-    # adds a fifth task, add its name here — Config.for raises a clear
-    # LLM::Error for anything unregistered, so a missed entry fails loudly
-    # rather than silently falling back to nothing.
+    # All task names used by chat_factory.for(:...) or config.for(:...) calls.
+    # If adding a new task, add its name here — Config.for raises LLM::Error
+    # for unregistered tasks, ensuring missed entries fail loudly.
     TASK_NAMES = %i[
       pass_two_annotation
       pass_two_batch_annotation
@@ -56,40 +28,18 @@ module SFL
       loader_drafting
     ].freeze
 
-    # Default provider for the two Pass 2 tasks, carried over from
-    # legacy's single DSPY_PROVIDER default.
+    # Default provider for Pass 2 tasks, carried over from legacy's DSPY_PROVIDER.
     DEFAULT_PROVIDER = :openrouter
 
-    # :context_synthesis has no legacy equivalent (it's new in v2) — rather
-    # than invent an unrelated default, its own default provider/model
-    # (unless SFL_TASK_CONTEXT_SYNTHESIS_* overrides it) is whatever
-    # :pass_two_annotation resolved to, on the theory that "the same model
-    # already trusted for Pass 2 annotation" is a more defensible starting
-    # point than a second invented default. See #build_llm_config.
+    # context_synthesis defaults to pass_two_annotation's provider/model when not
+    # explicitly configured, as it's a trusted starting point.
 
-    # :embedding's default model mirrors legacy's Compiler::Embedder
-    # default and reuses the EMBEDDING_MODEL env
-    # var this repo's .env already sets, as a fallback layer beneath the
-    # new SFL_TASK_EMBEDDING_MODEL var (see #build_llm_config).
+    # embedding defaults to :ollama provider, with model from EMBEDDING_MODEL env var
+    # (or SFL_TASK_EMBEDDING_MODEL as override).
     DEFAULT_EMBEDDING_PROVIDER = :ollama
 
-    # ENV var per provider whose absence is a hard Boot::Error — mirrors
-    # legacy's KEY_ENV_BY_PREFIX, but keyed by the plain provider Symbol
-    # TaskConfig#provider already holds (RubyLLM registers providers as
-    # :openai/:openrouter/:anthropic/:gemini/:mistral/:ollama, among
-    # others — verified against the installed ruby_llm 1.16.0's
-    # `RubyLLM::Provider.register` calls in lib/ruby_llm.rb; note :gemini,
-    # not legacy's "google/" prefix naming, though the ENV var name itself
-    # stays GOOGLE_API_KEY to match this repo's existing .env). :ollama is
-    # deliberately absent — its `configuration_requirements` is
-    # `[:ollama_api_base]` only (verified against
-    # Providers::Ollama.configuration_requirements), no API key, so there
-    # is nothing to validate/set here for it; LLM::Embedder already
-    # configures ollama_api_base globally (RubyLLM.config is a process
-    # singleton) from its own injected `ollama_base_url:`, and that
-    # config is built unconditionally whenever require_llm: true — so
-    # :ollama already works as a primary chat/annotation provider too,
-    # with no further wiring needed here.
+    # ENV var names for providers that require API keys. :ollama is excluded
+    # as it only requires ollama_api_base (no API key), configured separately.
     REQUIRED_KEY_ENV_BY_PROVIDER = {
       openrouter: "OPENROUTER_API_KEY",
       gemini: "GOOGLE_API_KEY",
@@ -98,32 +48,19 @@ module SFL
       mistral: "MISTRAL_API_KEY",
     }.freeze
 
-    # (removed RUBY_LLM_KEY_SETTER)
-
     DEFAULT_SPACY_MODEL = "en_core_web_sm"
     DEFAULT_OLLAMA_BASE_URL = "http://tinybot:11434"
     DEFAULT_EMBEDDING_TIMEOUT_SECONDS = 30.0
 
-    # bin/setup-python (a companion script, provisioned separately) writes
-    # the resolved interpreter's absolute path here after vendoring spaCy
-    # into APP_ROOT/.sfl-python/python — one line, trailing newline,
-    # nothing else. Mirrored from that script's own documented contract
-    # (bin/setup-python: APP_ROOT/VENDOR_DIR/INTERPRETER_FILE constants),
-    # not re-derived independently.
+    # Paths for the vendored Python environment (provisioned by bin/setup-python).
+    # spaCy is installed via `pip install --target` to PYTHON_TARGET_DIR, so
+    # the sidecar subprocess needs PYTHONPATH set to this directory.
     APP_ROOT = File.expand_path("../..", __dir__)
     INTERPRETER_PATH_FILE = File.join(APP_ROOT, ".sfl-python", "interpreter_path")
-
-    # bin/setup-python's PYTHON_TARGET_DIR: spaCy is `pip install --target`ed
-    # here rather than into the interpreter's own site-packages, so the
-    # sidecar subprocess needs PYTHONPATH set to this directory at spawn
-    # time (see #resolve_pass1_env) — the interpreter alone isn't enough.
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
 
-    # rubocop:disable Metrics/ParameterLists -- one flag per
-    # independently-skippable startup concern (mirrors legacy Bootstrap.call's
-    # require_db:/require_llm:/require_observability: shape) plus the four DI seams
-    # (env:/tty:/input:/ruby_llm:) every ENV-touching or process-global-touching method in this
-    # codebase exposes for specs; the body is one flat build-each-Result-field sequence.
+    # rubocop:disable Metrics/ParameterLists -- each flag controls a distinct
+    # startup concern, plus DI seams (env, tty, input, ruby_llm) for testability
     # @param env [#[], #fetch] environment source, injectable for tests
     # @param load_dotenv [Boolean] read .env first (off in tests)
     # @param require_db [Boolean] connect the database (no migrations — see Store::Database)
@@ -177,20 +114,9 @@ module SFL
       [llm_config, lm_factory, embedder, classifier]
     end
 
-    # ENV convention for per-task config (track decision 8), decided here
-    # since Phase 1's card explicitly deferred "full ENV-driven resolution"
-    # to this Boot work: for each task in TASK_NAMES, an uppercased
-    # `SFL_TASK_<TASK_NAME>_MODEL` / `_PROVIDER` / `_TEMPERATURE` triple.
-    # `_PROVIDER`, if set, must be one of RubyLLM's registered provider
-    # symbols (:openai/:openrouter/:anthropic/:gemini/:ollama). Only
-    # `temperature` gets a dedicated ENV var — TaskConfig#params is a free
-    # Hash for anything else (top_p, top_k, max_tokens, ...), and there is
-    # no established v2 convention yet for exposing arbitrary param keys
-    # via ENV var names; add one here if/when a task actually needs it,
-    # rather than speculatively generalizing now. # -- six independent per-task TaskConfig builds (two of
-    # them, ingest_classification/loader_drafting, needing an explanatory comment on their
-    # borrowed default), then one Config.new — no natural sub-grouping to extract without
-    # scattering related task-default reasoning across multiple methods.
+    # Build per-task LLM configuration from ENV. Each task can be configured
+    # via SFL_TASK_<TASK_NAME>_{MODEL,PROVIDER,TEMPERATURE} environment variables.
+    # Tasks without explicit defaults borrow from related tasks (see below).
     module_function def build_llm_config(env)
       pass_two_annotation = pass_two_task_config(:pass_two_annotation, env)
       pass_two_batch_annotation = pass_two_task_config(:pass_two_batch_annotation, env)
@@ -199,14 +125,11 @@ module SFL
         default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
       )
       embedding = embedding_task_config(env)
-      # No existing "cheap chat model" default to borrow from — :embedding's default is the
-      # cheapest task already configured, same defensible-starting-point judgment call
-      # :context_synthesis makes above by reusing :pass_two_annotation's default.
+      # ingest_classification borrows defaults from embedding (cheapest configured task)
       ingest_classification = task_config_from_env(
         :ingest_classification, env, default_provider: embedding.provider, default_model: embedding.model
       )
-      # No existing "reasoning tier" default either — :pass_two_annotation's default is the
-      # strongest general-purpose task already configured.
+      # loader_drafting borrows defaults from pass_two_annotation (strongest general-purpose task)
       loader_drafting = task_config_from_env(
         :loader_drafting, env,
         default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
@@ -262,9 +185,8 @@ module SFL
       config.tasks.values.filter_map(&:provider).uniq
     end
 
-    # Per-task provider API keys, not legacy's single api_key_for(provider)
-    # — providers can differ per task now (track decision 8), so every
-    # distinct provider in use gets checked, not just one.
+    # Validate that all required API keys are present for the configured providers.
+    # Unlike legacy, providers can differ per task, so all distinct providers are checked.
     module_function def validate_api_keys!(config, env)
       providers_in_use(config).each do |provider|
         key_env = REQUIRED_KEY_ENV_BY_PROVIDER[provider]
@@ -287,17 +209,8 @@ module SFL
       )
     end
 
-    # Straight replacement for legacy's configure_observability, plus the
-    # LangfuseReachability preflight legacy's CLI ran separately before
-    # `require "sfl-compiler"` — folded into Boot here since v2 has no
-    # require-time hazard forcing them apart (see LangfuseReachability's
-    # own file comment). :cancel raises rather than legacy CLI's
-    # `warn "Cancelled."; exit 1` — Boot is a composition-root library
-    # method, not an entry point, and `exit` inside one is generally bad
-    # practice (it can't be rescued, complicates testing, and surprises
-    # any caller that isn't literally a `bin/` script). The not-yet-built
-    # CLI is expected to rescue Boot::Error at its own top level and exit
-    # there instead.
+    # Configure Langfuse tracing if requested. Performs a reachability check first.
+    # Raises Boot::Error on cancellation (caller should rescue and exit appropriately).
     module_function def configure_tracing(env, tty:, input:)
       return unless LangfuseReachability.tracing_requested?(env)
 
@@ -315,10 +228,8 @@ module SFL
       )
     end
 
-    # Deliberately does NOT run migrations (track decision 5, unlike
-    # legacy's Bootstrap#connect_db calling Migrator.new(db).run_all) —
-    # migrations run only via `rake db:migrate` (see Rakefile), never
-    # automatically at boot or per-job.
+    # Connect to the database and set up extensions. Does NOT run migrations;
+    # migrations must be run explicitly via `rake db:migrate`.
     module_function def connect_db(env)
       url = env["DATABASE_URL"]
       raise Error, "DATABASE_URL is not set" if url.nil? || url.strip.empty?
@@ -330,23 +241,12 @@ module SFL
       raise Error, "Database connection failed for #{url}: #{e.message}"
     end
 
-    # Points SpacySidecarParser at bin/setup-python's vendored interpreter
-    # when it has been provisioned; returns nil (letting
-    # SpacySidecarParser fall back to its own `["python3",
-    # DEFAULT_SCRIPT_PATH, "--model", model]` default) when it hasn't. A
-    # missing vendor dir is a legitimate "not yet provisioned" state, not
-    # a Boot-time failure — the sidecar itself fails loudly if bare
-    # `python3` lacks spaCy, which is an acceptable place for that
-    # particular failure to surface (SpacySidecarParser's own
-    # STARTUP_TIMEOUT_SECONDS/SidecarError machinery already handles it).
+    # Resolve the Pass 1 (spaCy sidecar) command. Returns nil if the vendored
+    # Python interpreter hasn't been provisioned yet (SpacySidecarParser will
+    # fall back to its default command). The sidecar itself fails loudly if
+    # spaCy is missing, which is the appropriate place for that error.
     #
-    # Reuses SpacySidecarParser::DEFAULT_SCRIPT_PATH rather than
-    # recomputing the sidecar script's path independently, so there is
-    # only one place that relative-path calculation lives.
-    #
-    # No global PYTHON/PYTHONPATH ENV mutation (unlike legacy's
-    # configure_vendored_python) — that hazard doesn't exist for a
-    # subprocess sidecar invoked via an explicit `command:` array.
+    # Uses SpacySidecarParser::DEFAULT_SCRIPT_PATH to avoid duplicating path logic.
     module_function def resolve_pass1_command(spacy_model)
       return nil unless File.exist?(INTERPRETER_PATH_FILE)
 

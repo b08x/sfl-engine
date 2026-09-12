@@ -20,6 +20,15 @@ module SFL
         def find_by_document(document_id)
           raise NotImplementedError, "#{self.class} must implement #find_by_document"
         end
+
+        # @param external_id [String] AnnotatedClause#id of the clause whose
+        #   ancestors to fetch
+        # @return [Array<SFL::Core::Types::AnnotatedClause>] strict ancestors
+        #   (excludes the given clause itself), root first; empty array for
+        #   a root clause (no parent) or an unknown id
+        def ancestor_chain(external_id)
+          raise NotImplementedError, "#{self.class} must implement #ancestor_chain"
+        end
       end
     end
   end

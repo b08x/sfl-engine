@@ -34,6 +34,9 @@ module SFL
         attribute :modality_weight, Types::ModalityWeight.optional.default(nil)
         attribute :annotation_source, Types::AnnotationSource.optional.default(nil)
         attribute :untrusted, Types::Bool.default(false)
+        # AnnotatedClause#id of the clause this one is a child chunk of, or
+        # nil for a root/top-level clause hit.
+        attribute :parent_clause_id, Types::String.optional.default(nil)
       end
     end
   end
