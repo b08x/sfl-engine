@@ -97,7 +97,6 @@ module SFL
       # @param limit [Integer]
       # @param offset [Integer]
       # @return [Hash] :clauses (Array<AnnotatedClause>), :total (Integer)
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat build-scope/
       # apply-filters/count/paginate/reconstruct sequence.
       def find_all(document_id: nil, annotation_source: nil, filters: Core::Types::RetrievalFilters.new,
         limit: 50, offset: 0
@@ -117,8 +116,6 @@ module SFL
 
         { clauses: rows.map { |row| reconstruct(row) }, total: }
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def joined_scope
         @db[:clauses]
           .join(:ideational_payloads, clause_id: Sequel[:clauses][:external_id])
@@ -158,7 +155,6 @@ module SFL
         }
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat row-hash literal, one field per column
       private def interpersonal_row(clause)
         interpersonal = clause.interpersonal
         {
@@ -176,8 +172,6 @@ module SFL
           created_at: clause.compiled_at,
         }
       end
-      # rubocop:enable Metrics/MethodLength
-
       # Same column mapping as #interpersonal_row, minus clause_id (the
       # #update where-key, not a settable column) and created_at (an
       # update must not overwrite the original compile timestamp).
@@ -211,7 +205,6 @@ module SFL
       # ClauseRepository#find_pass_one_output documents; live-verified
       # against this DB before writing this, not assumed). Array()/#to_h
       # below convert to the plain types Dry::Struct needs.
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat assembly of the four
       # already-factored reconstruct_* helpers below into the final AnnotatedClause; splitting
       # the two payload lookups into their own method would only relocate, not reduce, this.
       private def reconstruct(row)
@@ -228,8 +221,6 @@ module SFL
           compiled_at: row[:created_at]
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def reconstruct_syntactic(row)
         Core::Types::SyntacticClause.new(
           id: row[:external_id],

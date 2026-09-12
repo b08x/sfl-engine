@@ -30,7 +30,7 @@ module SFL
       # @param clauses [Array<Core::Types::AnnotatedClause>]
       # @param frontmatter [Hash, nil]
       # @return [Symbol] one of Core::Types::KBContentType values
-      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:disable Metrics/CyclomaticComplexity
       # -- one ordered decision ladder, ported verbatim from legacy's own #classify; each branch
       # is an independently-meaningful priority rule, not decomposable without hiding the order.
       def classify(section:, clauses:, frontmatter: nil)
@@ -48,7 +48,7 @@ module SFL
 
         from_sfl(clauses) || :research_note
       end
-      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       private def normalised_tags(frontmatter)
         Array(frontmatter&.dig("tags")).map { |t| t.to_s.downcase }
@@ -74,7 +74,7 @@ module SFL
       end
 
       # Use SFL interpersonal + ideational signals as a tie-breaker.
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:disable Metrics/CyclomaticComplexity
       # -- three independently-meaningful SFL-signal branches, ported verbatim from legacy's own
       # #from_sfl; splitting the if/elsif ladder would only relocate the same three conditions.
       private def from_sfl(clauses)
@@ -92,7 +92,7 @@ module SFL
           :research_note
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       private def mean_modality(clauses)
         vals = clauses.map { |c| c.interpersonal.modality_weight }

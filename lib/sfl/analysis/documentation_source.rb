@@ -62,7 +62,7 @@ module SFL
       #   two contiguous same-file PDF chunks meet; [] for anything else
       #   (markdown-only runs, single-file PDFs never split, files that
       #   don't share a file_id).
-      # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- one running-offset
+      # rubocop:disable Metrics/CyclomaticComplexity, -- one running-offset
       # walk over adjacent unit pairs, ported verbatim from legacy's #pdf_chunk_boundaries; the `&.`s
       # are the only branching, each independently necessary (turns can be shorter than @unit_chunks
       # when Engine's compile loop stops early).
@@ -79,7 +79,7 @@ module SFL
 
         boundaries
       end
-      # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       # DocumentationAnalyzer's policy: enqueue only when the compiled
       # section actually produced a non-trusted (fallback/stub) clause —

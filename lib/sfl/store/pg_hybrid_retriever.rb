@@ -138,7 +138,6 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat struct literal, one field per
       # RetrievalResult attribute; splitting it would only relocate, not reduce, this.
       private def build_result(row)
         Core::Types::RetrievalResult.new(
@@ -156,7 +155,6 @@ module SFL
           untrusted: row[:untrusted] || false
         )
       end
-      # rubocop:enable Metrics/MethodLength
     end
   end
 end

@@ -17,7 +17,6 @@ module SFL
         JSON.pretty_generate(build_hash)
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat top-level report literal,
       # ported verbatim from legacy.
       private def build_hash
         {
@@ -32,8 +31,6 @@ module SFL
           key_moments: format_key_moments,
         }.merge(profiles_key => format_speaker_profiles)
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       # This formatter serves both `conversation` and `documentation`
       # analyses — DocumentationAnalyzer maps sections onto
       # ConversationTurn-shaped data (speaker: heading) so the shared
@@ -122,7 +119,6 @@ module SFL
       # Per-turn rows with preview text and provenance counts. This makes
       # the JSON report self-contained: narrative generation grounds its
       # narrative entirely from this file.
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat turn-row literal; every
       # field is an independently-meaningful piece of the report, ported verbatim from legacy.
       private def format_turns
         result.turns.map do |turn|
@@ -144,8 +140,6 @@ module SFL
           }
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       # Per-clause reasoning_trace, the only clause-level field this report
       # exposes today. `nil` for fallback/stub clauses (no trace was ever
       # computed) as well as for llm clauses where the trace itself failed
@@ -167,7 +161,6 @@ module SFL
         Core::Wire.deep_stringify_time(trace.to_h)
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat profile-row literal, ported verbatim from legacy.
       private def format_speaker_profiles
         result.speaker_profiles.transform_values do |profile|
           {
@@ -181,8 +174,6 @@ module SFL
           }
         end
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def format_key_moments
         result.key_moments.map do |km|
           {

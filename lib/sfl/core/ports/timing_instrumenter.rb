@@ -42,11 +42,11 @@ module SFL
           end
 
           {
-            clauses: clauses,
+            clauses:,
             batches: batch_report,
             provider_requests: provider,
             retries: { attempts: retries.length, duration_ms: retries.sum { |s| s[:duration_ms] }, spans: retries },
-            parsing: parsing,
+            parsing:,
             totals_ms: {
               clause: clauses.sum { |s| s[:duration_ms] },
               batch: batches.sum { |s| s[:duration_ms] },
@@ -72,4 +72,3 @@ module SFL
     end
   end
 end
-

@@ -87,7 +87,7 @@ module SFL
         json(500, body)
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:disable Metrics/CyclomaticComplexity
       # One flat routing table, one `in` clause per route; splitting this into smaller methods
       # would only relocate the branch count, not reduce it.
       private def dispatch(req)
@@ -114,12 +114,11 @@ module SFL
           json(404, { error: "Not Found", path: req.path_info })
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       # POST /pipeline/compile
       #
       # Body: {text:, document_id:, store:, embed:}
-      # rubocop:disable Metrics/AbcSize -- one flat validate/default/compile/respond
       # sequence; each line does exactly one of those four things.
       private def compile_pipeline(req)
         body = parse_body(req)
@@ -134,13 +133,10 @@ module SFL
           .value_or { |failure| raise "compile failed for #{document_id.inspect}: #{failure.inspect}" }
         json(200, clauses.map { |c| Core::Wire.dump(c) })
       end
-      # rubocop:enable Metrics/AbcSize
-
       # POST /retrieve
       #
       # Body: {query:, filters?: {min_modality:, max_modality:, min_tenor:,
       #   max_tenor:, mood:, process_type:, source_type:}, limit?:}
-      # rubocop:disable Metrics/AbcSize -- one flat validate/build-query/retrieve/respond sequence.
       private def retrieve(req)
         body = parse_body(req)
         query = body["query"]
@@ -152,12 +148,9 @@ module SFL
         results = ctx.retriever.retrieve(Core::Types::RetrievalQuery.new(query:, limit:, filters:))
         json(200, { query:, results: results.map { |r| Core::Wire.dump(r) }, count: results.size })
       end
-      # rubocop:enable Metrics/AbcSize
-
       # POST /synthesize
       #
       # Body: {query:, filters?:, limit?:, include_fallback?:}
-      # rubocop:disable Metrics/AbcSize -- one flat validate/build-kwargs/synthesize/respond sequence.
       private def synthesize(req)
         body = parse_body(req)
         query = body["query"]
@@ -170,14 +163,11 @@ module SFL
         result = ctx.synthesizer.synthesize(query, filters:, limit:, include_fallback:)
         json(200, Core::Wire.dump(result))
       end
-      # rubocop:enable Metrics/AbcSize
-
       # GET /clauses
       #
       # Query params: document_id, annotation_source, source_type, mood,
       # process_type, min_modality, max_modality, min_tenor, max_tenor,
       # limit (default 50), offset (default 0).
-      # rubocop:disable Metrics/AbcSize -- one flat paginate/filter/query/respond sequence.
       private def list_clauses(req)
         p = req.params
         limit = [p.fetch("limit", 50).to_i, 1].max
@@ -190,8 +180,6 @@ module SFL
         )
         json(200, { clauses: result[:clauses].map { |c| Core::Wire.dump(c) }, total: result[:total], limit:, offset: })
       end
-      # rubocop:enable Metrics/AbcSize
-
       # GET /clauses/review-queue
       #
       # Query params: limit (default 50), offset (default 0). The
@@ -259,7 +247,6 @@ module SFL
       #              the document's clauses in one transaction (Pipeline's
       #              own persist step already deletes-then-inserts -- no
       #              separate pre-delete needed here).
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat validate/find/
       # apply-decision/record/respond sequence.
       private def review_queue_decide(id, req)
         body = parse_body(req)
@@ -284,8 +271,6 @@ module SFL
         response[:clauses] = clauses.map { |c| Core::Wire.dump(c) } if clauses
         json(200, response)
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def apply_review_queue_decision(decision, row, edited_text)
         case decision
         when "reject"
@@ -297,7 +282,6 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat literal, one field per
       # RetrievalFilters attribute.
       private def build_retrieval_filters(raw)
         f = symbolize_keys(raw)
@@ -313,8 +297,6 @@ module SFL
           }.compact
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def presence(value)
         value.to_s.strip.empty? ? nil : value
       end

@@ -198,7 +198,6 @@ module SFL
         shifts
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat guard sequence plus one Hash literal,
       # ported verbatim from legacy's detect_topic_shifts loop body.
       private def topic_shift_for(prev, curr, threshold)
         prev_dominant = prev.dominant_topic
@@ -220,8 +219,6 @@ module SFL
         }
         [shift]
       end
-      # rubocop:enable Metrics/MethodLength
-
       # @param path [String]
       def save(path)
         raise Error, "No model to save — call fit first" unless @model
@@ -252,7 +249,7 @@ module SFL
       end
 
       # @return [Hash{Integer => Float}]
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- ported verbatim from legacy
+      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy
       def conversation_baseline
         return {} unless @fitted && @turns && !@turns.empty?
 
@@ -271,9 +268,8 @@ module SFL
 
         sum.transform_values { |v| (v / count).round(4) }
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
-      # rubocop:disable Metrics/MethodLength -- one fitted-flag save/restore around one map,
       # ported verbatim from legacy.
       private def assign_coherence_scores_to_turns
         was_fitted = @fitted
@@ -288,8 +284,6 @@ module SFL
           @fitted = was_fitted
         end
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def coherence_score_for(turn, idx, baseline_dist)
         return nil if idx < 2
         return nil if baseline_dist.empty?
@@ -356,7 +350,7 @@ module SFL
         text.gsub(UNICODE_PUNCTUATION_RE, UNICODE_PUNCTUATION_MAP)
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ported verbatim from legacy
+      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy
       private def cosine_distance(dist_a, dist_b)
         keys = dist_a.keys | dist_b.keys
         return 1.0 if keys.empty?
@@ -369,7 +363,7 @@ module SFL
 
         (1.0 - (dot / (mag_a * mag_b))).round(4)
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       private def topic_name(topic_id)
         words = @topic_labels[topic_id] || []

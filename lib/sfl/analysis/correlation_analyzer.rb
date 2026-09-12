@@ -24,7 +24,6 @@ module SFL
       #
       # @return [Hash{String => Hash}] {process_type =>
       #   {count:, annotated_count:, avg_tenor:, avg_modality:}}
-      # rubocop:disable Metrics/AbcSize -- one group_by/transform_values pass ported verbatim
       # from legacy; splitting the tenor/modality extraction into its own method would only
       # relocate this, not shorten it.
       def correlate_process_tenor
@@ -47,7 +46,6 @@ module SFL
       private def annotated?(clause)
         Core::Types::TRUSTED_ANNOTATION_SOURCES.include?(clause.interpersonal.annotation_source)
       end
-      # rubocop:enable Metrics/AbcSize
     end
   end
 end

@@ -70,7 +70,6 @@ module SFL
 
         SRT_TIMECODE = /^(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->/
 
-        # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one cohesive parse routine
         # for one subtitle grammar; splitting the timecode-match/text-join/Cue-build steps into
         # separate methods would scatter one format's parsing across the file for no reader benefit.
         private def parse_srt
@@ -92,8 +91,6 @@ module SFL
             Cue.new(speaker: nil, start_offset:, text:)
           end
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
         # rubocop:disable Naming/MethodParameterName -- h/m/s/frac name exactly what they are
         # (hours/minutes/seconds/fractional-seconds) at the one regex-match call site; longer
         # names would just repeat "timecode_" four times for no added clarity.
@@ -107,7 +104,7 @@ module SFL
 
         # one cohesive parse routine for one subtitle grammar, including VTT's optional <v>
         # voice-tag extraction; same rationale as #parse_srt.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         private def parse_vtt
           blocks = File.read(@path).split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
 
@@ -137,14 +134,14 @@ module SFL
             Cue.new(speaker:, start_offset:, text:)
           end
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
         ASS_TIMECODE = /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/
         ASS_OVERRIDE_TAG = /\{[^}]*\}/
 
         # one cohesive parse routine for ASS's own grammar (header-column lookup by name, then
         # per-Dialogue-line field extraction); same rationale as #parse_srt/#parse_vtt.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         private def parse_ass
           lines = File.read(@path).lines.map(&:chomp)
           events_index = lines.index { |l| l.strip == "[Events]" }
@@ -182,9 +179,8 @@ module SFL
             Cue.new(speaker:, start_offset:, text:)
           end
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
-        # rubocop:disable Metrics/MethodLength -- the same-speaker-merge branch and the
         # new-turn-Hash branch are two halves of one rule (see the class doc comment on cue
         # merging), not independently extractable steps.
         private def merge_into_turns(cues)
@@ -209,7 +205,6 @@ module SFL
 
           turns
         end
-        # rubocop:enable Metrics/MethodLength
       end
       # rubocop:enable Metrics/ClassLength
     end

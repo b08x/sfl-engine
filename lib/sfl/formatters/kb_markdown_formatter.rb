@@ -65,7 +65,6 @@ module SFL
           "carry fallback/stub annotations — quality scores for those artifacts are estimates.\n"
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat metrics-table literal
       # plus an action-count loop, ported verbatim from legacy.
       private def quality_distribution_table
         dist = result.quality_distribution
@@ -90,9 +89,6 @@ module SFL
 
         rows.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
-      # rubocop:disable Metrics/AbcSize -- one flat manifest-table row builder, ported verbatim from legacy.
       private def migration_manifest_table
         return "_No artifacts to migrate._" if result.migration_manifest.empty?
 
@@ -108,9 +104,7 @@ module SFL
 
         header + rows.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize
-
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- one flat breakdown-by-content-type loop, ported verbatim from legacy.
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat breakdown-by-content-type loop, ported verbatim from legacy.
       private def content_type_breakdown
         dist = result.content_type_distribution
         return "_No content type data._" if dist.empty?
@@ -130,9 +124,8 @@ module SFL
 
         sections.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
-      # rubocop:disable Metrics/AbcSize -- one flat staleness-flag list builder, ported verbatim from legacy.
       private def staleness_section
         return "" if result.staleness_flags.empty?
 
@@ -149,8 +142,6 @@ module SFL
 
         "#{lines.join("\n")}\n"
       end
-      # rubocop:enable Metrics/AbcSize
-
       private def truncate(str, max)
         (str.length > max) ? "#{str[0, max]}…" : str
       end

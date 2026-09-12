@@ -52,7 +52,6 @@ module SFL
       # it (`SFL::API::Context.build(...)`) is what triggers Zeitwerk to
       # load this file, so the method is guaranteed to exist by the time
       # it's called, independent of what else has run first.
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat collaborator-wiring
       # sequence, each line building exactly one Context field.
       def self.build(boot_result)
         logger, instrumenter, breaker = CLI.build_collaborators
@@ -78,7 +77,6 @@ module SFL
             pass_two:)
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end
   end
 end

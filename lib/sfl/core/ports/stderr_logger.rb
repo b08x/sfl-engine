@@ -19,24 +19,24 @@ module SFL
           end
         end
 
-        def debug(message = nil, &block)
-          @logger.debug(message, &block)
+        def debug(message = nil, &)
+          @logger.debug(message, &)
         end
 
-        def info(message = nil, &block)
-          @logger.info(message, &block)
+        def info(message = nil, &)
+          @logger.info(message, &)
         end
 
-        def warn(message = nil, &block)
-          @logger.warn(message, &block)
+        def warn(message = nil, &)
+          @logger.warn(message, &)
         end
 
-        def error(message = nil, &block)
-          @logger.error(message, &block)
+        def error(message = nil, &)
+          @logger.error(message, &)
         end
 
-        def fatal(message = nil, &block)
-          @logger.fatal(message, &block)
+        def fatal(message = nil, &)
+          @logger.fatal(message, &)
         end
       end
     end

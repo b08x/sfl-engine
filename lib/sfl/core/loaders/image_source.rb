@@ -62,7 +62,6 @@ module SFL
           "#{ext} image file: #{File.basename(@path)} (#{size_kb} KB). Visual content could not be extracted."
         end
 
-        # rubocop:disable Metrics/MethodLength -- one Types::Unit literal; every metadata key
         # is a distinct fact about the source image, not padding.
         private def build_unit(text, vision_failed)
           Types::Unit.new(
@@ -78,7 +77,6 @@ module SFL
             }
           )
         end
-        # rubocop:enable Metrics/MethodLength
       end
     end
   end

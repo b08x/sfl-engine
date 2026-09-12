@@ -77,7 +77,6 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/AbcSize -- one flat group-by-conversation/write-lines/close/
       # collect sequence; splitting further would only relocate, not reduce, this.
       module_function def write_per_conversation_jsonl(loader, dest_dir, source_type)
         entries = {}
@@ -92,8 +91,6 @@ module SFL
         entries.each_value { |entry| entry[:io].close }
         entries.each_value.map { |entry| entry.slice(:path, :source_type, :label) }
       end
-      # rubocop:enable Metrics/AbcSize
-
       # The id-fragment suffix is load-bearing, not cosmetic: two
       # conversations can share a title (a common real-export shape —
       # "Untitled", duplicated names), and slug-only filenames would

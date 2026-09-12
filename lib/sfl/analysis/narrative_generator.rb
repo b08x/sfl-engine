@@ -34,7 +34,6 @@ module SFL
       # @param digest [Digest]
       # @return [Core::Types::NarrativeReport]
       # @raise [NarrativeError] on narrator failure or missing sections
-      # rubocop:disable Metrics/MethodLength -- one narrator call, one NarrativeReport literal, three
       # rescue clauses each mapping a distinct failure mode to NarrativeError; ported verbatim from legacy.
       def generate(digest)
         sections = @narrator.call(digest.to_text)
@@ -50,7 +49,6 @@ module SFL
       rescue => e
         raise NarrativeError, "Narrative generation failed: #{e.message}"
       end
-      # rubocop:enable Metrics/MethodLength
 
       # Source-agnostic, string-keyed snapshot of an analysis, plus its
       # serialization to the exact text block the LLM receives.
@@ -87,7 +85,6 @@ module SFL
           )
         end
 
-        # rubocop:disable Metrics/MethodLength -- one flat turn-row literal; every field is an
         # independently-meaningful piece of the digest, ported verbatim from legacy.
         private_class_method def self.turn_rows(turns)
           turns.map do |t|
@@ -105,8 +102,6 @@ module SFL
             }
           end
         end
-        # rubocop:enable Metrics/MethodLength
-
         private_class_method def self.key_moment_rows(key_moments)
           key_moments.map do |km|
             {
@@ -172,7 +167,7 @@ module SFL
         end
 
         # The exact LLM input.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength -- one
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one
         # fixed-section heredoc plus an optional KEY MOMENTS append, ported verbatim from legacy.
         def to_text
           text = low_confidence_notice
@@ -202,7 +197,7 @@ module SFL
 
           text
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
         # Mirrors the markdown formatter's "Low Confidence" banner — a
         # small-sample analysis needs the same caveat carried into the
@@ -217,7 +212,6 @@ module SFL
             "Explicitly caveat the narrative as a small-sample, provisional analysis.\n\n"
         end
 
-        # rubocop:disable Metrics/AbcSize -- one flat turn-line formatter, ported verbatim from
         # legacy; every field is an independently-meaningful piece of the LLM's per-turn input.
         private def turn_line(row)
           defaulted_pct =
@@ -230,7 +224,6 @@ module SFL
           line += " UNRELIABLE (#{(defaulted_pct * 100).round}% fallback)" if defaulted_pct > UNRELIABLE_THRESHOLD
           "#{line}\n  preview: #{row['preview']}"
         end
-        # rubocop:enable Metrics/AbcSize
       end
       # rubocop:enable Metrics/ClassLength
     end

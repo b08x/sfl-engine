@@ -15,7 +15,6 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat header list, ported verbatim from legacy.
       private def headers
         %w[
           turn_id
@@ -31,9 +30,6 @@ module SFL
           semantic_coherence_score
         ]
       end
-      # rubocop:enable Metrics/MethodLength
-
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat turn-row literal,
       # ported verbatim from legacy.
       private def turn_to_row(turn)
         [
@@ -50,8 +46,6 @@ module SFL
           turn.semantic_coherence_score ? format("%.2f", turn.semantic_coherence_score) : "",
         ]
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def truncate_message(text, max_length: 50)
         (text.length > max_length) ? "#{text[0...max_length]}..." : text
       end

@@ -93,7 +93,6 @@ module SFL
       # @param store [Boolean] persist clauses + embeddings
       # @param resume [Boolean] reuse cached Pass 2 results
       # @return [Core::Types::KnowledgeBaseReport]
-      # rubocop:disable Metrics/MethodLength -- one flat KnowledgeBaseReport literal plus the
       # three-step file-walk/compile/assess pipeline that builds it; every step is already its
       # own private method call, ported verbatim from legacy's own #analyze.
       def analyze(path, store: false, resume: false)
@@ -115,9 +114,6 @@ module SFL
           staleness_flags: staleness_flags(artifacts)
         )
       end
-      # rubocop:enable Metrics/MethodLength
-
-      # rubocop:disable Metrics/MethodLength -- one compile loop with a stop/progress/rescue
       # sequence per unit, ported verbatim from legacy's #analyze loop; each step is already its
       # own private method call.
       private def compile_artifacts(tuples, total, store)
@@ -142,9 +138,6 @@ module SFL
         end
         [artifacts, skipped]
       end
-      # rubocop:enable Metrics/MethodLength
-
-      # rubocop:disable Metrics/MethodLength -- one flat-mapped file walk plus a per-file rescue,
       # ported verbatim from legacy's own #load_all_sections; the rescue is what makes a single
       # unreadable file (permissions, corrupt binary) non-fatal for the rest of the corpus.
       private def load_all_units(path)
@@ -161,8 +154,6 @@ module SFL
           []
         end
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def collect_files(path)
         extensions = TEXT_EXTENSIONS + (@analyze_images ? IMAGE_EXTENSIONS : [])
 
@@ -257,7 +248,7 @@ module SFL
         result.value_or { |failure| raise Error, "compile failed for #{document_id.inspect}: #{failure.inspect}" }
       end
 
-      # rubocop:disable Metrics/MethodLength, Metrics/ParameterLists -- seven independently-meaningful
+      # rubocop:disable Metrics/ParameterLists -- seven independently-meaningful
       # review-queue fields, ported verbatim from legacy's own #enqueue_for_review; the
       # vault_image early-return is a real second, unrelated review policy, not padding.
       private def enqueue_review(document_id, source_file, source_type, content_type, generated_text, clauses,
@@ -281,7 +272,7 @@ module SFL
           reason:, source_type:, content_type:
         )
       end
-      # rubocop:enable Metrics/MethodLength, Metrics/ParameterLists
+      # rubocop:enable Metrics/ParameterLists
 
       private def review_reason(clauses, quality_score)
         if clauses.any? { |c| !Core::Types::TRUSTED_ANNOTATION_SOURCES.include?(c.interpersonal.annotation_source) }

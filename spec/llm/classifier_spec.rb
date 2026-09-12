@@ -20,7 +20,7 @@ RSpec.describe SFL::LLM::Classifier do
         format: "generic_jsonl_chat",
         mode: nil,
         confidence: 0.2,
-        reasoning: "JSONL rows resembling a chat log, but no loader recognizes this shape"
+        reasoning: "JSONL rows resembling a chat log, but no loader recognizes this shape",
       })
       allow(fake_predictor).to receive(:call).and_return(fake_response)
 

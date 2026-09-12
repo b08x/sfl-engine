@@ -134,7 +134,6 @@ RSpec.describe SFL::Analysis::ChatExportExpander do
     ]
   end
 
-  # rubocop:disable Metrics/MethodLength -- one flat fixture-shape literal, not branching logic.
   def chatgpt_convo(id:, title:, text:)
     {
       "id" => id,
@@ -151,5 +150,4 @@ RSpec.describe SFL::Analysis::ChatExportExpander do
       },
     }
   end
-  # rubocop:enable Metrics/MethodLength
 end

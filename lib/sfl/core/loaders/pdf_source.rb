@@ -57,7 +57,6 @@ module SFL
           [Kreuzberg::Result::Chunk.new(result.content, nil, nil, nil, 0, 1, nil, nil, nil, nil)]
         end
 
-        # rubocop:disable Metrics/MethodLength -- one Types::Unit literal; the label/slug lines
         # above it are the only real logic, already as short as the format string allows.
         private def build_unit(text, chunk:, index:, frontmatter:)
           label = chunk.first_page ? "p#{chunk.first_page}" : "chunk#{index + 1}"
@@ -75,12 +74,10 @@ module SFL
             }
           )
         end
-        # rubocop:enable Metrics/MethodLength
-
         # Builds a frontmatter hash from Kreuzberg's document-level metadata.
         # Returns nil when the PDF carries no extractable metadata — avoids
         # polluting downstream classifiers with empty hashes.
-        # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- one Hash
+        # rubocop:disable Metrics/CyclomaticComplexity, -- one Hash
         # literal plus a #select filtering out absent fields; the branching is inherent to
         # "only include fields Kreuzberg actually extracted," not decomposable further.
         private def pdf_frontmatter(result)
@@ -96,7 +93,7 @@ module SFL
 
           fields.empty? ? nil : fields
         end
-        # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        # rubocop:enable Metrics/CyclomaticComplexity
 
         private def non_blank(val)
           str = val.to_s.strip

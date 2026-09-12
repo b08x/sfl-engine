@@ -31,7 +31,6 @@ RSpec.describe SFL::API::Server do
     described_class.new(ctx, cors_origins: %w[http://localhost:3000 http://127.0.0.1:3000])
   end
 
-  # rubocop:disable Metrics/MethodLength -- one full AnnotatedClause fixture literal, not
   # branching logic (same rationale spec/store/pg_clause_store_spec.rb's own build_clause disable documents).
   def build_clause(id: "c-1", document_id: "doc-1", mood: "declarative", annotation_source: "llm")
     SFL::Core::Types::AnnotatedClause.new(
@@ -58,8 +57,6 @@ RSpec.describe SFL::API::Server do
       document_id:, compiled_at: Time.at(1_700_000_000).utc
     )
   end
-  # rubocop:enable Metrics/MethodLength
-
   # ── GET /health ──────────────────────────────────────────────────────────
 
   describe "GET /health" do

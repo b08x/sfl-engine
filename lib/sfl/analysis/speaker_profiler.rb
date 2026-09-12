@@ -15,7 +15,6 @@ module SFL
 
       # Build profile for speaker from their turns.
       # @return [Core::Types::SpeakerProfile]
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat SpeakerProfile literal,
       # ported verbatim from legacy; each field is an independent aggregate, not extractable
       # further without just relocating this same list of assignments.
       def build_profile
@@ -29,7 +28,6 @@ module SFL
           dominant_processes: aggregate_process_types
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
       # Build profiles for all speakers in conversation.
       # @param all_turns [Array<Core::Types::ConversationTurn>]

@@ -37,7 +37,6 @@ module SFL
         )
       end
 
-      # rubocop:disable Metrics/MethodLength -- one ordered decision matrix, ported verbatim from
       # legacy's own #recommend (see the class comment for the documented priority order); each
       # branch returns an independently-meaningful [action, reason] pair.
       private def recommend(content_type, quality_score)
@@ -55,7 +54,6 @@ module SFL
           [:archive, "Low quality score (#{quality_score}) for #{content_type.to_s.tr('_', ' ')} — archive candidate"]
         end
       end
-      # rubocop:enable Metrics/MethodLength
     end
   end
 end

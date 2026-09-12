@@ -36,7 +36,6 @@ module SFL
       # need explicit Time parsing; every other nested struct has no
       # Time-typed attributes, so Dry::Struct's own Hash coercion handles
       # them.
-      # rubocop:disable Metrics/MethodLength
       module_function def load_annotated_clause(hash)
         interp = hash[:interpersonal]
         merged_interp = if interp && interp[:reasoning_trace]
@@ -53,8 +52,6 @@ module SFL
           )
         )
       end
-      # rubocop:enable Metrics/MethodLength
-
       # Reconstructs a ConversationTurn from a Hash produced by `dump`.
       module_function def load_conversation_turn(hash)
         Types::ConversationTurn.new(

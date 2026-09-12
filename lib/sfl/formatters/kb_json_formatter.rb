@@ -21,7 +21,6 @@ module SFL
         }
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat manifest-row literal, ported verbatim from legacy.
       private def format_manifest
         result.migration_manifest.map do |entry|
           {
@@ -35,9 +34,6 @@ module SFL
           }
         end
       end
-      # rubocop:enable Metrics/MethodLength
-
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat artifact-row literal,
       # ported verbatim from legacy.
       private def format_artifacts
         result.artifacts.map do |artifact|
@@ -60,7 +56,6 @@ module SFL
           }
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end
   end
 end

@@ -117,7 +117,6 @@ module SFL
       opt.on("--disable-tracing") { options[:disable_tracing] = true }
     end
 
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat defaults-Hash-plus-
     # OptionParser-block per flag, ported verbatim from legacy's own parse_conversation_options;
     # each `opt.on` line is already the smallest unit this can be split into.
     module_function def parse_conversation_options(argv)
@@ -142,13 +141,10 @@ module SFL
       end.parse!(argv)
       options
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
     module_function def parse_documentation_options(argv)
       parse_conversation_options(argv) # identical option surface for this slice
     end
 
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- see parse_conversation_options above
     module_function def parse_knowledge_base_options(argv)
       options = {
         output_dir: DEFAULT_OUTPUT_DIR,
@@ -170,8 +166,6 @@ module SFL
       end.parse!(argv)
       options
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
     # Minimal option surface (issue #52's own scope note): traversal/classification/dispatch
     # logic all lives in Ingest::Orchestrator and its collaborators, not here — this subcommand
     # is argv parsing + wiring only, so there's nothing beyond the two options every other
@@ -185,7 +179,6 @@ module SFL
       options
     end
 
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- see parse_conversation_options above
     module_function def parse_context_options(argv)
       options = { output_dir: nil, limit: 10, filters: {} }
       OptionParser.new do |opt|
@@ -200,8 +193,6 @@ module SFL
       end.parse!(argv)
       options
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
     # Entry point for exe/sfl-analyze. Returns the process exit code.
     # No un-rescued crash for expected operational failures (D9): bad
     # args, Boot-time misconfiguration (missing API key, DB connection
@@ -213,7 +204,6 @@ module SFL
     # ContextSynthesizer's synthesis call is NOT internally degraded —
     # see that class's own comment: "a failed synthesis call propagates
     # — there is no useful default answer").
-    # rubocop:disable Metrics/MethodLength -- one dispatch line plus three rescue clauses, each
     # mapping a distinct failure category to a message/exit-code pair; ported verbatim from
     # legacy's own CLI.run.
     # A run_* method that returns an Integer owns its own exit code — the path
@@ -235,9 +225,7 @@ module SFL
       warn "[ERROR] LLM provider error: #{e.message}"
       1
     end
-    # rubocop:enable Metrics/MethodLength
-
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:disable Metrics/AbcSize
     # -- one flat file-dispatch/compile/report loop, ported verbatim from legacy's own
     # run_conversation; every step is already its own private method call (build_conversation_engine,
     # finish_report, write_narrative, print_interrupt_status) — the loop wiring itself is what's left.
@@ -310,7 +298,7 @@ module SFL
     module_function def exit_status_for(failures)
       failures.empty? ? 0 : 1
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:enable Metrics/AbcSize
 
     # @return [Array<Hash>] {path:, source_type:, label:} — native .jsonl/.srt/.vtt/.ass files
     #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude exports,
@@ -319,7 +307,7 @@ module SFL
     #   actually parsed them. A raw export .json file skipped format validation entirely as a
     #   single-file argument before this method existed (only directory-glob mode filtered by
     #   extension) — live-verified gap, 2026-08-02: see ChatExportExpander's own comment.
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength -- one
+    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one
     # flat gather-native/gather-and-expand-exports/combine sequence, plus the per-export-path
     # rescue for F11 partial-failure isolation; splitting further would only relocate, not
     # reduce, this.
@@ -353,9 +341,8 @@ module SFL
 
       native + expanded + dynamic
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/compile/report
     # sequence, ported verbatim from legacy's own run_documentation; every step is already its
     # own private method call.
     module_function def run_documentation(input, options)
@@ -374,9 +361,7 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/compile/write-trio
+    # rubocop:disable Metrics/AbcSize, -- one flat boot/compile/write-trio
     # sequence, ported verbatim from legacy's own run_knowledge_base; every step is already its
     # own private method call (build_kb_source) or a single formatter/writer call.
     module_function def run_knowledge_base(input, options)
@@ -407,7 +392,7 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:enable Metrics/AbcSize
 
     # Always require_llm: true — the classifier (Boot.call's own :ingest_classification chat) and
     # the loader_drafter's :loader_drafting chat are both load-bearing collaborators of
@@ -419,7 +404,6 @@ module SFL
     # Analysis::Error/Core::Loaders::Error/Store::Error per file and routes to review_repo
     # instead of raising), so nothing escapes #run for a single bad file — verified by reading
     # that method rather than assumed.
-    # rubocop:disable Metrics/MethodLength -- one flat boot/build/run/print-summary sequence,
     # matching the shape of every other run_* method above.
     module_function def run_ingest(input, options)
       stop_flag = StopFlag.new
@@ -437,9 +421,7 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:enable Metrics/MethodLength
-
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat boot/synthesize/print/
+    # rubocop:disable Metrics/AbcSize, -- one flat boot/synthesize/print/
     # write-file sequence, ported verbatim from legacy's own run_context.
     module_function def run_context(query, options)
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
@@ -474,7 +456,7 @@ module SFL
       File.write(path, JSON.pretty_generate(result.to_h))
       puts "\nWritten: #{path}"
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
+    # rubocop:enable Metrics/AbcSize
 
     # The T4 fix: every run_* method above composes its Pipeline/Engine
     # through exactly this one factory instead of four independently
@@ -495,7 +477,6 @@ module SFL
     # Ports::Null::Annotator.new here only satisfies the required kwarg
     # cheaply, while Boot.call(require_llm: false) is what actually saves
     # the API-key-validation/ChatFactory cost.
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat Pipeline composition, each
     # of Pipeline's nine kwargs assembled by exactly one line; the card's own fix for what was 4x
     # duplicated elsewhere, not something to fragment further within this one method.
     module_function def build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
@@ -518,8 +499,6 @@ module SFL
       Core::Pipeline.new(pass_one:, pass_two:, clause_store:, embedding_store:, embedder:, cache:, logger:,
         instrumenter:)
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
     module_function def build_conversation_engine(boot_result, options, stop_flag)
       logger, instrumenter, breaker = build_collaborators
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
@@ -636,7 +615,6 @@ module SFL
     # the only other "general free-form LLM call" task already wired
     # (unlike :pass_two_annotation/:pass_two_batch_annotation, which are
     # schema-shaped specifically for clause annotation).
-    # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat digest/generate/check/
     # write sequence, ported verbatim from legacy's own write_narrative.
     module_function def write_narrative(result, output_dir, boot_result)
       unless boot_result.lm_factory
@@ -656,14 +634,11 @@ module SFL
     rescue Analysis::NarrativeError => e
       warn "[WARN] narrative generation failed: #{e.message}"
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
     module_function def report_sections_text(report)
       %i[overview cast_and_roles interpersonal_dynamics conversational_arc data_quality takeaways]
         .map { |k| report.public_send(k) }.join("\n\n")
     end
 
-    # rubocop:disable Metrics/AbcSize -- one flat write/warn/print sequence, ported verbatim from
     # legacy's own finish_report.
     # @return [Integer] how many clauses carry fallback/stub values —
     #   process_conversation_file turns a positive count into a non-zero exit
@@ -684,7 +659,6 @@ module SFL
       paths.each { |format, path| puts "  #{format.to_s.upcase}: #{path}" }
       defaulted
     end
-    # rubocop:enable Metrics/AbcSize
   end
   # rubocop:enable Metrics/ModuleLength
 end

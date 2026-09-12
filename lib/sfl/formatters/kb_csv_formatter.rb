@@ -27,7 +27,6 @@ module SFL
         end
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat artifact-row literal,
       # ported verbatim from legacy.
       private def artifact_to_row(artifact)
         cov = artifact.annotation_coverage
@@ -45,7 +44,6 @@ module SFL
           cov[:fallback].to_i + cov[:stub].to_i,
         ]
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
     end
   end
 end

@@ -85,7 +85,6 @@ module SFL
       #   ungrounded: Array<{sentence:, citations:, reason:}>,
       #   coverage:   Float (0.0-1.0)
       # }
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat grounded/ungrounded split plus the coverage ratio; #classify below already carries the per-sentence branching.
       def check(narrative_text, source_clauses)
         index     = build_index(source_clauses)
         sentences = extract_sentences(narrative_text)
@@ -104,8 +103,6 @@ module SFL
 
         { grounded:, ungrounded:, coverage: }
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def classify(sentence, citations, index)
         return { ungrounded: { sentence:, citations: [], reason: "no citation marker" } } if citations.empty?
 
@@ -123,7 +120,7 @@ module SFL
       # Build a flat id->text lookup supporting:
       #   - exact UUID or slug match:  index["abc-123"] -> "clause text"
       #   - compound doc:id match:     index["doc-1:abc-123"] -> "clause text"
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity -- ported verbatim from legacy; Hash/Struct duck-typing on every field is inherent to accepting both AnnotatedClause structs and plain Hashes.
+      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy; Hash/Struct duck-typing on every field is inherent to accepting both AnnotatedClause structs and plain Hashes.
       private def build_index(clauses)
         clauses.each_with_object({}) do |clause, idx|
           id   = clause.is_a?(Hash) ? (clause[:id]   || clause["id"])   : clause.id
@@ -135,7 +132,7 @@ module SFL
           idx["#{doc_id}:#{id}"] = text.to_s if doc_id
         end
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/CyclomaticComplexity
 
       # Split prose into individual sentences on sentence-terminal punctuation.
       private def extract_sentences(text)

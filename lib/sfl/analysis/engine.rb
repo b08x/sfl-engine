@@ -100,7 +100,7 @@ module SFL
       # fan-in job that reconstructs `turns` out-of-band instead of
       # compiling them inline via #analyze's loop.
       # @param turns [Array<Core::Types::ConversationTurn>]
-      # rubocop:disable Metrics/ParameterLists, Metrics/AbcSize, Metrics/MethodLength -- mirrors
+      # rubocop:disable Metrics/ParameterLists, -- mirrors
       # legacy's own #build_result options (label/total/interrupted/topic_labels/topic_shifts)
       # plus one AnalysisResult literal assembling every cross-turn derivation this class exists
       # to compute once instead of N times; splitting the literal further would only relocate it.
@@ -125,7 +125,7 @@ module SFL
           topic_evolution: topic_evolution(turns)
         )
       end
-      # rubocop:enable Metrics/ParameterLists, Metrics/AbcSize, Metrics/MethodLength
+      # rubocop:enable Metrics/ParameterLists
 
       private def topic_shift_moments(topic_shifts)
         topic_shifts.map { |s| Core::Types::KeyMoment.new(**s.slice(:turn_id, :type, :magnitude, :description)) }
@@ -215,7 +215,6 @@ module SFL
         [modeler, modeler.turns, modeler.topic_labels, modeler.detect_topic_shifts]
       end
 
-      # rubocop:disable Metrics/MethodLength -- one flat stub-turn literal, ported verbatim from
       # legacy's pre-pass stub construction; every field is an independently-meaningful neutral
       # default, not extractable further.
       private def stub_turn(unit, idx)
@@ -234,11 +233,8 @@ module SFL
           semantic_coherence_score: nil
         )
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def turn_speaker(unit) = unit.speaker || unit.heading || unit.document_id
 
-      # rubocop:disable Metrics/MethodLength -- one compile loop with a stop/progress/report
       # sequence per unit, ported verbatim from legacy's #analyze loop; each step is already its
       # own private method call.
       private def compile_turns(source, units, total, compile_opts, pre_turns)
@@ -258,8 +254,6 @@ module SFL
         end
         turns
       end
-      # rubocop:enable Metrics/MethodLength
-
       private def compile_turn(source, unit, turn_id, compile_opts, pre_turn)
         semantic_coherence_score = pre_turn&.semantic_coherence_score
 
@@ -272,7 +266,7 @@ module SFL
         build_turn(unit, turn_id, clauses, pre_turn, semantic_coherence_score)
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- one flat ConversationTurn literal, ported verbatim from legacy
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat ConversationTurn literal, ported verbatim from legacy
       private def build_turn(unit, turn_id, clauses, pre_turn, semantic_coherence_score)
         mood_counts = clauses.map { |c| c.interpersonal.mood }.tally
 
@@ -293,7 +287,7 @@ module SFL
           semantic_coherence_score:
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
       private def unwrap(result, document_id)
         result.value_or { |failure| raise Error, "compile failed for #{document_id.inspect}: #{failure.inspect}" }

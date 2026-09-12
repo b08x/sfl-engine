@@ -18,7 +18,7 @@ RSpec.describe "unknown classification metadata" do
 
   it "preserves the raw value and marks an unknown mood untrusted" do
     annotator = instance_double(SFL::LLM::Annotators::ClauseAnnotator,
-      call: {mood: "novel_mood", modality_weight: 0.5, tenor: 0.5, theme_type: "unmarked"})
+      call: { mood: "novel_mood", modality_weight: 0.5, tenor: 0.5, theme_type: "unmarked" })
     engine = SFL::LLM::Engine.new(clause_annotator: annotator, batch_clause_annotator: double)
 
     result = engine.annotate(clause, ideational)

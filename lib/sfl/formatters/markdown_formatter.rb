@@ -6,7 +6,6 @@ module SFL
     # rubocop:disable Metrics/ClassLength -- one report-assembly class plus its private section
     # renderers, ported verbatim from legacy.
     class MarkdownFormatter < BaseFormatter
-      # rubocop:disable Metrics/AbcSize -- one fixed-section heredoc, ported verbatim from legacy.
       def render
         <<~MD
           # Conversation Analysis: #{result.metadata[:conversation_id]}
@@ -60,8 +59,6 @@ module SFL
           **Modality Scale**: 0.0 (hedged/uncertain) ↔ 1.0 (certain/assertive)
         MD
       end
-      # rubocop:enable Metrics/AbcSize
-
       # More prominent than #data_quality_warning: this is about sample
       # size, not annotation provenance — even a 100% LLM-annotated report
       # is unreliable in aggregate if it's only a few clauses.
@@ -177,7 +174,6 @@ module SFL
         range.nil? ? INSUFFICIENT_DATA : "[#{range.map { |v| v.round(2) }.join(', ')}]"
       end
 
-      # rubocop:disable Metrics/AbcSize -- one flat cohesion-row table builder, ported verbatim from legacy.
       private def cohesion_table
         header = "| #{unit_label} | Speaker | Repetition | Conjunctions | Pronouns |\n"
         header += "|:-----|:---------|:-----------|:-------------|:---------|\n"
@@ -194,8 +190,6 @@ module SFL
 
         header + rows.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize
-
       private def correlations_table
         return "_No correlations available_" if result.correlations.empty?
 
@@ -218,7 +212,7 @@ module SFL
         result.insights.map.with_index { |insight, i| "#{i + 1}. #{insight}" }.join("\n\n")
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity -- one flat topic-list plus optional topic-evolution list, ported verbatim from legacy.
+      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat topic-list plus optional topic-evolution list, ported verbatim from legacy.
       private def topic_modeling_section
         return "" unless result.topic_labels&.any?
 
@@ -242,7 +236,7 @@ module SFL
 
         section.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
 
       private def key_moments_section
         return "" if result.key_moments.empty?
@@ -254,7 +248,6 @@ module SFL
         section.join("\n")
       end
 
-      # rubocop:disable Metrics/AbcSize -- one flat passage-block list builder, ported verbatim from legacy.
       private def example_passages_section
         return "" if result.example_passages.empty?
 
@@ -268,8 +261,6 @@ module SFL
         end
         section.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize
-
       # Clauses with reasoning_trace: nil (fallback/stub annotation_source)
       # render nothing here — same "fallback values aren't presented as
       # findings" principle as #data_quality_warning.
@@ -282,7 +273,6 @@ module SFL
         section.join("\n")
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/MethodLength -- one flat details-block builder,
       # ported verbatim from legacy.
       private def reasoning_trace_block(clause)
         trace = clause.interpersonal.reasoning_trace
@@ -299,8 +289,6 @@ module SFL
         block << ""
         block
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
-
       private def premises_table(premises)
         rows = premises.map do |p|
           "| #{p.source} | #{p.type} | #{p.value} | #{p.weight.nil? ? '—' : p.weight} |"

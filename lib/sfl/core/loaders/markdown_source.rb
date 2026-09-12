@@ -87,7 +87,6 @@ module SFL
           Inkmark.chunks_by_heading(body_source).map { |chunk| build_unit(chunk, fm) }
         end
 
-        # rubocop:disable Metrics/MethodLength -- one Types::Unit literal; every metadata key
         # is a distinct fact Inkmark's chunk carries, not padding.
         private def build_unit(chunk, frontmatter)
           preamble = chunk[:heading].nil?
@@ -122,7 +121,7 @@ module SFL
         # split -> tokenize), ported from legacy verbatim; each step is one line, splitting
         # them into separate methods would just relocate, not reduce, the same five sequential
         # transformations.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        # rubocop:disable Metrics/CyclomaticComplexity
         private def clean_text(markdown)
           return "" if markdown.nil? || markdown.strip.empty?
 
@@ -154,7 +153,7 @@ module SFL
 
           cleaned.join("\n\n")
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
+        # rubocop:enable Metrics/CyclomaticComplexity
 
         # Tokenise a prose paragraph and rejoin with natural spacing.
         # PragmaticTokenizer separates punctuation as distinct tokens;

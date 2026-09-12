@@ -106,7 +106,6 @@ end
 
 # Updates matching KEY= lines in place, appends anything new, and leaves
 # every other existing line (including unmanaged legacy vars) untouched.
-# rubocop:disable Metrics/AbcSize -- one flat read/rewrite-matching-lines/append-new/write
 # sequence; each line does exactly one of those four things.
 def write_env(values)
   existing_lines = File.exist?(ENV_PATH) ? File.readlines(ENV_PATH) : []
@@ -123,7 +122,6 @@ def write_env(values)
   updated += (values.keys - seen.keys).map { |k| "#{k}=#{values[k]}\n" }
   File.write(ENV_PATH, updated.join)
 end
-# rubocop:enable Metrics/AbcSize
 
 def ask_provider(prompt, label, current)
   default = PROVIDER_KEY_ENV.keys.find { |p| current.key?(PROVIDER_KEY_ENV[p]) } || "openrouter"
