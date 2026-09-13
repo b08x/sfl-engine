@@ -256,3 +256,5 @@ group :perf do
   gem "memory_profiler"
   gem "stackprof"
 end
+
+gem "jsonl", "~> 0.1.5"

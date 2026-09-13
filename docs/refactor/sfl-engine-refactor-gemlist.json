@@ -1,0 +1,509 @@
+[
+  {
+    "name": "algorithms",
+    "classification": {
+      "primary": "algorithms_knowledge_structures",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "Heap, Priority Queue, Deque, Stack, Queue, Red-Black Trees, Splay Trees, sorting algorithms, and more",
+      "agent_description": "The 'algorithms' gem provides a collection of fundamental data structures (Heap, Priority Queue, Deque, Stack, Queue, Red-Black Trees, Splay Trees) and sorting algorithms. Use it when you need efficient, pre-implemented data structures or algorithms in Ruby without reinventing the wheel. Combines well with 'data_processing' gems for pipeline optimization or 'storage_persistence' gems for structured data handling. Ideal for competitive programming, algorithmic challenges, or performance-critical Ruby applications.",
+      "attaches_to": "algorithms"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 2,
+      "coupling": 1,
+      "abstraction_leak": "low"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [],
+    "description": "Heap, Priority Queue, Deque, Stack, Queue, Red-Black Trees, Splay Trees, sorting algorithms, and more",
+    "homepage": "https://github.com/kanwei/algorithms",
+    "source_code_uri": "https://github.com/kanwei/algorithms",
+    "context7_id": "/williamfiset/algorithms"
+  },
+  {
+    "name": "bm25f",
+    "classification": {
+      "primary": "retrieval_similarity_fuzzy",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.98
+    },
+    "role": {
+      "description": "A fast implementation of the BM25F ranking algorithm for information retrieval systems, written in Ruby.",
+      "agent_description": "bm25f is a Ruby gem implementing the BM25F ranking algorithm for information retrieval. Use it to rank documents by relevance to a query, leveraging term frequency and inverse document frequency with field-specific weights. Ideal for search engines, recommendation systems, or any fuzzy retrieval task. Pairs well with tokenizers (e.g., pragmatic_tokenizer) and stemmers (e.g., uea-stemmer) for preprocessing, and can integrate with storage_persistence gems for indexed data.",
+      "attaches_to": "retrieval"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "low"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "pragmatic_tokenizer",
+      "uea-stemmer"
+    ],
+    "description": "A fast implementation of the BM25F ranking algorithm for information retrieval systems, written in Ruby.",
+    "homepage": "https://github.com/catflip/bm25f-ruby",
+    "source_code_uri": "https://github.com/catflip/bm25f-ruby",
+    "context7_id": "/catflip/bm25f-ruby"
+  },
+  {
+    "name": "dspy",
+    "classification": {
+      "primary": "async_networking_orchestration",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.7
+    },
+    "role": {
+      "description": "The Ruby framework for programming with large language models. DSPy.rb brings structured LLM programming to Ruby developers. Instead of wrestling with prompt strings and parsing responses, you define typed signatures using idiomatic Ruby to compose and decompose AI Worklows and AI Agents.",
+      "agent_description": "DSPy.rb is a Ruby framework for structured LLM (Large Language Model) programming, enabling developers to define typed signatures and compose AI workflows/agents using idiomatic Ruby. Use it when building AI agents, multi-step LLM pipelines, or typed interactions with LLMs to avoid manual prompt engineering. Combines with async networking (e.g., HTTP clients) for API calls, storage_persistence for memory/context, and validation_types for structured outputs. Ideal for agentic systems, RAG pipelines, or complex NLP tasks requiring modular, maintainable code.",
+      "attaches_to": "async"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 4,
+      "coupling": 4,
+      "abstraction_leak": "high"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "async",
+      "concurrent-ruby",
+      "dry-configurable",
+      "dry-logger",
+      "dspy-schema",
+      "sorbet-baml",
+      "sorbet-runtime",
+      "sorbet-schema",
+      "sorbet-toon"
+    ],
+    "description": "The Ruby framework for programming with large language models. DSPy.rb brings structured LLM programming to Ruby developers. Instead of wrestling with prompt strings and parsing responses, you define typed signatures using idiomatic Ruby to compose and decompose AI Worklows and AI Agents.",
+    "homepage": "https://github.com/vicentereig/dspy.rb",
+    "source_code_uri": "https://github.com/vicentereig/dspy.rb",
+    "context7_id": "/vicentereig/dspy.rb"
+  },
+  {
+    "name": "dspy-gepa",
+    "classification": {
+      "primary": "ai_nlp",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.98
+    },
+    "role": {
+      "description": "Ships DSPy::Teleprompt::GEPA plus reflective adapters, experiment tracking, and telemetry hooks built on top of the GEPA optimizer core gem.",
+      "agent_description": "dspy-gepa is an AI/ML optimization gem extending DSPy with GEPA (General-Purpose Automatic) teleprompting, reflective adapters, experiment tracking, and telemetry. Use it for programmatic LLM optimization (e.g., prompt tuning, few-shot learning) in Ruby. Combines with 'dspy' (core framework) and 'gepa' (optimizer) to enable automated, data-driven LLM fine-tuning workflows. Ideal for agents building adaptive NLP pipelines or evaluating model performance.",
+      "attaches_to": "ai"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "dspy",
+      "gepa"
+    ],
+    "description": "Ships DSPy::Teleprompt::GEPA plus reflective adapters, experiment tracking, and telemetry hooks built on top of the GEPA optimizer core gem.",
+    "homepage": "https://github.com/vicentereig/dspy.rb",
+    "source_code_uri": "https://github.com/vicentereig/dspy.rb",
+    "context7_id": "/vicentereig/dspy.rb"
+  },
+  {
+    "name": "dspy-o11y-langfuse",
+    "classification": {
+      "primary": "debugging_introspection",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.95
+    },
+    "role": {
+      "description": "Registers the Langfuse OpenTelemetry exporter with DSPy::Observability so spans flow to Langfuse when the required environment variables are present.",
+      "agent_description": "Gem that integrates DSPy observability with Langfuse via OpenTelemetry. Automatically exports DSPy spans to Langfuse when env vars (e.g., LANGFUSE_PUBLIC_KEY) are set. Use when you need to trace, debug, or monitor DSPy agent workflows in Langfuse. Combines with DSPy for LLM debugging, OpenTelemetry for distributed tracing, and Langfuse for observability dashboards.",
+      "attaches_to": "debugging"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 1,
+      "coupling": 2,
+      "abstraction_leak": "low"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "dspy-o11y",
+      "opentelemetry-exporter-otlp",
+      "opentelemetry-sdk"
+    ],
+    "description": "Registers the Langfuse OpenTelemetry exporter with DSPy::Observability so spans flow to Langfuse when the required environment variables are present.",
+    "homepage": "https://github.com/vicentereig/dspy.rb",
+    "source_code_uri": "https://github.com/vicentereig/dspy.rb",
+    "context7_id": "/langfuse/langfuse-docs"
+  },
+  {
+    "name": "image_processing",
+    "classification": {
+      "primary": "data_processing",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.98
+    },
+    "role": {
+      "description": "High-level wrapper for processing images for the web with ImageMagick or libvips.",
+      "agent_description": "The 'image_processing' gem is a high-level Ruby wrapper for ImageMagick (via mini_magick) or libvips (via ruby-vips) to resize, crop, convert formats, and optimize images for web use. Use it when you need programmatic image manipulation in Ruby apps (e.g., upload pipelines, thumbnails). Pairs with storage_persistence gems (e.g., ActiveStorage) for end-to-end media handling. Prefer libvips backend for performance-critical tasks.",
+      "attaches_to": "data"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "mini_magick",
+      "ruby-vips"
+    ],
+    "description": "High-level wrapper for processing images for the web with ImageMagick or libvips.",
+    "homepage": "https://github.com/janko/image_processing",
+    "source_code_uri": "https://github.com/janko/image_processing",
+    "context7_id": "/janko/image_processing"
+  },
+  {
+    "name": "informers",
+    "classification": {
+      "primary": "ai_nlp",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.98
+    },
+    "role": {
+      "description": "Fast transformer inference for Ruby",
+      "agent_description": "The 'informers' gem enables fast transformer-based AI inference in Ruby by leveraging ONNX Runtime and Hugging Face tokenizers. Use it for local LLM inference, text generation, or embeddings without external API calls. Ideal for Ruby apps needing NLP capabilities (e.g., chatbots, semantic search). Pairs with 'retrieval_similarity_fuzzy' gems for RAG pipelines or 'storage_persistence' for caching model outputs.",
+      "attaches_to": "ai"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "onnxruntime",
+      "tokenizers"
+    ],
+    "description": "Fast transformer inference for Ruby",
+    "homepage": "https://github.com/ankane/informers",
+    "source_code_uri": "https://github.com/ankane/informers",
+    "context7_id": "/ankane/informers"
+  },
+  {
+    "name": "ohm",
+    "classification": {
+      "primary": "storage_persistence",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "Ohm is a library that allows to store an object in Redis, a persistent key-value database. It has very good performance.",
+      "agent_description": "Ohm is a Ruby ORM (Object-Relational Mapper) for Redis, enabling persistent storage of Ruby objects in Redis (key-value DB) with high performance. Use it when you need fast, in-memory data persistence with Redis as the backend. Combines well with 'redic' (Redis client) and can integrate with async tools (e.g., Sidekiq) for background processing. Ideal for caching, session storage, or lightweight NoSQL data modeling.",
+      "attaches_to": "storage"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 4,
+      "coupling": 2,
+      "abstraction_leak": "high"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "nest",
+      "redic",
+      "stal"
+    ],
+    "description": "Ohm is a library that allows to store an object in Redis, a persistent key-value database. It has very good performance.",
+    "homepage": "http://soveran.github.io/ohm/",
+    "source_code_uri": "http://github.com/soveran/ohm",
+    "context7_id": "/soveran/ohm"
+  },
+  {
+    "name": "ohm-contrib",
+    "classification": {
+      "primary": "storage_persistence",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "Includes a couple of core functions such as callbacks, timestamping, typecasting and lots of generic validation routines.",
+      "agent_description": "ohm-contrib is an extension gem for the Redis-backed Ohm ORM, providing core utilities like callbacks, timestamping, typecasting, and generic validation routines. Use it when building Ohm models requiring validation, data type handling, or lifecycle hooks. Combines with 'ohm' (its dependency) for full ORM functionality, and pairs well with 'storage_persistence' tools for Redis-backed data. Ideal for structured data validation in Ruby apps using Ohm.",
+      "attaches_to": "storage"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 4,
+      "coupling": 1,
+      "abstraction_leak": "high"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "ohm"
+    ],
+    "description": "Includes a couple of core functions such as callbacks, timestamping, typecasting and lots of generic validation routines.",
+    "homepage": "http://github.com/cyx/ohm-contrib",
+    "source_code_uri": "http://github.com/cyx/ohm-contrib",
+    "context7_id": "/cyx/ohm-contrib"
+  },
+  {
+    "name": "ohm-sorted",
+    "classification": {
+      "primary": "storage_persistence",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "An plugin for Ohm that lets you create sorted indices.",
+      "agent_description": "ohm-sorted is a Redis-backed Ohm plugin that adds sorted index functionality to Ohm models. Use it when you need ordered queries (e.g., leaderboards, time-series) on Ohm objects. Combines with Ohm (Redis ORM) and other Redis tools for high-performance sorted data operations.",
+      "attaches_to": "storage"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 4,
+      "coupling": 1,
+      "abstraction_leak": "high"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [],
+    "description": "An plugin for Ohm that lets you create sorted indices.",
+    "homepage": "https://github.com/educabilia/ohm-sorted",
+    "source_code_uri": "https://github.com/educabilia/ohm-sorted",
+    "context7_id": "/soveran/ohm"
+  },
+  {
+    "name": "ruby_llm",
+    "classification": {
+      "primary": "ai_nlp",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "One beautiful Ruby API for GPT, Claude, Gemini, and more. Easily build chatbots, AI agents, RAG applications, and content generators. Features chat (text, images, audio, PDFs), image generation, embeddings, tools (function calling), structured output, Rails integration, and streaming. Works with OpenAI, Anthropic, Google Gemini, AWS Bedrock, DeepSeek, Mistral, Ollama (local models), OpenRouter, Perplexity, GPUStack, and any OpenAI-compatible API. Minimal dependencies - just Faraday, Zeitwerk, and Marcel.",
+      "agent_description": "ruby_llm is a unified Ruby API for interacting with multiple LLM providers (OpenAI, Claude, Gemini, Bedrock, etc.). Use it to build chatbots, AI agents, RAG systems, or content generators with features like chat (multi-modal), embeddings, function calling, and streaming. Ideal for Ruby apps needing LLM integration; pairs well with Rails, storage_persistence gems (for RAG), or async_networking_orchestration for scalable deployments. Minimal deps (Faraday, Zeitwerk, Marcel).",
+      "attaches_to": "ai"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 4,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "base64",
+      "event_stream_parser",
+      "faraday",
+      "faraday-multipart",
+      "faraday-net_http",
+      "faraday-retry",
+      "marcel",
+      "ruby_llm-schema",
+      "zeitwerk"
+    ],
+    "description": "One beautiful Ruby API for GPT, Claude, Gemini, and more. Easily build chatbots, AI agents, RAG applications, and content generators. Features chat (text, images, audio, PDFs), image generation, embeddings, tools (function calling), structured output, Rails integration, and streaming. Works with OpenAI, Anthropic, Google Gemini, AWS Bedrock, DeepSeek, Mistral, Ollama (local models), OpenRouter, Perplexity, GPUStack, and any OpenAI-compatible API. Minimal dependencies - just Faraday, Zeitwerk, and Marcel.",
+    "homepage": "https://rubyllm.com",
+    "source_code_uri": "https://github.com/crmne/ruby_llm",
+    "context7_id": "/crmne/ruby_llm"
+  },
+  {
+    "name": "shared_tools",
+    "classification": {
+      "primary": "data_processing",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.7
+    },
+    "role": {
+      "description": "SharedTools provides a collection of reusable common tools\nfor Ruby applications using ruby_llm gem.\n",
+      "agent_description": "SharedTools is a Ruby gem providing reusable utility functions for AI agents built with ruby_llm, including MCP (Model Context Protocol) integrations. It combines tools like Dentaku (calculations), Nokogiri (HTML/XML parsing), OpenWeatherMap (weather data), and Sequel (database) to extend LLM capabilities. Use when building AI agents needing modular, composable tools for data processing, retrieval, or external API interactions. Pairs with ruby_llm and ruby_llm-mcp for agentic workflows.",
+      "attaches_to": "data"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 3,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "dentaku",
+      "nokogiri",
+      "openweathermap",
+      "ruby_llm",
+      "ruby_llm-mcp",
+      "sequel",
+      "zeitwerk"
+    ],
+    "description": "SharedTools provides a collection of reusable common tools\nfor Ruby applications using ruby_llm gem.\n",
+    "homepage": "https://github.com/madbomber/shared_tools",
+    "source_code_uri": "https://github.com/madbomber/shared_tools",
+    "context7_id": "/madbomber/shared_tools"
+  },
+  {
+    "name": "roda",
+    "classification": {
+      "primary": "runtime_spine",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.95
+    },
+    "role": {
+      "description": "Routing tree web toolkit",
+      "agent_description": "Roda is a lightweight, modular web framework for Ruby built on Rack, enabling flexible routing trees for HTTP request handling. Use it as a minimalist alternative to Rails/Sinatra for APIs, microservices, or web apps where fine-grained control over routing and middleware is needed. Combines with Rack middleware (e.g., authentication, logging) and can integrate with ORMs (Sequel, ActiveRecord) or template engines (ERB, Haml). Ideal for performance-sensitive or custom-stack applications.",
+      "attaches_to": "runtime"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 5,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "rack"
+    ],
+    "description": "Routing tree web toolkit",
+    "homepage": "https://roda.jeremyevans.net",
+    "source_code_uri": "https://github.com/jeremyevans/roda",
+    "context7_id": "/jeremyevans/roda"
+  },
+  {
+    "name": "ruby_llm-template",
+    "classification": {
+      "primary": "ai_nlp",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "RubyLLM::Template provides a flexible template system for RubyLLM, allowing you to organize chat prompts, system messages, and schemas in ERB template files for easy reuse and maintenance.",
+      "agent_description": "RubyLLM::Template is a templating engine for RubyLLM that enables reusable, maintainable ERB-based organization of chat prompts, system messages, and schemas. Use it to standardize LLM interactions by externalizing prompt logic into modular templates. Combines with ruby_llm for core LLM operations and ruby_llm-schema for structured output validation. Ideal for projects requiring consistent, version-controlled prompt management in Ruby-based AI workflows.",
+      "attaches_to": "ai"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "ruby_llm",
+      "ruby_llm-schema"
+    ],
+    "description": "RubyLLM::Template provides a flexible template system for RubyLLM, allowing you to organize chat prompts, system messages, and schemas in ERB template files for easy reuse and maintenance.",
+    "homepage": "https://github.com/danielfriis/ruby_llm-template",
+    "source_code_uri": "https://github.com/danielfriis/ruby_llm-template",
+    "context7_id": "/danielfriis/ruby_llm-template"
+  },
+  {
+    "name": "rubyllm-semantic_router",
+    "classification": {
+      "primary": "ai_nlp",
+      "secondary": null,
+      "sub_categories": [],
+      "confidence": 0.8
+    },
+    "role": {
+      "description": "Route messages to specialized RubyLLM chat agents based on semantic similarity using embeddings and kNN lookup",
+      "agent_description": "Ruby gem for semantic routing of messages to specialized RubyLLM chat agents using embeddings and kNN lookup. Use when building multi-agent systems where input needs dynamic, similarity-based dispatch to the most relevant agent. Pairs with ruby_llm for agent execution and can integrate with vector DBs (e.g., Pinecone, Weaviate) for scalable embedding storage. Ideal for workflows requiring contextual agent selection without hardcoded rules.",
+      "attaches_to": "ai"
+    },
+    "capabilities": [],
+    "risks": {
+      "invasiveness": 3,
+      "coupling": 1,
+      "abstraction_leak": "medium"
+    },
+    "signals": {
+      "rails": false,
+      "external_io": false,
+      "native_ext": false
+    },
+    "dependencies": [
+      "ruby_llm"
+    ],
+    "description": "Route messages to specialized RubyLLM chat agents based on semantic similarity using embeddings and kNN lookup",
+    "homepage": null,
+    "source_code_uri": null,
+    "context7_id": null
+  }
+]
