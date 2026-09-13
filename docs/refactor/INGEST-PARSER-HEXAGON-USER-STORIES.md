@@ -1,6 +1,6 @@
 # Ingest & Parser Hexagon — Refactor User Stories
 
-**Project**: `sfl-engine` · **Branch**: `feature/roda_api` · **Date**: 2026-09-12 · **Revised**: 2026-09-13 (rev 3)
+**Project**: `sfl-engine` · **Branch**: `feature/roda_api` · **Date**: 2026-09-12 · **Revised**: 2026-09-13 (rev 6)
 
 **Rev 2 changes**: §0 is new and fixes the source set (open question 1, answered); SFL-ING-19 and
 SFL-ING-20 are new; SFL-ING-13, 16 and 17 are re-scoped; R14–R16 are new; `nexo_ai` and
@@ -11,6 +11,29 @@ SFL-ING-20 are new; SFL-ING-13, 16 and 17 are re-scoped; R14–R16 are new; `nex
 SFL-ING-21 is new (the sidecar and its Compose service); R6 is rewritten and R17 is new. The
 transcription cost figure is restated in **hours of audio** rather than gigabytes, because duration is
 what transcription actually costs and bytes are not convertible to it.
+
+**Rev 4 changes**: open question 3 is **answered** — a subtitle file is a conversation
+unconditionally, including the dictation and screencast-caption cases, which are monologic but still
+turn-shaped; SFL-ING-03's acceptance criterion is rewritten from "preserve and flag" to "encode the
+decision and spec it". Epic I7 and SFL-ING-22/23 are new: `mode` becomes a registered
+`Core::Ports::RegisterProfile` rather than a string literal written out in three incompatible places,
+and source code becomes its own register with `Prism`-derived units. §0.1 gains a note that origin
+(which `CorpusSource`) and register (which `mode`) are independent axes.
+
+**Rev 5 changes**: four more open questions answered. Generic `.json` files are **enqueued for human
+review** (Q4). The `jsonl` gem is deliberate — syntactic sugar for the format (Q6). The extensionless
+files were **measured**, which answered Q7 and **reversed §3 row 6**: libmagic returns `text/plain`
+for all thirteen, so `mimemagic` is rejected and **`magika` adopted as a binary**, leaving this
+document adding no Gemfile line at all; SFL-ING-04 is rewritten around it and its port now returns a
+verdict object rather than a MIME string. Source-code parsing and commit-range git ingestion become a
+**separate track** (Q9), so SFL-ING-23 is deferred out of this phase while SFL-ING-22 stays in it.
+
+**Rev 6 changes**: the graph-index question is **discharged** — the reindex is done and verified, and
+the symptom persists, which reclassifies it as a query-surface defect rather than an index gap. §4d
+carries a **correction**: the transcription benchmark was quoted as measured on "the same platform
+family this work is being done on", and it was not — the baseline is an i7-11800H with a 4 GB NVIDIA
+T1200, so the accelerated path here is CUDA on Turing and R17's ~4.4 GB peak becomes a figure to watch
+against 4,096 MiB of VRAM.
 
 **Scope**: absorb large, heterogeneous **sources** through the ingest and parsing subsystem, behind a
 Hexagonal (ports/adapters) boundary — with the *origin of bytes* itself a port, runtime-swappable
@@ -92,6 +115,14 @@ is documented as *"a single file, or a directory walked recursively"*
 `File.directory?` is false (`:59-63`). `~/Documents/scratchpad.md` works today. What the refactor
 owes it is **preservation**, which is an acceptance criterion on SFL-ING-17, not a story of its own.
 
+**Origin and register are independent axes, and this table only decides the first.** A
+`CorpusSource` answers *where the bytes came from*; the register (`mode`) answers *what kind of text
+they are*. A git repository of prose routes to `"knowledge_base"`; a `.rb` file walked out of
+`~/Notebook` by the filesystem adapter routes to `"source_code"` (SFL-ING-23). Neither
+`Corpora::GitCorpusSource` nor `Corpora::FilesystemCorpusSource` inspects content, and nothing in
+SFL-ING-22/23 changes their scope. Reading "git" as "code" would collapse the two axes and is the
+one conflation this note exists to prevent.
+
 ### 0.2 Resolution is explicit, never guessed
 
 `SFL::Ingest::TargetResolver` (SFL-ING-19) maps the CLI argument or the HTTP request body to
@@ -130,7 +161,7 @@ also the seam a web adapter later plugs into.
 `gem "nexo_ai", "~> 0.11.0"` (`Gemfile:52`) and `gem "ruby_llm-mcp", "~> 1.0"` (`Gemfile:54`) are
 both **removed**. Both are uncommitted additions on this branch with zero call sites, so removal is a
 Gemfile edit and a `bundle lock`, not a code change. Against §3's one adopted addition
-(`mimemagic`), rev 2 is net **minus one** dependency.
+(`mimemagic`), rev 2 is net **minus one** dependency. *Rev 5 note: that one adoption is since reversed — §3 row 6 rejects `mimemagic` on measured evidence and adopts the `magika` **binary** instead, so the document now adds no Gemfile line at all and is net **minus two**.*
 
 This does not disturb §3: neither gem appears in `injest_parser_refactor_gemlist.json`, so no verdict
 in that table changes. Open question 6's separate observation about `jsonl` (`Gemfile:260`) and
@@ -328,6 +359,10 @@ inline note *"no longer a default gem as of Ruby 3.4, for CsvSource"* → `csv_s
    `SubtitleSource` only through surfaces 1, 3 and 5, never through the knowledge-base path, so a
    subtitle file in a vault directory is classified `chat_native` and routed to the conversation
    engine regardless of what the surrounding vault is — 30 `.ass` files and 5 `.srt` files here.
+   That last one is the only item in this list that is **correct as it stands**: §8 open question 3
+   is now answered, and unconditional conversation routing is the owner's decision. It is listed here
+   because the *disagreement* is still real — three surfaces know subtitles and two do not — and one
+   table has to state the agreed answer once.
    `.rtf .tsv .log` appear at `cli.rb:328` and nowhere else, and there are **zero** of any of them in
    this corpus — routing capacity that exists for no file that exists.
 
@@ -474,7 +509,8 @@ adapters; `SFL::CLI` + `Sfl` (Roda) = driving adapters.
 | `Core::Ports::CorpusSource` | a source → lazy enumerable of `FileRef` | driven | `Ingest::Corpora::FilesystemCorpusSource` (SFL-ING-17); `Ingest::Corpora::GitCorpusSource` (SFL-ING-18); `Null::CorpusSource` (empty); `Fake::CorpusSource` (scripted refs) | none | **does not exist yet** — today hardcoded as `Dir.glob` at `lib/sfl/ingest/orchestrator.rb:61` and `lib/sfl/analysis/knowledge_base_source.rb:161` |
 | `Core::Ports::Loader` | file → stream of `Types::Unit` | driven | every class in the 13-implementer table in §1.1; `Null::Loader` (empty stream), `Fake::Loader` (scripted units) | none / per-format | **port module does not exist yet**; `Core::Loaders::Source` (`lib/sfl/core/loaders/source.rb:10`) is promoted into it |
 | `Core::Ports::Classifier` | sample + path → `ClassificationResult` | driven | `LLM::Classifier`; `Null::Classifier`; `Fake::Classifier` | `dspy` | exists (`lib/sfl/core/ports/classifier.rb:13`) |
-| `Core::Ports::ContentSniffer` | path + magic bytes → MIME type | driven | `Ingest::Sniffers::MimemagicSniffer`; `Null::ContentSniffer` (always `nil`) | `mimemagic` | **does not exist yet** |
+| `Core::Ports::RegisterProfile` | a register name → how files in it are analyzed | driven | `Core::Registers::{Conversation,KnowledgeBase,Documentation}` (SFL-ING-22); `Core::Registers::SourceCode` (SFL-ING-23); `Null::RegisterProfile`; `Fake::RegisterProfile` | none | **does not exist yet** — today the register set is written out three times: string literals at `lib/sfl/ingest/deterministic_rules.rb:42`, `:48`, `:54`, `:63-64`; a `case` at `lib/sfl/ingest/orchestrator.rb:116-120`; a `T::Enum` plus prose at `lib/sfl/llm/signatures/classification_signature.rb:15-18`, `:26-32` |
+| `Core::Ports::ContentSniffer` | path → `ContentVerdict` `{label:, group:, mime_type:, is_text:, score:}` | driven | `Ingest::Sniffers::MagikaSniffer` (batched `magika --jsonl` behind an injected `command:`); `Null::ContentSniffer` (always `nil`) | none — a binary, not a gem | **does not exist yet** |
 | `Core::Ports::Transcriber` | audio path → transcript with speaker turns | driven | `Null::Transcriber`; a real adapter behind an injected client, mirroring `ImageSource`'s injected `chat:` (`lib/sfl/core/loaders/image_source.rb:32`) | none in §3 | **does not exist yet** |
 | `Core::Ports::Cache` | memoize by content key | driven (cross-cutting) | `Core::Ports::FileCache` (`lib/sfl/core/ports/file_cache.rb:23`, `DEFAULT_CACHE_DIR` at `:26`) | none | exists — **scoped to Pass 2 annotations today** (`:9-13`); SFL-ING-10 adds a second, separately-keyed use, it does not repurpose the first |
 | `Core::Ports::Instrumenter` | named span around a call | driven (cross-cutting) | `Core::Ports::TimingInstrumenter` | `dspy-o11y-langfuse` | exists |
@@ -492,6 +528,11 @@ New domain-core collaborators (zero infrastructure imports):
   `.register_into(registry)`, populating a `Core::Registry` with one factory per loader — the
   registry contract from [SFL-EMB-01](EMBEDDING-HEXAGON-USER-STORIES.md), reused verbatim, **not**
   re-specified here.
+- `SFL::Core::Registers::Catalog` — `lib/sfl/core/registers/catalog.rb` — **does not exist yet**.
+  The same `.register_into(registry)` shape as the loader catalog, one factory per register profile.
+  `mode` stops being an unconstrained `String` on `Core::Types::ClassificationResult`
+  (`lib/sfl/core/types/classification_result.rb:21`) and becomes a registered name the
+  `RoutingTable` resolves alongside the loader (SFL-ING-22).
 - `SFL::Core::Ingest::FileRef` — `lib/sfl/core/ingest/file_ref.rb` — **does not exist yet**.
   The source-agnostic reference a `CorpusSource` yields and everything downstream consumes:
   `{name:, extension:, content_identity:, size_bytes:, mtime: nil, source_id:}` plus `#read(limit = nil)`.
@@ -558,7 +599,7 @@ flowchart TB
     JS["JsonSource / CsvSource<br/>json_source.rb:13 / csv_source.rb:12"]
     YML["StructuredTextSource<br/>NEW — .yaml/.yml/.txt"]
     AUD["AudioSource<br/>NEW"]
-    SNF["Sniffers::MimemagicSniffer<br/>gem mimemagic"]
+    SNF["Sniffers::MagikaSniffer<br/>magika binary"]
     LLMC["LLM::Classifier"]
     DRF["Ingest::LoaderDrafter<br/>loader_drafter.rb:11"]
   end
@@ -654,7 +695,7 @@ this branch (the Gemfile is modified but not committed; line numbers are current
 | 3 | `json_canvas` | driven adapter (loader) | **yes, `Gemfile:84` — in use** | **adopt (already adopted) — no change** | 2 / 1 / low. Not a fresh decision: `require "json_canvas"` at `lib/sfl/core/loaders/canvas_source.rb:3`, and the loader's own comment records *why* the gem beat hand-rolled traversal — node types are classes, so "only TextNode carries prose" is `is_a?(JsonCanvas::TextNode)` rather than a string compare on a raw Hash key (`canvas_source.rb:10-16`). 29 `.canvas` files in the corpus. Nothing in this document changes it. | SFL-ING-03 (routing only) |
 | 4 | `jsonl` | parsing/encoding | **yes, `Gemfile:260`, zero call sites** | **defer** | 2 / 1 / low. **Correcting a natural misreading: this gem is declared but has never been called.** `grep -rn "JSONL\.\|Jsonl\." lib/` → zero; every `jsonl` occurrence in `lib/` is a file extension or a method name. JSONL is hand-rolled four times (`json_source.rb:67-70`, `conversation_source.rb:81-87`, `dynamic_format_expander.rb:267-271`, `chat_export_expander.rb:86-88`). The duplication is real, but the four implementations are **not interchangeable** — `conversation_source.rb:82-87` deliberately skips records lacking `:mes` to survive SillyTavern group-chat header records (rationale at `:78-80`), which a generic reader would either surface as garbage turns or reject the file over. Deferred rather than adopted because consolidating onto the gem means re-deciding that filter, and consolidating onto **one internal codec** (SFL-ING-15) achieves the same de-duplication with zero dependency risk and keeps the filter where its rationale lives. Adopt only if a measured parse cost justifies it. | SFL-ING-15 (considered, not adopted) |
 | 5 | `kreuzberg` | driven adapter (loader) | **yes, `Gemfile:87` — in use** | **adopt (already adopted) — widen role** | 3 / 1 / medium. Already `require`d at `lib/sfl/core/loaders/pdf_source.rb:3` and driven at `:42-43`. The decision here is not *whether* but *how wide*: the call is `Kreuzberg.extract_file_sync(path: @path, config:)` (`:43`) with `Config::Extraction.new(chunking: DEFAULT_CHUNKING)` (`:42`) — **not one PDF-specific argument**. The gem's own description claims 75+ formats including DOCX/PPTX/XLSX/HTML. The codebase already staged this exact decision and named its gate: *"a later slice can widen TEXT_EXTENSIONS once a spec fixture proves it out"* (`lib/sfl/analysis/knowledge_base_source.rb:26-33`). The medium leak is real — a Rust/Magnus native extension, so format support is a deploy-time fact — and is contained by the routing table declaring supported extensions explicitly rather than probing at runtime. Corpus payoff is modest by count (4 `.docx`, 3 `.odt`, 1 `.pptx`, 17 `.html`) but the `.pptx` alone is 14.75 MB. | SFL-ING-07 |
-| 6 | `mimemagic` | driven adapter (`ContentSniffer`) | no, zero call sites | **adopt** | 3 / 1 / medium — the only **new** gem this document adopts, so the justification has to carry weight. The gap is structural, not cosmetic: `grep -rni "mime" lib/ app/` → **zero**, i.e. every routing decision in §1.2 gap 2 keys on `File.extname` alone, and 24 extensionless files in this corpus have no extension to key on. The alternative already in the tree is the LLM classifier (`lib/sfl/core/ports/classifier.rb:13`), which does cover the case — at a 4 KB read plus an inference call per file (`lib/sfl/ingest/orchestrator.rb:86-87`), against 1,575 fall-through files. A libmagic lookup is microseconds. Coupling 1 is what makes it safe: MIME string in, nothing else. The medium leak is the freedesktop XML database being a deploy-time artifact, contained by putting it behind `Core::Ports::ContentSniffer` with a `Null` adapter that returns `nil` — a deployment without the database degrades to today's extension-only behaviour, it does not fail. Its `nokogiri` dependency adds **no new transitive surface**: `nokogiri (1.19.4)` is already resolved in `Gemfile.lock:316`. | SFL-ING-04 |
+| 6 | `mimemagic` | driven adapter (`ContentSniffer`) | no, zero call sites | **reject** — *reversed in rev 5* | 3 / 1 / medium. Rev 4 adopted this as the document's one new gem, on the reasoning that 24 extensionless files have no extension to key on. That reasoning was never tested against the files. It is now: `file --mime-type` — libmagic, which is exactly what `mimemagic` wraps — returns **`text/plain` for all 13** extensionless files in the vault (measured 2026-09-13; see SFL-ING-04 for the table). Among them are a `Gemfile`, an `/etc/hosts`, a `sudoers` fragment and four Ansible inventories. A sniffer that calls every one of them `text/plain` does not distinguish configuration from prose, which is the only distinction that mattered — so the gem would have been adopted for a job it cannot do. The `nokogiri` argument still holds and is now irrelevant. | — (superseded by row 16) |
 | 7 | `parseconfig` | parsing/encoding | no, zero call sites | **reject** | 2 / 1 / low risk, and rejected on **fit**, not risk. The tempting target is the 432 `.yaml`/`.yml` files (§1.2 gap 9), but this gem does not parse YAML: its own role description says *"'param = value'"* with *"nested [group] sections"* — INI. Adopting it for YAML would be a category error. The corpus contains zero `.ini`/`.cfg` files. YAML is already available and already used, with a safety posture worth preserving: `YAML.safe_load(match[1], permitted_classes: [Time, Date, Symbol])` at `lib/sfl/core/loaders/markdown_source.rb:113`. SFL-ING-06 reuses that call, not this gem. | — (rejected in SFL-ING-06) |
 | 8 | `rubyzip` | storage | no, zero call sites | **reject** | 4 / 1 / **high** leak — the risk fields alone demand an explicit justification to adopt, and there is none to give. The sample vault holds **5 `.zip` files** in ~3,604 (0.1%). Invasiveness 4 plus a high abstraction leak — archive entries are streams, not paths, so every loader downstream would need a path-or-IO contract it does not have today (`Core::Loaders::Source`'s implementers all take a path string, e.g. `pdf_source.rb:32-33`) — for five files is a plainly bad trade. Note also that `kreuzberg`'s description claims archive support, so if archives ever matter, the already-adopted gem is the first thing to test. | — (none) |
 | 9 | `shared_tools` | driving adapter (agent tools) | no, zero call sites | **reject** | 3 / **3** / medium, but the dependency list is the disqualifier: `dentaku, nokogiri, openweathermap, ruby_llm, ruby_llm-mcp, sequel, zeitwerk`. It pulls `ruby_llm` as a **direct** dependency, and this codebase made the opposite decision deliberately and wrote it down: the Ollama embedder *"Replaces the RubyLLM embedder... to eliminate gem bloat and dependency issues"* (`lib/sfl/llm/embedder.rb:9-11`). A weather API client has no place in an ingest dependency graph. Same verdict as [`EMBEDDING-HEXAGON-USER-STORIES.md`](EMBEDDING-HEXAGON-USER-STORIES.md) §3 row 12, for the same reason. | — (none) |
@@ -664,11 +705,13 @@ this branch (the Gemfile is modified but not committed; line numbers are current
 | 13 | `webvtt` | parsing/encoding | no, zero call sites | **reject** | 2 / 1 / low — identical reasoning to row 10, same class: `.vtt` is parsed at `lib/sfl/core/loaders/subtitle_source.rb:65` via the same `#parse` dispatch (`:62-69`), and the same speaker-merge invariant (`:15-24`) is what the gem cannot supply. Zero `.vtt` files in this corpus, which makes the case for churn weaker still. | — (rejected in SFL-ING-08) |
 | 14 | `inkmark` | driven adapter (loader) | **yes, `Gemfile:77` — in use** | **adopt (already adopted) — no change** | 2 / 1 / low. Not a fresh decision: `require "inkmark"` at `lib/sfl/core/loaders/markdown_source.rb:3`, driving the documented five-step chunk/render/strip/normalise/emit pipeline at `markdown_source.rb:11-22`. It carries the single highest-volume format in the corpus by file count that actually has a loader (2,126 `.md`, 21.4 MB). Nothing in this document changes it; SFL-ING-03 only changes how files reach it. | SFL-ING-03 (routing only) |
 | 15 | `refile` | storage | no, zero call sites | **reject** | 4 / 2 / **high** leak, and a direct stack conflict on top. Its dependencies are `mime-types`, `rest-client`, **`sinatra`** — a second web framework beside this project's actual `falcon` (`Gemfile:135`), `rack` (`Gemfile:136`), `roda` (`Gemfile:139`) stack. Beyond that it solves a problem this system does not have: Refile handles *uploads* into an application; ingest reads files that already exist on disk by path (`lib/sfl/ingest/orchestrator.rb:48`). Even the HTTP ingest route in SFL-ING-13 accepts a **path**, not a multipart body, precisely so no upload machinery is needed. | — (none) |
+| 16 | `magika` (binary, **not a gem**) | driven adapter (`ContentSniffer`) | no — `magika 1.0.2`, model `standard_v3_3`, present at `~/.local/bin/magika` on this machine | **adopt** | 2 / 1 / medium, and it is the only entry in this table that adds **no Gemfile line at all** — Magika ships as a Rust CLI with no Ruby binding, so the adapter crosses the language boundary the way Pass 1 already does, through an injected `command:` (`lib/sfl/core/pass_one/spacy_sidecar_parser.rb:31`). Measured against the same 13 files libmagic flattened: `gemfile` 99%, `ini` 99/98/92/89%, `txt` 100% ×3, and five honest low-confidence guesses. The `group` field (`code` vs `text` vs `document`) is the field ingest actually needs and the field libmagic has no equivalent for. The medium leak is a deploy-time binary, contained exactly as the freedesktop database would have been — `Null::ContentSniffer` returns `nil` and the run degrades to today's LLM path. The five sub-0.50 scores are contained by a declared `MIN_SCORE`, because a 19%-confident "CSV" is a guess, not a verdict. | SFL-ING-04 |
 
 **Summary**: adopt 4 (`json_canvas`, `kreuzberg`, `inkmark` — all three already adopted and in use;
-`mimemagic` — the single new dependency) · defer 1 (`jsonl`) · reject 10 (`base64`,
-`image_processing`, `parseconfig`, `rubyzip`, `shared_tools`, `srt`, `tty-command`, `tty-file`,
-`webvtt`, `refile`).
+`magika` — a binary, so **this document now adds no Gemfile line at all**) · defer 1 (`jsonl`,
+purpose since confirmed: syntactic sugar for parsing JSONL) · reject 11 (`base64`, `image_processing`,
+`mimemagic`, `parseconfig`, `rubyzip`, `shared_tools`, `srt`, `tty-command`, `tty-file`, `webvtt`,
+`refile`).
 
 **A note on what this table does not solve.** Three of the largest gaps in §1.2 have **no candidate
 gem at all**: `.base` / Obsidian Bases (25 files, gap 11), audio transcription (197 files, 34.4 h,
@@ -761,9 +804,31 @@ so `Core::Ports::Transcriber` gains no knowledge of how the process was launched
 
 ### 4d. Measured on this platform class
 
+> **Correction (rev 6, 2026-09-13): this platform is not the platform.** The hardware baseline
+> recorded in [`TOPIC-MODELING-HEXAGON-USER-STORIES.md`](TOPIC-MODELING-HEXAGON-USER-STORIES.md) open
+> question 7, and confirmed against this machine, is an **Intel Core i7-11800H with an NVIDIA T1200
+> Laptop GPU** (Turing, compute 7.5, **4,096 MiB VRAM**, driver 595.91.07) — not an AMD Ryzen APU on
+> RADV. The Vulkan row below is a real upstream figure, but it is **not a measurement of this
+> machine**, and the sentence "the same platform family this work is being done on" was wrong.
+>
+> Three consequences, none of which reopens open question 2 — a transcription backend exists, is
+> free and is local, and that is what the question asked:
+> 1. The accelerated path here is **CUDA on Turing**, not Vulkan on RADV. Whether `transcribe.cpp`'s
+>    CUDA build reaches 3.1× realtime on this card is **unmeasured**; SFL-ING-21's definition of done
+>    already requires the sidecar to answer against `samples/jfk.wav`, and that run is where the real
+>    number comes from.
+> 2. The CPU row is the safe floor and is **more likely to hold**, not less: an 8-core i7-11800H is
+>    not slower than a Ryzen 7 PRO 4750U. ~20.2 h remains a defensible worst case.
+> 3. **R17's ~4.4 GB peak is now a number to watch.** Against 4,096 MiB of VRAM it does not fit if it
+>    lands there; on the CPU path it is host RAM and fine. This is the constraint that decides whether
+>    the GPU path is usable at all on this baseline, and it is measured by the same first run.
+>
+> The table is left as published rather than edited, because the figures are real and the correction
+> is about what they are evidence *of*.
+
 The project publishes benchmarks for **AMD Ryzen 7 PRO 4750U / Fedora Linux 43 / Vulkan RADV RENOIR**
-— the same platform family this work is being done on, which is why these are quoted rather than the
-Apple M4 Max column.
+— a different platform family from this one (see the correction above), quoted here because it is the
+nearest published Linux/discrete-accelerator column rather than because it matches.
 
 | Backend | Throughput | 34.4 h of vault audio |
 |---|---|---|
@@ -808,6 +873,7 @@ accordingly rather than closed.
 | **I4 — Vault format coverage** | Add the loaders the corpus actually needs — YAML/plain text, office documents, and audio behind a transcription port served by a local sidecar (§4) — and say plainly which gaps remain uncovered. |
 | **I5 — Cross-cutting correctness** | Apply the embedding document's decorator chain to the classifier, unify the two per-file rescue policies, and make ingest collaborator construction single-instance by construction. |
 | **I6 — Driving adapters** | Expose an ingest run and its format inventory over Roda and the CLI, so a large-source walk is observable while it runs — asynchronously, against a polled run record (SFL-ING-20), rather than by holding a request open. |
+| **I7 — Register substrate** | Make an analysis register (`mode`) a registered strategy instead of a string literal written out in three incompatible places. SFL-ING-22 ships this phase; SFL-ING-23, the source-code register, is specified here but **deferred to the source-code track** (open question 9). |
 
 ---
 
@@ -956,11 +1022,14 @@ missing-`chat:` raise, and the composite-absence assertion; `spec/zeitwerk_spec.
   from every path; `.rtf`, `.tsv` and `.log` (`lib/sfl/cli.rb:328`) are **retained**, because removing
   routing capacity is a separate decision from consolidating it, and zero corpus files is evidence
   about this corpus, not about the format.
-- **Given** a subtitle file inside a vault directory, **then** the table's answer is recorded as a
-  deliberate decision with a comment, not an accident of which surface saw it first. Today
-  `lib/sfl/ingest/deterministic_rules.rb:13` makes every `.srt`/`.vtt`/`.ass` `chat_native`
-  unconditionally, and `KnowledgeBaseSource` never sees one; that behaviour is **preserved** by this
-  story and flagged in §8 open question 3 rather than silently changed.
+- **Given** a subtitle file inside a vault directory, **then** it routes to `chat_native` /
+  `"conversation"` regardless of the surrounding directory, and the table carries a comment citing §8
+  open question 3 as the **owner decision** this encodes — not a note that the behaviour was merely
+  inherited. `lib/sfl/ingest/deterministic_rules.rb:13` keeps making every `.srt`/`.vtt`/`.ass`
+  `chat_native` unconditionally and `KnowledgeBaseSource` keeps never seeing one. A spec asserts a
+  `.srt` under a vault root resolves to the conversation register, so a later routing edit that
+  "tidies" subtitles into the knowledge-base path fails a test instead of silently changing ingest
+  output.
 - **Given** `lib/sfl/ingest/deterministic_rules.rb:34-35`, **then** the reads of
   `Analysis::KnowledgeBaseSource::TEXT_EXTENSIONS` and
   `Core::Loaders::ImageSource::SUPPORTED_EXTENSIONS` are **removed**; the vocabulary lives in
@@ -999,59 +1068,102 @@ assertions unmodified; the `File.extname` grep assertion; rubocop clean.
 
 ---
 
-### SFL-ING-04 — `Core::Ports::ContentSniffer` and the mimemagic adapter
+### SFL-ING-04 — `Core::Ports::ContentSniffer` and the Magika adapter
 
 **Points**: 5 · **Depends on**: SFL-ING-03 · **Epic**: I3
 
 > **As an** operator
 > **I want** a file with a missing or misleading extension identified by its content before an LLM is
 > asked about it
-> **so that** 24 extensionless files do not each cost an inference call.
+> **so that** extensionless files do not each cost an inference call — and so that the ones that are
+> configuration rather than prose are recognised as such instead of being ingested as text.
+
+**The adapter is Magika, and the measurement is why.** Rev 4 named `mimemagic`. Open question 7 is
+now answered by running both tools over the vault's extensionless files (13 found on 2026-09-13; the
+document's earlier figure of 24 is left as the figure that was true when it was written):
+
+| Tool | Result across all 13 files |
+|---|---|
+| `file --mime-type` (libmagic, what `mimemagic` wraps) | `text/plain` — **for every single one** |
+| `magika -s -l` | `gemfile` 99% · `ini` 99/98/92/89% · `txt` 100% ×3 · five low-confidence guesses |
+
+The files are `Gemfile`, `hosts`, `password-auth`, `sudoers_group`, `staging`, `production`,
+`development`, `inventory`, `tasks`, `status` ×2, `etcdefaultgrub`. They are **configuration and
+infrastructure files, not prose** — and libmagic cannot say so, because to libmagic they are all
+plain text. `mimemagic` would therefore have bought nothing for the exact case §3 row 6 adopted it
+to solve. §3 row 6 is rewritten accordingly: **adopt `magika`, reject `mimemagic`**.
+
+**Consequence for the port's return type.** Magika's own `mime_type` for `gemfile`, `ini` and `txt`
+is `text/plain` in all three cases — so a port that returns a MIME `String` discards precisely the
+distinction that justifies the adapter. `#sniff` returns a value object instead.
 
 **Acceptance criteria**
 
-- **Given** `SFL::Core::Ports::ContentSniffer#sniff(path)`, **then** it returns a MIME type `String`
-  or `nil`, and a class including it without defining `#sniff` raises `NotImplementedError` naming
-  the class — the convention at `lib/sfl/core/ports/classifier.rb:19-21`.
-- **Given** `Ingest::Sniffers::MimemagicSniffer`, **when** `#sniff` is called on a `.md` file renamed
-  to have no extension, **then** it returns `text/...` and `RoutingTable` resolves the markdown
-  loader; **when** called on a `.png`, **then** `image/png`.
-- **Given** the sniffer reads a file, **then** it reads **at most** `SAMPLE_BYTES` — reusing the
-  constant already established at `lib/sfl/ingest/orchestrator.rb:23` rather than introducing a
-  second sampling size, so "how much of a file do we touch to classify it" has one answer.
-- **Given** `Core::Ports::Null::ContentSniffer`, **then** `#sniff` returns `nil` always, and the
-  orchestrator falls through to today's LLM path unchanged. **A deployment without the freedesktop
-  MIME database degrades to current behaviour; it does not fail** — this is what contains the gem's
-  medium abstraction leak (§3 row 6).
+- **Given** `SFL::Core::Ports::ContentSniffer#sniff(path)`, **then** it returns a
+  `Core::Ingest::ContentVerdict` — `{label:, group:, mime_type:, is_text:, score:}` — or `nil`, and a
+  class including it without defining `#sniff` raises `NotImplementedError` naming the class, the
+  convention at `lib/sfl/core/ports/classifier.rb:19-21`. Precedent for a `Dry::Struct` value in
+  `Core`: `lib/sfl/core/types/unit.rb:15`.
+- **Given** `Ingest::Sniffers::MagikaSniffer`, **then** it shells out to the `magika` binary with
+  `--jsonl` and an **injected `command:`**, mirroring the seam `SpacySidecarParser` already
+  establishes (`lib/sfl/core/pass_one/spacy_sidecar_parser.rb:31`, rationale at `:11-18`). This is
+  the project's third out-of-Ruby tool and it reuses the pattern rather than inventing a fourth.
+- **Given** the batch contract, **then** the adapter passes **many paths in one invocation** and
+  consumes one JSONL object per path. Verified shape (magika 1.0.2, model `standard_v3_3`):
+  `{"path":…,"result":{"status":"ok","value":{"output":{"label","description","group","is_text","mime_type","extensions"},"dl":{…},"score":0.999}}}`.
+  The `output` key is read, not `dl` — `dl` is the raw model verdict before Magika's own deterministic
+  overrules, and the overruled answer is the correct one.
+- **Given** a path Magika cannot read, **then** that entry alone carries
+  `"status":"file_does_not_exist"` and the rest of the batch is unaffected — verified. The adapter
+  maps a non-`ok` status to `nil` for that path and never lets one bad path fail a walk. Note that the
+  process **exits non-zero when any entry failed**, so the adapter must read stdout and ignore the
+  exit status, not the reverse.
+- **Given** `verdict.group == "code"` and no routing entry for the label, **then** the file is
+  recorded in the review repo as `unsupported_format` and **no LLM call is made**. This is the case
+  the measurement found: `gemfile`, `ini` and `Ignorefile` are all `group: "code"`, and none of them
+  is prose this corpus wants ingested.
+- **Given** `verdict.score` below a declared `MIN_SCORE`, **then** the verdict is treated as `nil` and
+  the file falls through to `Ports::Classifier` as it does today. **Five of the thirteen measured
+  files scored under 0.50** (19%, 39%, 45%, 46%, 74%) — a sniffer that reported those as facts would
+  route a sudoers fragment as Matlab. The threshold is what keeps a best-guess out of the routing
+  table, and its value is a constant with a comment, not a magic number.
+- **Given** `Core::Ports::Null::ContentSniffer`, **then** `#sniff` returns `nil` always and the
+  orchestrator falls through to today's LLM path unchanged. **A deployment with no `magika` binary
+  degrades to current behaviour; it does not fail** — the same containment the `Null` transcriber and
+  the `Null` logger provide, and the reason a binary dependency is acceptable here at all.
 - **Given** the ordering, **then** sniffing runs **after** an extension match fails and **before**
   `Ports::Classifier` (`lib/sfl/ingest/orchestrator.rb:86-87`). Extension-first is kept because it is
-  free and correct for the large majority of files that match; sniffing is the cheap middle tier, the LLM the
-  expensive tail — the tiering the classifier port's own comment already asks for
+  free and correct for the large majority of files that match; sniffing is the cheap middle tier, the
+  LLM the expensive tail — the tiering the classifier port's own comment already asks for
   (`lib/sfl/core/ports/classifier.rb:10-12`).
-- **Given** a sniffed MIME type with **no** routing entry (`video/mp4`, `audio/mpeg`, `text/css`,
+- **Given** a sniffed verdict with **no** routing entry (`video/mp4`, `audio/mpeg`, `text/css`,
   `application/javascript`), **then** the file is recorded as `unsupported_format` in the review repo
   and **no** LLM call is made. Every audio, video, stylesheet and script file in a source is
   eliminated from the paid tier this way — today all of them reach `classify_via_llm`
   (`lib/sfl/ingest/orchestrator.rb:90-92`) and can only end in `LoaderDrafter` or the review queue.
-  The saving is **reported per run** by SFL-ING-10's `tier` attribute rather than predicted here,
-  because it depends entirely on which source is being ingested.
-- **Given** a sniff raises (unreadable file, missing database), **then** it is caught and treated as
-  `nil`; the sniffer never becomes a new way for a run to die, consistent with the isolation stance
-  at `lib/sfl/ingest/orchestrator.rb:64-70`.
+  The saving is **reported per run** by SFL-ING-10's `tier` attribute rather than predicted here.
+- **Given** a sniff raises (binary absent, unreadable file, malformed output), **then** it is caught
+  and treated as `nil`; the sniffer never becomes a new way for a run to die, consistent with the
+  isolation stance at `lib/sfl/ingest/orchestrator.rb:64-70`.
 
 **Integration points**
 
 - New: `lib/sfl/core/ports/content_sniffer.rb`, `lib/sfl/core/ports/null/content_sniffer.rb`,
-  `lib/sfl/ingest/sniffers/mimemagic_sniffer.rb`.
+  `lib/sfl/core/ingest/content_verdict.rb`, `lib/sfl/ingest/sniffers/magika_sniffer.rb`.
 - Modify: `lib/sfl/ingest/orchestrator.rb:33-43` (one new injected collaborator, defaulting to
   `Null::ContentSniffer` exactly as `logger:` defaults to `Null::Logger` at `:35`), `:82-88`.
-- `mimemagic` is **adopt** in §3 row 6 — this is the one Gemfile addition this document authorises.
-  `nokogiri` is already resolved (`Gemfile.lock:316`).
+- **No Gemfile change.** Magika is a binary, not a gem — there is no Ruby binding, and the adapter
+  crosses the boundary the same way Pass 1 already crosses it into Python. `mimemagic` is **not**
+  added; §3 row 6 rejects it.
+- Wiring pair to mirror: `lib/sfl/boot.rb:95-101` and `:250-256`, where `pass1_command` is threaded
+  through — `magika_command` follows it exactly.
 
-**Definition of done**: `spec/ingest/sniffers/mimemagic_sniffer_spec.rb` with extensionless fixtures
-for text, image and binary; `spec/core/ports/content_sniffer_spec.rb`;
-`spec/ingest/orchestrator_spec.rb` extended for the unsupported-MIME no-LLM path; a spec asserting
-the Null adapter reproduces today's behaviour exactly.
+**Definition of done**: `spec/ingest/sniffers/magika_sniffer_spec.rb` driving a **scripted fake
+process** (no binary required in CI, the stance SFL-ING-21 takes for the transcribe sidecar) covering
+a good batch, a mixed batch with one `file_does_not_exist` entry plus a non-zero exit, a
+below-threshold score, and malformed output; `spec/core/ports/content_sniffer_spec.rb`;
+`spec/ingest/orchestrator_spec.rb` extended for the `group: "code"` no-LLM path; a spec asserting the
+Null adapter reproduces today's behaviour exactly.
 
 ---
 
@@ -1091,9 +1203,23 @@ the Null adapter reproduces today's behaviour exactly.
 - **Given** a `.json` file that is neither export shape — the common case in this corpus — **then**
   detection returns `nil` after reading a bounded prefix, and `RoutingTable` routes it to
   `Core::Loaders::JsonSource` (`lib/sfl/core/loaders/json_source.rb:13`) **if** a `text_key:` is
-  configured, or to the review queue otherwise. `JsonSource` requires `text_key:` (`:31`) and a
-  generic JSON file carries no schema to infer it from (`:8-12`) — so this story does **not** invent
-  a heuristic for it; see open question 4.
+  configured, and **enqueues it for human review otherwise**. Open question 4 is answered: review is
+  the destination, not a placeholder for one. `JsonSource` requires `text_key:` (`:31`) and a generic
+  JSON file carries no schema to infer it from (`:8-12`), so this story invents no heuristic.
+- **Given** such a file, **then** the enqueue is
+  `review_repo.enqueue(path:, status: "needs_text_key", format: "json", reasoning: …)` — a new status
+  beside the existing `low_confidence_mode` / `loader_drafted` / `draft_failed` set
+  (`lib/sfl/store/pg_ingest_review_repository.rb:29-31`), needing **no migration**, because
+  `ingest_review_entries` was deliberately built so a review surface is a read layer rather than a
+  schema change (`db/migrations/009_create_ingest_review_entries.rb`, header comment).
+- **Given** 3,692 `.json` files, **then** the enqueue is **deduplicated by path** and a run reports
+  the count rather than writing one row per file per run. Silent skipping is what this answer rules
+  out; an unreadable review queue would rule it out in a different way.
+- **Given** a reviewer who has decided a `text_key:`, **then** there is currently **nowhere to record
+  it** — `#resolved?(path)` returns a boolean (`lib/sfl/store/pg_ingest_review_repository.rb:58-60`)
+  and no column carries a resolution payload. This story enqueues; **closing the loop is an explicit
+  follow-up** (one nullable column or a small `resolution` JSONB) and is called out here rather than
+  discovered during implementation.
 
 **Integration points**
 
@@ -1379,7 +1505,7 @@ ports. It specifies no new chain semantics.
 - **Given** `Chain.wrap(inner, logger: nil, cache: nil, instrumenter: nil)`, **then** it returns
   `inner` untouched, so a Null-wired run costs nothing.
 - **Given** `lib/sfl/core/decorators/`, **when** grepped, **then** no file requires `sequel`,
-  `net/http`, `dspy`, `mimemagic`, or `roda`.
+  `net/http`, `dspy`, `magika`, or `roda`.
 
 **Integration points**
 
@@ -2222,13 +2348,210 @@ drives a scripted fake process instead.
 
 ---
 
+### SFL-ING-22 — `Core::Ports::RegisterProfile` and the register catalog
+
+**Points**: 5 · **Depends on**: SFL-ING-01, SFL-ING-02, SFL-ING-03, **SFL-EMB-01** · **Epic**: I7
+
+> **As a** platform engineer
+> **I want** an analysis register to be a registered strategy resolved by name
+> **so that** adding a register is a registration, not an edit to three files that each hardcode the
+> same list of strings in a different syntax.
+
+**The extension point does not exist, and the evidence is that the register list is written out
+three times in three incompatible forms.** A register — the document's name for what the code calls
+`mode` — is a free `String` on the boundary type (`Core::Types::ClassificationResult`,
+`lib/sfl/core/types/classification_result.rb:21`, `attribute :mode, Types::String.optional`), so
+nothing constrains or enumerates it at the type level. What enumerates it instead:
+
+1. **Literals in the deterministic ladder.** `Ingest::DeterministicRules` returns `mode:
+   "conversation"` or `mode: "knowledge_base"` as string literals at four separate return sites
+   (`lib/sfl/ingest/deterministic_rules.rb:42`, `:48`, `:54`, `:63-64`). `#classify` itself
+   (`:30-39`) only chooses *which* literal-returning helper runs.
+2. **A `case` in the orchestrator.** `Ingest::Orchestrator#dispatch`
+   (`lib/sfl/ingest/orchestrator.rb:116-120`) matches `classification[:mode]` against
+   `"conversation"`, `"documentation"`, `"knowledge_base"` and **silently returns `nil` on any
+   other value** — an unregistered register is not an error, it is a no-op.
+3. **A `T::Enum` and a prompt.** `LLM::Signatures::ClassificationSignature::Mode`
+   (`lib/sfl/llm/signatures/classification_signature.rb:26-32`) closes the set to the same three,
+   and the signature's prose description repeats it in English — *"one of three analysis modes"*
+   (`:15-18`). The enum is what the LLM is allowed to return; the prose is what teaches it the
+   distinction. Both must change for a new register, and neither is reachable from the other two
+   sites.
+
+**Two corrections to the framing this story was raised under.** First, the existing register count is
+**three, not two** — `"documentation"` is dispatched (`orchestrator.rb:119`) and offered to the LLM
+(`classification_signature.rb:31`) even though `DeterministicRules` never emits it, so a new register
+is the *fourth*, not the third. Second, the three dispatch branches are **not uniform**, which
+constrains the port's shape: `"conversation"` and `"documentation"` each construct a
+`Core::Loaders::Source` and hand it to `conversation_engine.analyze`
+(`orchestrator.rb:123-132`), while `"knowledge_base"` calls `kb_source.analyze(file)` on an
+application service that is not a loader at all (`:120`). A port that only returned "which loader
+class" would not cover the register that exists today, so the port method is the dispatch.
+
+This story **consumes** `SFL::Core::Registry` exactly as
+[SFL-EMB-01](EMBEDDING-HEXAGON-USER-STORIES.md) specifies it and mirrors the catalog shape SFL-ING-02
+establishes for loaders. It specifies **no registry behaviour of its own** and adds **no new
+register** — it is the mechanism, and SFL-ING-23 is the first caller. Ported verbatim, today's three
+registers behave identically; this is a refactor with a seam, not a behaviour change.
+
+**Acceptance criteria**
+
+- **Given** `lib/sfl/core/ports/register_profile.rb`, **then** it declares `#name` (the string that
+  appears as `mode`), `#description` (one line, the text fed to the classifier prompt),
+  `#deterministic?`, and `#analyze(file_ref, services)` returning a `Dry::Monads::Result`, each
+  raising `NotImplementedError` naming the including class — the same form as
+  `Core::Loaders::Source#each_unit` (`lib/sfl/core/loaders/source.rb:13-15`).
+- **Given** `Core::Ports::Null::RegisterProfile`, **then** `#analyze` returns `Success` having done
+  nothing; **given** `Fake::RegisterProfile`, **then** it records the refs it was handed, so a spec
+  can assert routing without an engine.
+- **Given** `Core::Registers::Catalog.register_into(registry)`, **then** `registry.names` is exactly
+  `[:conversation, :knowledge_base, :documentation]` — the three that exist today, one profile
+  object each, wrapping the bodies currently inlined at `orchestrator.rb:116-132` **without changing
+  what they do**.
+- **Given** `Ingest::Orchestrator#dispatch` after this story, **when** grepped, **then** it contains
+  no string literal `"conversation"`, `"documentation"` or `"knowledge_base"` and no `case` on
+  `classification[:mode]`; it resolves the profile through `Core::Ingest::RoutingTable` (SFL-ING-03)
+  and calls `#analyze`.
+- **Given** a `mode` with no registered profile, **then** the orchestrator raises a named
+  `UnknownRegisterError` listing `registry.names` — replacing today's silent `nil` fall-through
+  (`orchestrator.rb:116-120`), which is the bug this seam closes on its way past.
+- **Given** `Ingest::DeterministicRules`, **then** each helper returns the profile's `#name` rather
+  than a string literal, so the ladder and the dispatch cannot drift apart.
+- **Given** `ClassificationSignature`, **then** its `Mode` enum values and the mode list in its
+  `description` are **both built from `registry.names` and the profiles' `#description`s at
+  construction time**, not written out in source. A spec registers a fourth fake profile and asserts
+  it appears in both the enum and the rendered prompt text — the assertion that the prompt is
+  genuinely derived and not merely duplicated in a second place.
+- **Given** `lib/sfl/core/ports/register_profile.rb` and `lib/sfl/core/registers/`, **when** grepped,
+  **then** no `require` of `sequel`, `net/http`, `dspy`, `roda`, and no `ENV` read.
+
+**Integration points**
+
+- New: `lib/sfl/core/ports/register_profile.rb`, `lib/sfl/core/ports/{null,fake}/register_profile.rb`,
+  `lib/sfl/core/registers/{catalog,conversation,knowledge_base,documentation}.rb`.
+- Modified: `lib/sfl/ingest/orchestrator.rb:115-132` (dispatch → resolve + `#analyze`);
+  `lib/sfl/ingest/deterministic_rules.rb:42`, `:48`, `:54`, `:63-64` (literals → profile names);
+  `lib/sfl/llm/signatures/classification_signature.rb:15-18`, `:26-32` (enum and prose → derived).
+- Depends on `lib/sfl/core/registry.rb` from SFL-EMB-01 (**does not exist yet**) and on
+  `Core::Ingest::RoutingTable` from SFL-ING-03 (**does not exist yet**) — the routing table resolves
+  the register alongside the loader, so there is one resolution surface rather than two.
+- Registration site is the composition root, `SFL::Boot`, per
+  [SFL-EMB-08](EMBEDDING-HEXAGON-USER-STORIES.md).
+- No Gemfile change.
+
+**Definition of done**: `spec/core/registers/catalog_spec.rb` asserting the three names and the
+unknown-register raise; `spec/llm/signatures/classification_signature_spec.rb` asserting a
+fourth registered fake profile reaches both the enum and the prompt; the existing orchestrator specs
+pass **unmodified**, which is the evidence that porting the three branches changed no behaviour;
+`spec/zeitwerk_spec.rb` passes.
+
 ---
+
+### SFL-ING-23 — `source_code` register and its AST-derived `Unit` population
+
+**Points**: 5 · **Depends on**: SFL-ING-22 · **Epic**: I7 · **Track**: **deferred to the source-code
+track — not this phase**
+
+> **Scope note (rev 5).** Open question 9 is answered: source-code parsing is a **separate track**,
+> built as an optional adapter source, and commit-range git ingestion belongs to the same track. This
+> story is therefore specified here but **not scheduled in this phase** — it is the first caller the
+> register mechanism was built for, and it is where that track starts. SFL-ING-22 stays in this
+> phase, because the mechanism is what makes the track a registration rather than a fork. Nothing
+> below changes; only its scheduling does.
+
+> **As an** analyst ingesting a repository
+> **I want** source files treated as their own register with units cut at definition boundaries
+> **so that** SFL analysis runs over the register that source code actually is, rather than over
+> markdown-shaped sections or chat-shaped turns that misdescribe it.
+
+**Source code is a distinct register, not a file type the existing two can absorb.** The registers
+already modelled differ in field and mode: `"conversation"` is dialogic, multi-speaker, and
+time-ordered — `Unit#speaker`, `#is_user` and `#sent_at` carry meaning (`lib/sfl/core/types/unit.rb:19-21`);
+`"knowledge_base"` is monologic and hierarchically organised, so `#heading` carries it (`:18`).
+Source code is monologic like the second but **addressed partly to a compiler**: its clause-level
+text is not natural language at all, and the natural-language content — the part SFL has anything to
+say about — lives in docstrings, comments and identifier naming, attached to a structure that is
+neither a heading hierarchy nor a turn sequence. Feeding a `.rb` file through
+`Core::Loaders::MarkdownSource`'s section splitter produces units whose `heading` is whatever `#`
+happened to start a line, which is a comment marker in Ruby. The register is the unit of difference
+here, so the register is where it belongs.
+
+**This story is orthogonal to where the bytes came from.** It adds no `CorpusSource` and changes
+none. `Corpora::GitCorpusSource` (SFL-ING-18) stays scoped exactly as written — it yields `FileRef`s
+from a tree at one ref and knows nothing about what is in them. This register applies to code files
+from **any** source: a git clone, a `~/src` directory walked by `Corpora::FilesystemCorpusSource`
+(SFL-ING-17), or a single `.rb` passed directly. Conversely, a git repository of prose routes to
+`"knowledge_base"` unchanged. The two axes — origin and register — are independent, and this story
+exists to keep them that way rather than making "came from git" imply "is code".
+
+**Scope: Ruby only, and stated as a limit rather than left implied.** `Prism` is in the standard
+library on this platform (`ruby 4.0.4 +PRISM`, `Prism::VERSION` 1.9.0), so the Ruby path needs **no
+Gemfile change** and §3's no-new-gems rule holds. Every other language is **deferred**: the profile
+matches on extension through the routing table, and a non-Ruby extension simply does not match, so
+a second language is a later registration against the same seam — the same posture §0.3 takes toward
+web and MCP sources.
+
+**Acceptance criteria**
+
+- **Given** `Core::Registers::SourceCode` registered per SFL-ING-22, **then** `registry.names`
+  includes `:source_code` and `ClassificationSignature`'s enum and prompt gain it **without either
+  file being edited** — the proof that SFL-ING-22's derivation works.
+- **Given** `RoutingTable` (SFL-ING-03), **then** `.rb` resolves to `{mode: "source_code", format:
+  "ruby_source", source_type: "source_ruby", loader: :ruby_source}`. `.md` and `.pdf` resolve
+  unchanged, asserted by a regression spec.
+- **Given** `Core::Loaders::RubySource#each_unit` over a file, **then** it emits one `Types::Unit`
+  per top-level and nested definition node (`module`, `class`, `def`, `defs`) reached by a `Prism`
+  visitor — **not** by line splitting and **not** by heading detection.
+- **Given** a unit for `def foo` inside `class Bar` inside `module Baz`, **then** `heading` is the
+  qualified name `"Baz::Bar#foo"`, `text` is the definition's leading comment block and its
+  signature line joined, `speaker`, `is_user` and `sent_at` are `nil`, and `metadata` is
+  `{language: "ruby", node_type: "def", start_line:, end_line:, visibility:}`. The three nil fields
+  are **asserted nil**, not left unasserted: a source-code unit claiming a speaker would be a
+  category error, and the spec is where that is enforced.
+- **Given** a definition with **no** comment and **no** docstring, **then** the unit's `text` is the
+  signature line alone and `metadata[:documented]` is `false`; it is still emitted, because absent
+  documentation is a finding about the corpus rather than a reason to drop the node.
+- **Given** a file-level comment block before the first definition, **then** it is emitted as one
+  unit with `heading` equal to the file's `document_id` and `metadata[:node_type] == "file"`.
+- **Given** a file `Prism` reports errors for, **then** `each_unit` raises `Core::Loaders::Error`,
+  which SFL-ING-12's one per-file failure policy already handles — no separate rescue.
+- **Given** `Core::Registers::SourceCode#analyze`, **then** it constructs `Core::Loaders::RubySource`
+  and hands it to the same engine `"knowledge_base"` uses; this story introduces **no new engine**
+  and no new pass.
+- **Given** `lib/sfl/core/loaders/ruby_source.rb`, **when** grepped, **then** it requires `prism` and
+  nothing else outside `Core`.
+
+**Integration points**
+
+- New: `lib/sfl/core/registers/source_code.rb`, `lib/sfl/core/loaders/ruby_source.rb`.
+- Modified: `lib/sfl/core/loaders/catalog.rb` (SFL-ING-02) gains `:ruby_source`;
+  `lib/sfl/core/ingest/routing_table.rb` (SFL-ING-03) gains the `.rb` row; the §1.1 13-implementer
+  table becomes 14.
+- Unaffected by design, and asserted so: `lib/sfl/ingest/corpora/git_corpus_source.rb`
+  (SFL-ING-18) and `.../filesystem_corpus_source.rb` (SFL-ING-17).
+- No Gemfile change — `prism` is stdlib on this platform.
+
+**Definition of done**: `spec/core/loaders/ruby_source_spec.rb` over a fixture containing a nested
+module/class/def, an undocumented method, and a file-level comment, asserting qualified `heading`s,
+the three nil turn fields, and the `metadata` keys; `spec/core/registers/source_code_spec.rb`
+asserting the register reaches the enum and prompt with no edit to
+`classification_signature.rb`; a routing regression spec asserting `.md`/`.pdf` are unchanged;
+`spec/zeitwerk_spec.rb` passes with `RubySource` resolving under the existing inflections.
+
+---
+
+
 
 ## 7. Integration Point Ledger
 
 `check_index_coverage` was called once for all 25 paths below (project
 `home-b08x-WorkspaceV3-sfl-engine`, index generation `2026-09-13T03:44:03Z`, `index_mode: full`,
 `recording_status: complete`, `coverage_version: 3`, `generation_matches: true`).
+
+**Four rows were added after that call** (`classification_result.rb`, `classification_signature.rb`,
+and the two absent paths for SFL-ING-22/23). They were verified by direct read and `grep`, not by
+the coverage call above, and their status column says which — the count in the previous paragraph is
+the count at the time of the call, not a claim about this table's length.
 
 **Graph tooling note — read this before trusting the "how it was found" column.** On this index,
 `search_graph(query: "loader source each_unit classify extension")` returned an empty object `{}`,
@@ -2247,8 +2570,8 @@ directly, and the column says so rather than implying a query that did not work.
 | `lib/sfl/ingest/corpora/` | SFL-ING-17, 18 | directory absent | **does not exist yet** |
 | `lib/sfl/core/ports/classifier.rb` — `Core::Ports::Classifier` | SFL-ING-04, 10 | `ls lib/sfl/core/ports/`; full body read | `no_recorded_issue` / `metadata_match` |
 | `lib/sfl/core/ports/file_cache.rb` — `Core::Ports::FileCache` | SFL-ING-10 | direct read `:1-30` | `no_recorded_issue` / `metadata_match` |
-| `lib/sfl/ingest/deterministic_rules.rb` — `Ingest::DeterministicRules` | SFL-ING-03, 05 | `ls lib/sfl/ingest/`; full body read | `no_recorded_issue` / `metadata_match` |
-| `lib/sfl/ingest/orchestrator.rb` — `Ingest::Orchestrator` | SFL-ING-04, 09, 10, 12 | `ls lib/sfl/ingest/`; full body read | `no_recorded_issue` / `metadata_match` |
+| `lib/sfl/ingest/deterministic_rules.rb` — `Ingest::DeterministicRules` | SFL-ING-03, 05, 22 | `ls lib/sfl/ingest/`; full body read | `no_recorded_issue` / `metadata_match` |
+| `lib/sfl/ingest/orchestrator.rb` — `Ingest::Orchestrator` | SFL-ING-04, 09, 10, 12, 22 | `ls lib/sfl/ingest/`; full body read | `no_recorded_issue` / `metadata_match` |
 | `lib/sfl/ingest/loader_drafter.rb` — `Ingest::LoaderDrafter` | SFL-ING-02 (context) | direct read `:1-40` | `no_recorded_issue` / `metadata_match` |
 | `lib/sfl/core/loaders/markdown_source.rb` | SFL-ING-03, 06 | `trace_path("each_unit")` ambiguity list; read `:1-35`, `:105-120` | `no_recorded_issue` / `metadata_match` |
 | `lib/sfl/core/loaders/pdf_source.rb` | SFL-ING-07 | same ambiguity list; read `:1-35`, `:40-70` | `no_recorded_issue` / `metadata_match` |
@@ -2275,6 +2598,13 @@ directly, and the column says so rather than implying a query that did not work.
 | `ruby_llm-mcp-1.0.1/lib/ruby_llm/mcp/{resource,resource_template,tool,prompt}.rb` | §0.3 | `gem contents ruby_llm-mcp` | **outside the repository** — installed gem, listed not read |
 | `nexo_ai-0.11.0/docs/{workflows,durable-workflows,mcp,sessions,sandboxes}.md` | §0.3 | `gem contents nexo_ai` | **outside the repository** — installed gem, listed not read |
 | `db/migrations/` (11 files, `001`–`011`) | SFL-ING-20 | `ls db/migrations`; `009_create_ingest_review_entries.rb` read in full as the shape precedent | `no_recorded_issue` |
+| `lib/sfl/core/types/classification_result.rb` — `Core::Types::ClassificationResult` | SFL-ING-22 | direct read — `attribute :mode, Types::String.optional` at `:21` | `no_recorded_issue` / `metadata_match` |
+| `lib/sfl/llm/signatures/classification_signature.rb` — `ClassificationSignature` | SFL-ING-22 | `grep -rn '"conversation"' lib/`; read `:14-50` — the `Mode` `T::Enum` at `:26-32` and the three-mode prose at `:15-18` | `no_recorded_issue` / `metadata_match` |
+| `lib/sfl/core/ports/register_profile.rb`, `lib/sfl/core/registers/` | SFL-ING-22, 23 | directory absent; `grep -rn "RegisterProfile" lib/ app/` → **zero** | **does not exist yet** |
+| `lib/sfl/core/loaders/ruby_source.rb` | SFL-ING-23 | file absent; `prism` resolved from stdlib (`ruby 4.0.4 +PRISM`, `Prism::VERSION` 1.9.0) | **does not exist yet** |
+| `magika` 1.0.2 (`standard_v3_3`) — `~/.local/bin/magika` | SFL-ING-04, §3 row 16 | `magika --json` / `--jsonl` run against real vault files; output shape (`result.status`, `result.value.output.{label,group,is_text,mime_type}`, `result.value.score`) and the per-path `file_does_not_exist` + non-zero-exit behaviour both **verified by execution**, not read from documentation | **outside the repository** — an installed binary; the upstream README could not be fetched this session (the sandboxed fetch tool failed to load), so every claim here is from running the tool |
+| `~/Notebook` extensionless files — 13 on 2026-09-13 | §8 Q7, SFL-ING-04, §3 rows 6 and 16 | `find ~/Notebook -type f ! -name "*.*"`, then `magika -s -l` and `file -b --mime-type` over each; libmagic returned `text/plain` for all 13 | **outside the repository** — a live filesystem measurement; the commands are recorded so the figure is reproducible, and it supersedes no repository fact |
+| `lib/sfl/store/pg_ingest_review_repository.rb`, `db/migrations/009_create_ingest_review_entries.rb` | §8 Q4, SFL-ING-05 | both read in full — the free-form `status` at `:37-46`, the boolean `#resolved?` at `:58-60` (the gap Q4 records), and the migration's own "pure read/query layer, not a migration to write later" comment | `no_recorded_issue` |
 | `lib/sfl/ingest/target_resolver.rb`, `lib/sfl/ingest/run_supervisor.rb`, `lib/sfl/store/pg_ingest_run_repository.rb` | SFL-ING-19, 20 | files absent | **does not exist yet** |
 | `lib/sfl/core/pass_one/spacy_sidecar_parser.rb` — `SpacySidecarParser` | SFL-ING-14, 21 (pattern) | direct read `:1-70`; the injected-`command:` seam at `:31` and its "subprocess, not Python" comment at `:11-18` | `no_recorded_issue` |
 | `sidecar/` — `Dockerfile`, `README.md`, `spacy_sidecar.py` | SFL-ING-21 | `ls -la sidecar/`; `Dockerfile` read in full (16 lines) | not indexed (non-Ruby) |
@@ -2296,7 +2626,7 @@ directly, and the column says so rather than implying a query that did not work.
 | # | Risk | Impact | Mitigation / story |
 |---|---|---|---|
 | R1 | **Collapsing five routing tables changes behaviour somewhere.** The five surfaces in §1.2 gap 2 disagree today, so any single table is a behaviour change for at least four of them. `.txt` becoming vault-ingestible (`lib/sfl/cli.rb:328` vs `lib/sfl/analysis/knowledge_base_source.rb:53`) is the clearest case. | A vault walk that previously skipped files now ingests them, changing corpus size and compile cost without anyone asking for it. | SFL-ING-03 requires a table-driven spec with **one case per extension the corpus contains**, asserting the resolved answer per caller, so every change is enumerated in a diff rather than discovered in a run. The `.rtf`/`.tsv`/`.log` entries are retained rather than pruned for the same reason. |
-| R2 | **MIME sniffing misroutes a file the extension had right.** `mimemagic` reports `text/plain` for many structured text formats, so a sniff could shadow a correct extension match. | A `.canvas` file sniffed as `application/json` would route to `JsonSource` instead of `CanvasSource` and emit garbage. | SFL-ING-04 fixes the order: extension first, sniff **only** when the extension has no entry. The sniffer can never override a matched extension. The Null adapter (`#sniff` → `nil`) is the default, so the feature is opt-in. |
+| R2 | **Content sniffing misroutes a file the extension had right, or reports a guess as a fact.** Rev 4 framed this as libmagic flattening structured text to `text/plain` — measured true, and the reason `mimemagic` was dropped (§3 row 6). Magika has the opposite failure mode: it answers with a *label and a score*, and **five of the thirteen measured files scored under 0.50** (19%, 39%, 45%, 46%, 74%). | A `sudoers` fragment reported as Matlab at 45%, or an Ansible inventory as an Ignorefile, would route to a loader that emits garbage. | SFL-ING-04 fixes the order — extension first, sniff **only** when the extension has no entry, so a sniff can never override a matched extension — and adds a declared `MIN_SCORE` below which a verdict is treated as `nil` and the file falls through to the classifier. The Null adapter (`#sniff` → `nil`) remains the default, so the feature is opt-in and a missing binary degrades rather than fails. |
 | R3 | **Stale classification cache serves a wrong answer.** Caching on path alone would serve yesterday's verdict for an edited file. | Silent misrouting that no log line reveals. | SFL-ING-10 puts `size_bytes` and `mtime` in the key alongside a sample digest — structural invalidation, the same stance [SFL-EMB-06](EMBEDDING-HEXAGON-USER-STORIES.md) takes with `strategy`/`model`/`dimensions`. |
 | R4 | **The ingest cache collides with the Pass 2 annotation cache.** Both would use `Core::Ports::FileCache`, whose comment scopes it to `Pipeline#annotate_with_cache` via `--resume` (`lib/sfl/core/ports/file_cache.rb:9-13`). | Cross-contaminated cache reads — the worst possible failure because both sides look like a hit. | SFL-ING-10 mandates a separate key namespace and a spec asserting no key from one domain resolves in the other. The port is reused; its existing scope is not repurposed. |
 | R5 | **Two pipelines over one corpus.** Already real, not hypothetical: `lib/sfl/cli.rb:550-560` → `:504` and `:531`. | Two clause stores, two embedding stores, two caches, three instrumenters per ingest run — and after [SFL-EMB-06](EMBEDDING-HEXAGON-USER-STORIES.md), two embedding caches with roughly half the hit rate each. | SFL-ING-11 makes single construction structural with a one-construction-per-type spy, following the pattern [SFL-EMB-14](EMBEDDING-HEXAGON-USER-STORIES.md) establishes. Scheduled early for the same reason that story is. |
@@ -2316,7 +2646,13 @@ directly, and the column says so rather than implying a query that did not work.
 
 ### Open questions — not verifiable from the repository
 
-1. ~~**Which sources are actually in scope?**~~ — **ANSWERED in rev 2; see §0.** The set is
+Numbered as a stable ledger: a question's number is its permanent ID (other documents cross-reference
+it as "open question N"), so resolution moves an item between the two lists below rather than
+renumbering it. Item 8 was retired in an earlier revision and its number is not reused.
+
+#### Resolved
+
+Q1. ~~**Which sources are actually in scope?**~~ — **ANSWERED in rev 2; see §0.** The set is
    filesystem (directory or single file, images opt-in), git at one ref, and nothing else this phase.
    Web sources and MCP connectors are **deferred by decision** and recorded in §0.3 as unbuilt
    adapters rather than unknowns; agentic classification via `nexo_ai` is **rejected** because the
@@ -2330,7 +2666,7 @@ directly, and the column says so rather than implying a query that did not work.
    note, the same gap [`EMBEDDING-HEXAGON-USER-STORIES.md`](EMBEDDING-HEXAGON-USER-STORIES.md) open
    question 2 reports — and that gap is now **out of scope rather than unresolved**, since no story's
    justification rests on a corpus figure and §0.6 forbids any unit spec from depending on the vault.
-2. ~~**Is there a transcription backend available, and at what cost?**~~ — **ANSWERED in rev 3; see
+Q2. ~~**Is there a transcription backend available, and at what cost?**~~ — **ANSWERED in rev 3; see
    §4.** [`handy-computer/transcribe.cpp`](https://github.com/handy-computer/transcribe.cpp) (MIT)
    running `moss-transcribe-diarize` (Apache-2.0, ~700 MB at Q5_K_M) behind a second NDJSON sidecar,
    as a profiled Compose service. The model emits speaker-turn rows natively, which is what satisfies
@@ -2344,40 +2680,130 @@ directly, and the column says so rather than implying a query that did not work.
    one `ffprobe` sweep away throughout. What remains unquantified is the **downstream enrichment**
    cost, which is [SFL-EMB-13](EMBEDDING-HEXAGON-USER-STORIES.md)'s to answer, not this document's —
    see R6 as rewritten.
-3. **Should a subtitle file inside a vault directory be a conversation or a document?** Today it is
-   always `chat_native` (`lib/sfl/ingest/deterministic_rules.rb:13`) and never reaches
-   `KnowledgeBaseSource` (`:53` omits it). SFL-ING-03 preserves that behaviour because changing it
-   would change ingest output, but nothing in the tree states whether the current answer is a decision
-   or an artifact of which routing surface was written first.
-4. **What should a generic, non-export `.json` file become?** 3,692 `.json` files exist and almost
-   none are chat exports. `JsonSource` requires an injected `text_key:`
-   (`lib/sfl/core/loaders/json_source.rb:31`) *because* a JSON file carries no schema to infer it
-   from (`:8-12`). Whether these files should be ingested at all, ingested with a per-directory
-   `text_key:` convention, or skipped, is a corpus-owner decision the code cannot answer. SFL-ING-05
-   deliberately stops at `nil` rather than guessing.
-5. **Was the double pipeline construction at `lib/sfl/cli.rb:552-553` intentional?**
-   [SFL-EMB-14](EMBEDDING-HEXAGON-USER-STORIES.md) could state that its duplication was
-   author-confirmed unintentional; no equivalent confirmation exists here. `build_conversation_engine`
-   and `build_kb_source` each self-wiring is defensible when called alone; it is only the caller
-   invoking both that duplicates. SFL-ING-11 assumes the duplication is unwanted, which is the
-   assumption worth checking before the story is scheduled.
-6. **Why is `jsonl` declared at `Gemfile:260` with zero call sites?** Along with `image_processing`
-   (`Gemfile:202`), it may be a speculative addition on this uncommitted Gemfile or a remnant of a
-   removed implementation. The tree records no intent. §3 row 4 treats it on its merits and SFL-ING-15
-   removes the need for it, but whether it should be deleted from the Gemfile is not this document's
-   call.
-7. **Do the 24 extensionless files share a shape?** They are the clearest justification for
-   `mimemagic` (§3 row 6) and the case the LLM classifier is most expensive for, but nothing in the
-   repository describes them, and this document did not inspect their contents. If they turn out to be
-   a single known format, a routing rule would be cheaper than a sniffer.
-9. **Should git ingestion ever cover a commit range rather than a single ref?** SFL-ING-18
-   deliberately ingests one ref and SFL-ING-16 is built so a range would be "several sources merged"
-   rather than a contract change. Whether anyone wants history ingested at all — and if so whether
-   the unit of work is a commit, a diff, or a snapshot per tag — is not answerable from the
-   repository; nothing in the tree references git as a data source.
-10. **Graph index gaps.** `search_graph` returned `{}` on this index for the ingest sweep, while
+Q3. ~~**Should a subtitle file inside a vault directory be a conversation or a document?**~~ —
+   **ANSWERED by the corpus owner, 2026-09-13: a conversation, unconditionally.** A subtitle file in
+   this corpus is generally a conversation, or else dictation or captions from a screencast
+   recording. The current behaviour is therefore a **decision**, not an artifact of which routing
+   surface was written first: `lib/sfl/ingest/deterministic_rules.rb:13` making every
+   `.srt`/`.vtt`/`.ass` `chat_native` regardless of the surrounding directory is correct, and
+   `KnowledgeBaseSource` omitting them (`:53`) is correct. SFL-ING-03 keeps preserving it — what
+   changes is that preservation is now justified rather than merely cautious.
+
+   **The monologic cases the answer names do not need a second register**, and the loader already
+   proves it. Dictation and screencast captions are single-speaker, but they are still turn-shaped
+   and time-ordered — the two fields `"conversation"` exists to carry (`Types::Unit#speaker`,
+   `#sent_at`). What separates them from a dialogue is **speaker count, not register**, and
+   `SubtitleSource` handles that explicitly today: a file with no speaker information (plain SRT, or
+   an ASS file where every `Dialogue` reuses one `Name`) falls back to `SYNTHETIC_SPEAKER`
+   (`lib/sfl/core/loaders/subtitle_source.rb:33`), and because a turn boundary is defined as a
+   speaker change and nothing else, every cue then merges into one turn — *"the transcript is treated
+   as one continuous monologue/narration"* (`:19-24`). The code was written for exactly the case the
+   answer describes.
+
+   **One bounded consequence, recorded rather than deferred.** That same merge rule means a
+   speaker-less screencast caption track becomes a **single** `Types::Unit` whose `text` is the whole
+   transcript. For a 40-minute screencast that is one unit of tens of thousands of characters, which
+   is a chunking problem downstream, not a routing one. It is in scope for
+   [`EMBEDDING-HEXAGON-USER-STORIES.md`](EMBEDDING-HEXAGON-USER-STORIES.md)'s parent/child chunking,
+   not for this document, and it is **not** a reason to re-open the register question — splitting a
+   monologue into chunks is a loader/chunker concern and would be equally necessary if the file were
+   routed to `"knowledge_base"` instead.
+Q4. ~~**What should a generic, non-export `.json` file become?**~~ — **ANSWERED by the corpus owner,
+   2026-09-13: marked for HITL review.** Not skipped, not guessed at, not dropped. A `.json` file
+   that is neither export shape is **enqueued for human review and comment**, and the decision about
+   its `text_key:` is made by a person, per file or per directory, rather than inferred.
+
+   **The mechanism already exists and needs no migration.** `Store::PgIngestReviewRepository#enqueue`
+   takes a free-form `status` and a `reasoning` text (`lib/sfl/store/pg_ingest_review_repository.rb:37-46`),
+   and `ingest_review_entries` was built as *"a pure read/query layer… not a migration to write
+   later"* (`db/migrations/009_create_ingest_review_entries.rb`, its own header comment). A generic
+   `.json` enqueues with a new status alongside the existing `low_confidence_mode` /
+   `loader_drafted` / `draft_failed` set. SFL-ING-05's last acceptance criterion already routed these
+   files to the review queue; what was open was whether that was the *right* destination or a
+   placeholder. It is the right destination.
+
+   **One gap this answer exposes, recorded rather than hand-waved.** The table has no column that can
+   carry a resolution *payload* — `#resolved?(path)` returns a boolean
+   (`lib/sfl/store/pg_ingest_review_repository.rb:58-60`), so there is nowhere for a reviewer's chosen
+   `text_key:` to live. Reusing `format` for it would overload a column that means something else.
+   Closing the loop therefore needs either one new nullable column or a small `resolution` JSONB, and
+   that is a bounded follow-up on SFL-ING-05 — **not** a reason to defer the answer, since enqueueing
+   is useful on its own and 3,692 files is exactly the volume that makes silent skipping dangerous.
+Q6. ~~**Why is `jsonl` declared at `Gemfile:260` with zero call sites?**~~ — **ANSWERED by the corpus
+   owner, 2026-09-13: it is syntactic sugar for parsing the JSONL format.** A deliberate addition, not
+   a remnant — so the "speculative or leftover" framing was wrong and is withdrawn.
+
+   **§3 row 4's `defer` verdict is unchanged, and the answer is why it can now be stated
+   confidently rather than cautiously.** The verdict never rested on the gem being accidental; it
+   rests on the four hand-rolled JSONL readers **not being interchangeable** — `conversation_source.rb:82-87`
+   deliberately skips records lacking `:mes` to survive SillyTavern group-chat headers (rationale at
+   `:78-80`), which a generic reader would surface as garbage turns or reject the file over.
+   Consolidating onto one internal codec (SFL-ING-15) de-duplicates the four without re-deciding that
+   filter. Adopt the gem if a measured parse cost justifies it; the intent question is closed either
+   way. `image_processing` is a separate matter and stays rejected (§3 row 2).
+Q7. ~~**Do the 24 extensionless files share a shape?**~~ — **ANSWERED by measurement, 2026-09-13.**
+   The owner's answer was *"a good use case to implement `magika`"*, and running it settles both the
+   question and the adapter choice.
+
+   **They do not share one shape, but they share a class.** Thirteen extensionless files were found in
+   the vault on this date (`find ~/Notebook -type f ! -name "*.*"`; the figure of 24 above was true
+   when it was written and is left as written). Magika 1.0.2 reports `gemfile` 99%, `ini` at
+   99/98/92/89%, `txt` 100% three times, and five honest low-confidence guesses. The files are
+   `Gemfile`, `hosts`, `password-auth`, `sudoers_group`, `staging`, `production`, `development`,
+   `inventory`, `tasks`, `status` ×2 and `etcdefaultgrub` — **configuration and infrastructure, not
+   prose**. So a single routing rule would be wrong, and ingesting them as text would be worse.
+
+   **The measurement also reversed §3 row 6.** `file --mime-type` — libmagic, which is exactly what
+   `mimemagic` wraps — returns **`text/plain` for all thirteen**. The gem this document adopted to
+   solve this case cannot see the distinction the case is about. `mimemagic` is now **rejected** and
+   `magika` adopted as a binary with an injected `command:`, which means this document ends up adding
+   **no Gemfile line at all**. SFL-ING-04 is rewritten around it, including the consequence that
+   `#sniff` must return a verdict object rather than a MIME `String` — Magika's own `mime_type` for
+   `gemfile`, `ini` and `txt` is `text/plain` in every case, so a MIME-typed port would have thrown
+   away the very field that justified the adapter.
+Q9. ~~**Should git ingestion ever cover a commit range rather than a single ref?**~~ — **ANSWERED by
+   the corpus owner, 2026-09-13: yes in principle, but not in this phase.** Parsing a history makes
+   sense. Source-code parsing is now **a separate track**, implemented as an optional adapter source,
+   and commit-range ingestion belongs to that track rather than to this one.
+
+   **What that decides here.** SFL-ING-18 stays scoped to a single ref, as written — now confirmed
+   rather than merely defaulted to. SFL-ING-16's `FileRef` contract still makes a range "several
+   sources merged" rather than a contract change, so the separate track inherits a seam instead of a
+   rewrite. And **SFL-ING-23 moves out of this phase with it**: a source-code register and a
+   commit-range source are the same track, and splitting them across two phases would ship half a
+   capability. SFL-ING-22 — the register *mechanism* — **stays in this phase**, because it is what
+   makes the separate track a registration rather than a fork.
+Q10. ~~**Graph index gaps.**~~ — **REINDEX DONE AND VERIFIED (2026-09-13); THE SYMPTOM
+   PERSISTS.** `index_status` reports `status: "ready"`, **3,248 nodes / 5,564 edges**, zero
+   `parse_partial`, zero `skipped`; `check_index_coverage` reports generation `2026-09-13T07:06:06Z`,
+   `index_mode: "full"`, `recording_status: "complete"`, `generation_matches: true`. Staleness is
+   ruled out. But `search_graph` (both `query:` and `name_pattern:`) and `get_architecture` still
+   return `{}` on that fresh index, while `trace_path(function_name: "each_unit")` resolves to the
+   same **13 qualified names** as before. This is therefore a **query-surface defect, not an index
+   gap**, and no reindex was ever going to fix it — so "reindex before implementation" is discharged
+   and replaced by "treat `search_graph` and `get_architecture` as unavailable on this project; use
+   `trace_path` and direct reads", which is what this document already did. `Gemfile`, `config.ru`
+   and `bin/roda` remain `not_tracked` **by design** — not Ruby source the indexer tracks — so their
+   citations stay direct reads. Full detail in
+   [`TOPIC-MODELING-HEXAGON-USER-STORIES.md`](TOPIC-MODELING-HEXAGON-USER-STORIES.md) open question 6.
+   Original text follows.
+
+   ~~Graph index gaps.~~`search_graph` returned `{}` on this index for the ingest sweep, while
    `trace_path` resolved correctly; `Gemfile`, `config.ru` and `bin/roda` are `not_tracked`. Every
    citation from those sources was read directly, but a reindex would be worth running before
    implementation starts so that later impact analysis is not similarly degraded — the same
    recommendation [`EMBEDDING-HEXAGON-USER-STORIES.md`](EMBEDDING-HEXAGON-USER-STORIES.md) open
    question 6 makes.
+
+Q5. **Was the double pipeline construction at `lib/sfl/cli.rb:552-553` intentional?**
+   [SFL-EMB-14](EMBEDDING-HEXAGON-USER-STORIES.md) could state that its duplication was
+   author-confirmed unintentional; no equivalent confirmation exists here. `build_conversation_engine`
+   and `build_kb_source` each self-wiring is defensible when called alone; it is only the caller
+   invoking both that duplicates. **Resolved by the corpus owner, 2026-09-13: no, it was not
+   intentional — the duplication is unwanted.** SFL-ING-11's assumption stands confirmed rather than
+   merely assumed; the story is scheduled as written, and the caller invoking both
+   `build_conversation_engine` and `build_kb_source` is the defect the story removes.
+
+#### Still open
+
+None — every question in this document is resolved as of 2026-09-13.

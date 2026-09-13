@@ -10,6 +10,12 @@ wrapped by Middleware Decorators for logging, caching, and observability.
 codebase-memory graph call (see §6). Anything the architecture needs that is not in the tree is
 labelled **does not exist yet**.
 
+**Rev 2 changes** (2026-09-13): four open questions answered by the project owner — the vector layout
+is **table-per-dimension** (sibling tables per width), the four zero-call-site gems each have a stated
+purpose, Langfuse's default `production`/`latest` labels apply, and the enrichment A/B gets a
+retrieval-quality evaluation in Langfuse. The `ruby_llm` question is withdrawn. SFL-EMB-04 is
+rewritten for sibling tables and SFL-EMB-11, R1, R2, R13, §2.1 and E3 follow it.
+
 ---
 
 ## 1. Context & Problem Statement
@@ -169,7 +175,7 @@ application services; `SFL::API` + `Sfl` (Roda) + `SFL::CLI` = driving adapters.
 | Port | Responsibility | Driven / driving | Concrete adapters | Backing gem | Status |
 |---|---|---|---|---|---|
 | `Core::Ports::Embedder` | text → vector(s) | driven | `LLM::Embedders::OllamaEmbedder` (extracted from `lib/sfl/llm/embedder.rb:21`); `LLM::Embedders::InformersEmbedder`; `Null::Embedder`; `Fake::Embedder` | none (Net::HTTP) / `informers` | port exists; Informers adapter new |
-| `Core::Ports::EmbeddingStore` | persist vectors per document | driven | `Store::PgEmbeddingStore` (`lib/sfl/store/pg_embedding_store.rb:34`), made dimension-aware | `sequel`, `pgvector` | exists, needs change |
+| `Core::Ports::EmbeddingStore` | persist vectors per document | driven | `Store::PgEmbeddingStore` (`lib/sfl/store/pg_embedding_store.rb:34`), resolving one sibling table per vector width (`embeddings_768`, `embeddings_1024`) from the injected `ModelSpec` | `sequel`, `pgvector` | exists, needs change |
 | `Core::Ports::Retriever` | candidate generation | driven | `Store::PgHybridRetriever` (`lib/sfl/store/pg_hybrid_retriever.rb:22`) | `sequel`, `pgvector` | exists |
 | `Core::Ports::Reranker` | reorder a candidate list for a query | driven | `Retrieval::Rerankers::RrfReranker` (extracted from `lib/sfl/store/pg_hybrid_retriever.rb:121-140`); `Retrieval::Rerankers::Bm25fReranker`; `Retrieval::Rerankers::CrossEncoderReranker`; `Null`/`Fake` | `bm25f`, `informers` | **does not exist yet** |
 | `Core::Ports::PromptSource` | name + label → versioned prompt template | driven | `LLM::Prompts::LangfusePromptSource` (REST, cached); `LLM::Prompts::LocalPromptSource` (ERB on disk); `Null`/`Fake` | `ruby_llm-template` (local); none (Net::HTTP for Langfuse) | **does not exist yet** |
@@ -329,7 +335,7 @@ project's stated preference for a hand-rolled client over dependency weight
 |---|---|
 | **E1 — Composition substrate** | Introduce `Core::Registry` and `Core::Embedding::ModelSpec` so any port implementation can be named, registered, and resolved at runtime — and make the composition roots construct each collaborator exactly once. |
 | **E2 — Embedding generation hexagon** | Turn the single Ollama embedder into a family of interchangeable `Ports::Embedder` strategies (Ollama, Informers) selected by name. |
-| **E3 — Model-aware vector storage** | Make `PgEmbeddingStore` carry a `ModelSpec` so a model swap changes the target column and index instead of raising a dimension error. |
+| **E3 — Model-aware vector storage** | Make `PgEmbeddingStore` carry a `ModelSpec` so a model swap changes the target **table** and index instead of raising a dimension error. |
 | **E4 — Re-ranking hexagon** | Define `Core::Ports::Reranker`, extract RRF out of the Postgres adapter, and add lexical (bm25f) and cross-encoder (informers) strategies. |
 | **E5 — Middleware decorators** | Add logging, caching, and observability decorators that implement the ports they wrap, composed in a fixed chain. |
 | **E6 — Driving adapters & chunk producer** | Expose strategy selection through Roda and the CLI, and populate `parent_clause_id` so leaf-only embedding stops being a no-op. |
@@ -490,51 +496,77 @@ stubbed), `spec/llm/embedders/catalog_spec.rb`; a shared `"an embedder"` example
 
 **Acceptance criteria**
 
-- **Given** `db/migrations/012_*.rb`, **when** migrated, **then** `embeddings` gains a
-  `dimensions INTEGER NOT NULL` column backfilled to `768` (the current fixed width at
-  `db/migrations/004_create_embeddings.rb:24`), and a second provisioned column
-  `embedding_1024 vector(1024)` with its own HNSW `vector_cosine_ops` index mirroring
-  `db/migrations/004_create_embeddings.rb:29`. The existing `[:clause_id, :model]` unique index
-  (`db/migrations/004_create_embeddings.rb:28`) is replaced by `[:clause_id, :model, :dimensions]`.
-- **Given** the same migration, **then** `embeddings` also gains `contextualized_text TEXT NULL` and
+**Layout: sibling tables per width.** Open question 1 is answered — the project uses
+**table-per-dimension**, not column-per-dimension, in the sibling form: one table per vector width,
+identical in every column but the width of `embedding`. The width is then a property of the
+*relation*, which removes the `dimensions` column, removes it from the unique key, and makes an
+unprovisioned width a missing table rather than a NULL column. The cost is stated rather than
+glossed: any question asked *across* widths is a `UNION`, and SFL-EMB-11's convergence check is
+exactly such a question.
+
+**Acceptance criteria**
+
+- **Given** `db/migrations/012_*.rb`, **when** migrated, **then** the existing `embeddings` table is
+  **renamed** to `embeddings_768` — not copied — so its rows, its `on_delete: :cascade` FK
+  (`db/migrations/004_create_embeddings.rb:21-22`) and its existing HNSW index
+  (`:29`) all survive the migration untouched. A rename is the whole of the 768 path; there is no
+  backfill and no data movement.
+- **Given** the same migration, **then** `embeddings_1024` is created with the identical column set
+  and `embedding vector(1024)`, its own `[:clause_id, :model]` unique index mirroring
+  `db/migrations/004_create_embeddings.rb:28`, and its own HNSW `vector_cosine_ops` index mirroring
+  `:29` — created `CONCURRENTLY` where the migration framework allows it (R1).
+- **Given** either table, **then** the unique index stays `[:clause_id, :model]` and **no
+  `dimensions` column is added to either**. The width is the table's name; storing it in a row as
+  well would be a second source of truth for a fact the relation already carries.
+- **Given** the same migration, **then** both tables carry `contextualized_text TEXT NULL` and
   `prompt_version TEXT NULL` — the exact text that produced the vector and the prompt version that
   produced that text (populated by SFL-EMB-13; `NULL` on every existing row and on every row embedded
-  without enrichment). They belong on `embeddings`, not on `clauses`, because their value varies per
-  `(clause_id, model, dimensions)` row, which is precisely this table's grain — the same clause
-  embedded under two specs can legitimately carry two different enriched texts. The `on_delete:
-  :cascade` FK at `db/migrations/004_create_embeddings.rb:21-22` already disposes of them with the
-  clause, so no new lifecycle rule is introduced.
+  without enrichment). They belong on the embedding tables, not on `clauses`, because their value
+  varies per `(clause_id, model, width)` row, which is precisely these tables' grain — the same clause
+  embedded under two specs can legitimately carry two different enriched texts. The cascading FK
+  disposes of them with the clause in both tables, so no new lifecycle rule is introduced.
 - **Given** `PgEmbeddingStore#replace_document`, **then** it accepts and writes those two fields, and
   **omitting** them writes `NULL` rather than failing — a caller with no contextualiser wired is a
   supported caller, not a degraded one.
 - **Given** `PgEmbeddingStore.new(db, spec:)`, **then** the class constant
-  `VECTOR_DIMENSIONS = 768` (`lib/sfl/store/pg_embedding_store.rb:49`) is deleted and
-  `#check_dimensions!` (`lib/sfl/store/pg_embedding_store.rb:99-106`) compares against
-  `spec.dimensions`.
-- **Given** a `ModelSpec` whose `dimensions` has **no** provisioned column, **when**
-  `#replace_document` is called, **then** it raises `Store::Error` naming the model, the width, and
-  the migration to add — preserving the diagnostic quality of the message at
-  `lib/sfl/store/pg_embedding_store.rb:102-105`, which exists because of a real 2026-08-02 failure
-  (`lib/sfl/store/pg_embedding_store.rb:39-48`).
+  `VECTOR_DIMENSIONS = 768` (`lib/sfl/store/pg_embedding_store.rb:49`) is deleted and replaced by a
+  frozen `TABLE_FOR = { 768 => :embeddings_768, 1024 => :embeddings_1024 }`; every query in the class
+  targets `TABLE_FOR.fetch(spec.dimensions)`. `#check_dimensions!`
+  (`lib/sfl/store/pg_embedding_store.rb:99-106`) keeps comparing the vector's own length against
+  `spec.dimensions`, because a short vector from a misconfigured embedder is still a bug the store
+  must catch before the insert.
+- **Given** a `ModelSpec` whose `dimensions` has **no** entry in `TABLE_FOR`, **when** the store is
+  constructed, **then** it raises `Store::Error` naming the model, the width, and the migration to
+  add — and it raises **at construction**, not at first write, because the table's absence is knowable
+  at boot. This strictly improves on the message at `lib/sfl/store/pg_embedding_store.rb:102-105`,
+  which exists because of a real 2026-08-02 failure (`:39-48`) and which could only fire mid-write.
 - **Given** `DEFAULT_MODEL = ENV.fetch(...)` at `lib/sfl/store/pg_embedding_store.rb:37`, **then** it
   is **removed**; the model arrives only via the injected `spec:`, matching the project rule at
   `lib/sfl/llm/embedder.rb:19-20`.
 - **Given** two specs for the same clause (768-dim and 1024-dim), **when** both are written, **then**
-  both rows coexist and `#replace_document` for one spec deletes only that spec's rows — extending
-  the existing per-model delete scope at `lib/sfl/store/pg_embedding_store.rb:78`.
+  the rows live in different tables and `#replace_document` for one spec deletes only from that
+  spec's table — the per-model delete scope at `lib/sfl/store/pg_embedding_store.rb:78` is retained
+  *inside* the table, and cross-width isolation now comes from the relation rather than from a
+  predicate.
 - **Given** the F7 idempotency contract, **then** delete-then-insert still happens inside one
-  transaction (`lib/sfl/store/pg_embedding_store.rb:77-83`) and the failed-vector → `embedding_status
-  = "failed"` behaviour (`lib/sfl/store/pg_embedding_store.rb:119-125`) is unchanged.
+  transaction (`lib/sfl/store/pg_embedding_store.rb:77-83`) and the failed-vector →
+  `embedding_status = "failed"` behaviour (`:119-125`) is unchanged.
 - **Given** `PgHybridRetriever#semantic_search`, **then** its `embedding <=> ?` ordering
-  (`lib/sfl/store/pg_hybrid_retriever.rb:67`) selects the column matching the query embedder's spec,
-  and its join (`lib/sfl/store/pg_hybrid_retriever.rb:86-90`) filters `embeddings` by
-  `model`/`dimensions` — a query vector is never compared against another model's vectors.
+  (`lib/sfl/store/pg_hybrid_retriever.rb:67`) and its join (`:86-90`) both target
+  `TABLE_FOR.fetch(spec.dimensions)` and filter by `model` alone. The `dimensions` predicate the
+  column layout would have needed is **absent by construction** — a query vector cannot reach another
+  width's vectors, because they are not in the relation being scanned. A spec asserts the generated
+  SQL names exactly one embedding table.
+- **Given** a query that must span widths, **then** there is no such query in this phase, and a spec
+  asserts it: no production code path issues a `UNION` across `embeddings_*`. The one place that
+  legitimately needs the cross-width view is SFL-EMB-11, which owns it.
 - **Constraint**: no `DSPy::` reference is introduced into `Store` or `Core` by this story (§3 row 3).
 
 **Integration points**
 
 - `lib/sfl/store/pg_embedding_store.rb:34-136` (rewrite), `db/migrations/004_create_embeddings.rb`
-  (superseded, not edited), new `db/migrations/012_*.rb`,
+  (its table is **renamed** by 012, the migration file itself is not edited), new
+  `db/migrations/012_*.rb` whose `down` renames `embeddings_768` back and drops `embeddings_1024`,
   `lib/sfl/store/pg_hybrid_retriever.rb:58-71` and `:85-90`.
 - Construction sites to update: `lib/sfl/cli.rb:495`, `lib/sfl/api/context.rb` (via
   `CLI.build_pipeline` at `:58`).
@@ -543,10 +575,11 @@ stubbed), `spec/llm/embedders/catalog_spec.rb`; a shared `"an embedder"` example
   `lib/sfl/store/embedding_redriver.rb:22-34` and must be preserved.
 - Migrations run via `bin/roda:17` (`Sequel::Migrator.run(db, "db/migrations")`).
 
-**Definition of done**: `spec/store/pg_embedding_store_spec.rb` extended for both widths and the
-unprovisioned-width raise; `spec/store/pg_hybrid_retriever_spec.rb` extended for spec-scoped
-filtering; `spec/store/embedding_redriver_spec.rb` updated; migration has a working `down`;
-rubocop-sequel clean.
+**Definition of done**: `spec/store/pg_embedding_store_spec.rb` extended for both widths and for the
+unprovisioned-width raise **at construction**; `spec/store/pg_hybrid_retriever_spec.rb` extended to
+assert the generated SQL names exactly one embedding table; `spec/store/embedding_redriver_spec.rb`
+updated; the migration's `down` restores `embeddings` with its rows intact and is exercised by a
+round-trip spec; rubocop-sequel clean.
 
 ---
 
@@ -832,24 +865,38 @@ path, the default path, and the 400 path; existing `POST /retrieve` specs pass u
 
 - **Given** `EmbeddingRedriver` (`lib/sfl/store/embedding_redriver.rb:35`), **then** its `model:`
   keyword becomes `spec:`, and it selects clauses whose `embedding_status` is `"pending"`/`"failed"`
-  **or** whose newest `embeddings` row does not match the active spec.
+  **or** which have no row in the active spec's table for the active model.
+- **Given** the sibling-table layout (SFL-EMB-04), **then** this story owns the **only** cross-width
+  query in the system: a clause left behind by a model swap has its old vector in a *different
+  table*, so "is this clause converged?" cannot be answered from one relation. The redriver issues an
+  explicit `UNION ALL` over `PgEmbeddingStore::TABLE_FOR.values` projecting `[clause_id, model]`, and
+  a spec asserts the union names every provisioned table — so adding `embeddings_1536` later cannot
+  silently narrow the convergence check to the widths someone remembered.
+- **Given** a clause carrying a stale vector at another width, **then** the redrive writes the new
+  vector into the active spec's table and **leaves the stale row where it is**. Deleting the old
+  generation is a separate operator action, not a side effect of converging — the 2026-08-02 failure
+  (`lib/sfl/store/pg_embedding_store.rb:39-48`) is the standing argument against a redrive that
+  destroys the only copy of anything.
 - **Given** the data-loss guard documented at `lib/sfl/store/embedding_redriver.rb:22-34` — that
   `#replace_document` deletes every row for a document — **then** re-driving still reads back and
   merges the document's untouched vectors before writing.
 - **Given** `rake embeddings:redrive` (`Rakefile:43`), **then** it accepts an optional strategy
   argument and prints `redriven=` / `still_failed=` as it does today (`Rakefile:56`).
-- **Given** a re-drive against a spec whose width has no provisioned column, **then** it fails fast
-  with the SFL-EMB-04 message and writes nothing.
+- **Given** a re-drive against a spec whose width has no provisioned table, **then** it fails fast at
+  store construction with the SFL-EMB-04 message and writes nothing.
 - **Given** a re-drive interrupted mid-corpus, **then** already-converged documents are not
   re-processed on the next run (idempotent by spec comparison, not by a cursor file).
 
 **Integration points**
 
-- `lib/sfl/store/embedding_redriver.rb:35-45`, `Rakefile:43-56`,
+- `lib/sfl/store/embedding_redriver.rb:35-45` (including the `embeddings` join at
+  `lib/sfl/store/embedding_redriver.rb:114`, which becomes the `UNION ALL` above), `Rakefile:43-56`,
   `lib/sfl/store/pg_embedding_store.rb:73-85`, `db/migrations/008_add_embedding_status_to_clauses.rb`.
 
 **Definition of done**: `spec/store/embedding_redriver_spec.rb` extended for the mixed-generation
-case and the interrupted-run case; rake task smoke-tested against the test database.
+case (a clause with a 768 row and an active 1024 spec), the stale-row-preserved case, the
+interrupted-run case, and an assertion that the convergence union covers every entry in `TABLE_FOR`;
+rake task smoke-tested against the test database.
 
 ---
 
@@ -1128,8 +1175,8 @@ source directly, and the column says so rather than implying a query that did no
 
 | # | Risk | Impact | Mitigation / story |
 |---|---|---|---|
-| R1 | **HNSW index build cost.** `db/migrations/004_create_embeddings.rb:29` builds an HNSW index with `m`/`ef_construction` at pgvector defaults (documented at `:16-17`). Adding a second `embedding_1024` column means a second HNSW index; both are rebuilt on a full re-embed, and HNSW build is O(n log n) with a large constant. | A corpus-wide model swap could lock the table for a long window. | SFL-EMB-04 must create the new index `CONCURRENTLY` where the migration framework allows it, and SFL-EMB-11 must re-drive per document, not in one transaction. **Not yet measured** — no corpus-size figure exists in the repo. |
-| R2 | **Dimension mismatch on model swap.** Currently fatal (`lib/sfl/store/pg_embedding_store.rb:99-106`, root cause at `:39-48`). | Write failure mid-pipeline. | Handled in SFL-EMB-04 (spec-carried dimensions, provisioned-column check, spec-scoped unique index). |
+| R1 | **HNSW index build cost.** `db/migrations/004_create_embeddings.rb:29` builds an HNSW index with `m`/`ef_construction` at pgvector defaults (documented at `:16-17`). Adding `embeddings_1024` means a second HNSW index, and HNSW build is O(n log n) with a large constant. | A corpus-wide model swap could lock a table for a long window. | **Reduced by the sibling-table layout** (open question 1): the two indexes are on two relations, so populating the new width never rebuilds the 768 index and a swap locks only the table being filled — under the column layout both indexes sat on one table and shared its lock. What remains: SFL-EMB-04 creates the new index `CONCURRENTLY` where the migration framework allows it, and SFL-EMB-11 re-drives per document rather than in one transaction. **Not yet measured** — no corpus-size figure exists in the repo. |
+| R2 | **Dimension mismatch on model swap.** Currently fatal (`lib/sfl/store/pg_embedding_store.rb:99-106`, root cause at `:39-48`). | Write failure mid-pipeline. | Handled in SFL-EMB-04, and the sibling-table layout makes it **structural rather than checked**: a spec's vectors can only be written to the table of their own width, so the mismatch has no way to occur. The provisioned-width check moves to store construction, where it fails at boot instead of mid-write. |
 | R3 | **Stale cache after a strategy change.** | Silent quality regression — vectors from model A served for model B. | Handled in SFL-EMB-06 by putting `strategy`/`model`/`dimensions` **inside** the cache key, so invalidation is structural rather than operational. |
 | R4 | **Registry resolution failure at runtime.** | HTTP 500 or a boot that half-works. | Handled twice: `#resolve!` fails fast at boot (SFL-EMB-08) and `#resolve` returns `Failure` → HTTP 400 at request time (SFL-EMB-01, SFL-EMB-09). |
 | R5 | **Empty candidate set into a re-ranker.** BM25F's IDF is undefined on an empty corpus; a cross-encoder would still pay a model load. | Exception or wasted latency on a legitimately empty result. | Handled in SFL-EMB-02 and SFL-EMB-05 via a shared example group that every adapter must satisfy for `[]` and for a single element. |
@@ -1140,38 +1187,75 @@ source directly, and the column says so rather than implying a query that did no
 | R10 | **Prompt drift silently re-defines the corpus.** An enrichment prompt edited in Langfuse changes what every subsequently embedded chunk *means*, with no code change and no deploy. Two chunks embedded a week apart could carry incomparable context. | Vectors that are individually fine and collectively inconsistent — the hardest class of retrieval bug to see. | `prompt_version` sits inside the cache key (SFL-EMB-06) and inside the redrive comparison (SFL-EMB-11), so a prompt change is *detectable and convergeable* rather than invisible. The fallback path logs at `warn` (SFL-EMB-12) so a version divergence is never silent. Beyond detection, `embeddings.contextualized_text` (SFL-EMB-04, written by SFL-EMB-13) stores the exact string each vector was built from, so an investigation can read what a suspect vector actually contained rather than infer it. |
 | R11 | **Enrichment cost and latency are per chunk, on the ingest path.** One LLM call per leaf clause, over a corpus of unknown size (see open question 2). | Compile time and spend both scale with corpus size in a way embedding alone does not. | SFL-EMB-13 requires batching with bounded concurrency, reusing `lib/sfl/llm/annotators/batch_clause_annotator.rb`; enrichment is opt-in via `Null::Contextualizer`; and the embedding cache means a re-compile of unchanged text pays nothing. **Unquantified** until a corpus size exists. |
 | R12 | **Langfuse becomes a runtime dependency of ingest, not just of telemetry.** Today Langfuse can be entirely absent and only tracing is lost (`lib/sfl/boot.rb:215`, opt-in at `boot.rb:49`). Fetching prompts from it puts it in the compile path. | An outage upstream could stop ingest. | SFL-EMB-12 mandates the on-disk ERB fallback and commits `prompts/chunk_context.erb`, so the repository alone is sufficient to boot and compile. Langfuse is an *override*, never a requirement. |
-| R13 | **`contextualized_text` duplicates the corpus for enriched rows.** Each enriched row stores the context sentence plus a full copy of the clause text, so an enriched corpus holds clause text twice (once in `clauses`, once per embedding row), and three times if two model specs are populated. | Table growth roughly proportional to enriched-row count × mean clause length; `TOAST` absorbs it, but backups and dumps grow with it. | Accepted deliberately as the cost of auditability (the decision recorded against R10). Bounded by three facts: clause-level chunks are short; unenriched rows write `NULL`, not a copy; and the column is never selected by `PgHybridRetriever`, so the cost is storage, not query latency. **Unquantified** — no corpus-size figure exists in the repo (open question 2). If it becomes material, the column can be dropped to `context` alone (the sentence without the clause copy) at the cost of reconstructing the embedded string by concatenation. |
+| R13 | **`contextualized_text` duplicates the corpus for enriched rows.** Each enriched row stores the context sentence plus a full copy of the clause text, so an enriched corpus holds clause text twice (once in `clauses`, once per embedding row), and three times if both `embeddings_768` and `embeddings_1024` are populated for the same clause. | Table growth roughly proportional to enriched-row count × mean clause length; `TOAST` absorbs it, but backups and dumps grow with it. | Accepted deliberately as the cost of auditability (the decision recorded against R10). Bounded by three facts: clause-level chunks are short; unenriched rows write `NULL`, not a copy; and the column is never selected by `PgHybridRetriever`, so the cost is storage, not query latency — and under sibling tables it is storage on the width actually in use, since an unpopulated width is an empty table rather than a NULL column on every row. **Unquantified** — no corpus-size figure exists in the repo (open question 2). If it becomes material, the column can be dropped to `context` alone (the sentence without the clause copy) at the cost of reconstructing the embedded string by concatenation. |
 
 ### Open questions — not verifiable from the repository
 
-1. **Which second dimension to provision.** SFL-EMB-04 proposes `vector(1024)` because the existing
+Numbered as a stable ledger: a question's number is its permanent ID (other documents cross-reference
+it as "open question N"), so resolution moves an item between the two lists below rather than
+renumbering it.
+
+#### Resolved
+
+Q1. **Which second dimension to provision.** SFL-EMB-04 proposes `vector(1024)` because the existing
    comment names `mistral-embed` (1024-dim) as the model that caused the 2026-08-02 failure
-   (`lib/sfl/store/pg_embedding_store.rb:41-43`). Whether 1024 is the actual target, or whether a
-   **table-per-dimension** layout is preferred over a **column-per-dimension** layout, is a decision
-   the code does not record. Both are implementable; the story assumes columns.
-2. **Corpus size.** No row count, no benchmark output, and no sizing note exists in the tree, so R1
-   (index rebuild cost) and the `algorithms` deferral in §3 row 1 are both **unquantified**.
-3. **Is `ruby_llm` intended to return?** `lib/sfl/llm/embedder.rb:10-11` records its removal from the
-   embedding path, but `ruby_llm-mcp` / `ruby_llm-template` / `nexo_ai` remain declared
-   (`Gemfile:52-55`), so it is still resolved transitively. Whether the project intends to re-adopt
-   it directly is not recorded anywhere I could read.
-4. **Why are `bm25f`, `informers`, `algorithms`, `image_processing` declared with zero call sites?**
-   They may be speculative additions on this uncommitted Gemfile, or remnants. I could not determine
-   intent from the tree. §3 treats them on their merits.
-5. **Re-rank placement.** These stories put re-ranking **after** `Retriever#retrieve` returns
-   `RetrievalResult`s. An alternative is to push it inside `PgHybridRetriever` as a third arm. I chose
-   the former because it keeps the algorithm database-independent, but no existing code or comment
-   states a preference.
-6. **Graph index gaps.** `config.ru`, `bin/roda`, and `Gemfile` are reported `not_tracked` by
+   (`lib/sfl/store/pg_embedding_store.rb:41-43`). **Resolved: table-per-dimension**, in the sibling
+   form — one table per width (`embeddings_768`, `embeddings_1024`), identical but for the width of
+   `embedding`. **SFL-EMB-04 has been revised accordingly** (rev 2), and so have its consequences:
+   SFL-EMB-11 now owns the only cross-width query in the system, R1 and R2 are both *reduced* by the
+   layout, R13 is restated per table, and §2.1's store row and E3's goal name a table rather than a
+   column. The second width is still provisioned as 1024 on the `mistral-embed` evidence; if that is
+   the wrong target, the fix is one entry in `PgEmbeddingStore::TABLE_FOR` and one migration, not a
+   re-plan.
+
+Q3. **Why are `bm25f`, `informers`, `algorithms`, `image_processing` declared with zero call sites?**
+   `informers` is for local (in-process) embedding inference. `algorithms` supplies convenience
+   sorting/search routines used elsewhere in the pipeline. `image_processing` is for compressing
+   high-resolution source images (e.g. 4K) into a tempspace before they are sent out for analysis.
+   §3 treats them on their merits.
+
+Q5. ~~**Graph index gaps.**~~ — **REINDEX DONE AND VERIFIED (2026-09-13); THE SYMPTOM
+   PERSISTS.** `index_status` reports `status: "ready"`, **3,248 nodes / 5,564 edges**, zero
+   `parse_partial`, zero `skipped`; `check_index_coverage` reports generation `2026-09-13T07:06:06Z`,
+   `index_mode: "full"`, `recording_status: "complete"`, `generation_matches: true`. Staleness is
+   ruled out. But `search_graph` (both `query:` and `name_pattern:`) and `get_architecture` still
+   return `{}` on that fresh index, while `trace_path(function_name: "each_unit")` resolves to the
+   same **13 qualified names** as before. This is therefore a **query-surface defect, not an index
+   gap**, and no reindex was ever going to fix it — so "reindex before implementation" is discharged
+   and replaced by "treat `search_graph` and `get_architecture` as unavailable on this project; use
+   `trace_path` and direct reads", which is what this document already did. `Gemfile`, `config.ru`
+   and `bin/roda` remain `not_tracked` **by design** — not Ruby source the indexer tracks — so their
+   citations stay direct reads. Full detail in
+   [`TOPIC-MODELING-HEXAGON-USER-STORIES.md`](TOPIC-MODELING-HEXAGON-USER-STORIES.md) open question 6.
+   Original text follows.
+
+   ~~Graph index gaps.~~`config.ru`, `bin/roda`, and `Gemfile` are reported `not_tracked` by
    `check_index_coverage`, and `search_graph` / `get_architecture` returned empty on this index.
    Every citation from those files was read from source, but a reindex would be worth running before
    implementation starts so that later impact analysis is not similarly degraded.
-7. **Which prompt labels are in use.** SFL-EMB-12 assumes Langfuse's `production` label convention.
-   The actual label scheme in this Langfuse project is not knowable from the repository — only
-   `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` appear
-   (`lib/sfl/llm/tracing.rb:14-16`), and no prompt name is referenced anywhere.
-8. **Does enrichment actually improve retrieval here?** The technique is well attested generally,
+
+Q6. **Prompt labels.** Resolved: use Langfuse's default label scheme (`production`/`latest`); no
+   project-specific convention overrides it. SFL-EMB-12 proceeds as written.
+
+Q4. **Re-rank placement.** These stories put re-ranking **after** `Retriever#retrieve` returns
+   `RetrievalResult`s. An alternative is to push it inside `PgHybridRetriever` as a third arm.
+   **Resolved by the corpus owner, 2026-09-13: keep it database-independent**, explicitly to survive a
+   future backend migration or upgrade without re-deciding where re-ranking sits. The
+   post-`#retrieve` placement stands as written; `PgHybridRetriever` is not the place to add a third
+   arm.
+
+#### Still open
+
+Q2. **Corpus size.** No row count, no benchmark output, and no sizing note exists in the tree, so R1
+   (index rebuild cost) and the `algorithms` deferral in §3 row 1 are both **unquantified**. The
+   corpus owner describes it qualitatively as **large** (2026-09-13); an exact figure is still TBD and
+   the question stays open until one exists.
+
+Q7. **Does enrichment actually improve retrieval here?** The technique is well attested generally,
    but on SFL clause-level chunks — which are already short, syntactically typed, and carry their
-   own annotations — the gain is unmeasured. SFL-EMB-13 is built opt-in via `Null::Contextualizer`
-   precisely so it can be A/B'd rather than assumed; there is no evaluation harness in the tree to
-   do that with (`bench/` holds `pipeline_bench.rb`, a performance benchmark, not a retrieval-quality one).
+   own annotations — the gain is unmeasured. The corpus owner's expectation (2026-09-13): **it
+   depends on the content, like most contextual techniques** — sometimes it helps, sometimes it
+   doesn't — which is itself an argument for measuring rather than assuming either way. SFL-EMB-13 is
+   built opt-in via `Null::Contextualizer` precisely so it can be A/B'd. Method decided: set up a
+   retrieval-quality evaluation in Langfuse to measure this A/B — `bench/pipeline_bench.rb` only
+   covers performance, not retrieval quality.
