@@ -101,12 +101,15 @@ assumptions that were previously in circulation.
                                 │ HTTP (CORS allowlist)
         ┌───────────────────────┼───────────────────────┐
         │                       ▼                       │
-  ┌─────────┐  ┌──────────┐  ┌──────────────────┐       │
-  │   CLI   │  │   TUI    │  │  Roda HTTP API   │  driving adapters
-  │sfl-     │  │sfl-tui   │  │  app/routes/*    │       │
-  │analyze  │  │          │  │                  │       │
-  └────┬────┘  └────┬─────┘  └────────┬─────────┘       │
-       └────────────┴─────────────────┘                 │
+  ┌─────────────────────────────────┐                │
+  │           sfl-engine              │                │
+  │  (unified executable w/ subcmds) │                │
+  │                                 │                │
+  │  ┌──────────┐ ┌──────────┐ ┌────────┐    │                │
+  │  │ analyze │ │   tui   │ │  api   │    │                │
+  │  │ (CLI)   │ │          │ │(daemon)│    │                │
+  │  └──────────┘ └──────────┘ └────────┘    │  driving adapters │
+  └─────────────────────────────────┘                │
                     │                                   │
        ┌────────────▼─────────────────────────┐         │
        │   Providers::Engine (composition)    │         │
@@ -185,17 +188,20 @@ hard constraint, and it is already structurally protected:
 through SCC, the change is wrong — read as "reachable only through CLI/TUI/HTTP in general,"
 not coupled to any single frontend, including SCC.
 
-### 4.1 The fourth mode — a decision to make
+### 4.1 The fourth mode — accepted decision
+
+**DECISION:** Retire `exe/sfl-review` and unify all modes under `sfl-engine` subcommands.
 
 `exe/sfl-review` is a Glimmer DSL desktop GUI for the ingestion review queue
 (track `track-review-queue-gui-1ia6caw`). Its job is the same job SCC's `/review` surface will
 do, better and in the browser. Maintaining both is duplicated effort on the least-differentiated
 surface in the suite.
 
-**Recommendation:** once SCC's review surface reaches parity against `POST /clauses/:id/review`
-and `POST /review-queue/:id/decide`, retire `exe/sfl-review` rather than maintain two review
-clients. This is flagged as a recommendation, not an accepted decision — it removes shipped
-functionality and deserves an explicit call.
+**Accepted resolution, 2026-09-13:**
+- `exe/sfl-review` is **deprecated immediately** and will be **retired** once SCC's review surface reaches parity against `POST /clauses/:id/review` and `POST /review-queue/:id/decide`.
+- All four existing binstubs (`sfl-analyze`, `sfl-tui`, `sfl-api`, `sfl-review`) are **consolidated into a unified `sfl-engine` executable** with subcommands (`analyze`, `tui`, `api`, `gui`).
+- The `gui` subcommand is **temporary** and will be removed alongside `exe/sfl-review` when SCC parity is achieved.
+- The unified CLI design is specified in [`docs/refactor/CLI-HEXAGON-USER-STORIES.md`](refactor/CLI-HEXAGON-USER-STORIES.md).
 
 ---
 
@@ -427,6 +433,7 @@ engine is genuinely open, and it interacts with the provider-ingestion relocatio
 | Where | What |
 |---|---|
 | `docs/dockerization-strategy.md` | Compose-era topology and its blocker analysis — still accurate; this doc changes the deployment target, not the blockers |
+| `docs/refactor/CLI-HEXAGON-USER-STORIES.md` | `SFL-CLI-*`, unified entry point with subcommands, replacing separate binstubs |
 | `docs/refactor/EMBEDDING-HEXAGON-USER-STORIES.md` | `SFL-EMB-*`, authoritative over the rendered `.html` |
 | `docs/refactor/INGEST-PARSER-HEXAGON-USER-STORIES.md` | `SFL-ING-*`, including the `POST /ingest` contract (SFL-ING-13) and `TargetResolver` (SFL-ING-19) |
 | `docs/refactor/TOPIC-MODELING-HEXAGON-USER-STORIES.md` | `SFL-TOP-*`, BERTopic migration |
@@ -436,5 +443,6 @@ engine is genuinely open, and it interacts with the provider-ingestion relocatio
 | SCC `ROADMAP.md` | Phase 2 already frames sfl-engine as the backend |
 | sfl-engine `track-ecosystem-architecture-engine-visual-driver-1odobii` | This doc's durable record on the sfl-engine side, including "SCC is a pluggable frontend, not the frontend" |
 | SCC `track-ecosystem-architecture-engine-visual-driver-147ixsh` | This doc's durable record on the SCC side, including the §9.1/§9.2 resolutions |
+| sfl-engine `track-cli-hexagon-unified-entry-point` | Unified `sfl-engine` executable with subcommands (SFL-CLI-*) |
 | SCC `track-local-session-intelligence-search-retrieval-back-0qlgvlv` | Retired 2026-09-13 (§9.1) |
 | SCC `track-local-session-intelligence-analysis-insights-eng-1bg9glv` | Relocated server-side 2026-09-13 (§9.1) |
