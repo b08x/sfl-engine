@@ -24,7 +24,7 @@ image (see "Running it via Docker" below).
 
 Requires `python3` with `spacy` installed and a model downloaded:
 
-```
+```shell
 pip install spacy
 python3 -m spacy download en_core_web_sm
 ```
@@ -34,7 +34,7 @@ python3 -m spacy download en_core_web_sm
 
 ## Running it via Docker
 
-```
+```shell
 docker build -t sfl-spacy-sidecar sidecar/
 ```
 
