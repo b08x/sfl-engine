@@ -10,8 +10,9 @@ This document addresses the [Plannotator feedback](https://github.com/b08x/sfl-e
 
 **Companion documents**:
 - [`ecosystem-architecture.md`](../ecosystem-architecture.md) — the cross-repo target-state frame this refactor implements.
-- [`EMBEDDING-HEXAGON-USER-STORIES.md`](EMBEDDING-HEXAGON-USER-STORIES.md) — the `Core::Registry` pattern reused here for subcommand dispatch.
 - [`INGEST-PARSER-HEXAGON-USER-STORIES.md`](INGEST-PARSER-HEXAGON-USER-STORIES.md) — the `TargetResolver` pattern reused here for input resolution.
+
+**Revision Note 2**: Based on further Plannotator annotation feedback (2026-09-13), subcommand dispatch is **overhauled to use the `thor` gem** (already a Gemfile dependency alongside Roda) instead of a hand-rolled `Core::Registry`-based `EntryPoint`. `SFL::CLI::EntryPoint` is now a `Thor` subclass; each subcommand is a Thor command method. This project has no releases yet, so the deprecation-warning/phased-migration strategy in §3 is also removed — old binstubs are replaced outright, not deprecated with a warning period.
 
 **Evidence policy**: every `path:line` below was read from the working tree on 2026-09-13. Anything the architecture needs that is not in the tree is labelled **does not exist yet**.
 
@@ -21,23 +22,21 @@ This document addresses the [Plannotator feedback](https://github.com/b08x/sfl-e
 
 ### 1.1 What already exists
 
-Four separate entry points exist today, each with its own boot sequence and its own way of reaching `Providers::Engine`:
+Separate entry points exist today, each with its own boot sequence and its own way of reaching `Providers::Engine`:
 
 | Entry point | File | Boot path | Mode | Purpose |
 |---|---|---|---|---|
-| `sfl-analyze` | `exe/sfl-analyze` | `lib/sfl.rb` → `SFL::CLI.run(ARGV)` | CLI | Ingest, analyze, synthesize, retrieve |
 | `sfl-tui` | `exe/sfl-tui` | `lib/sfl.rb` → `SFL::TUI::App.build` → `SFL::TUI::App.run` | TUI | Interactive terminal UI |
 | `sfl-api` | `exe/sfl-api` | `lib/sfl.rb` → `exec falcon serve -c config.ru` → Roda | Daemon | HTTP API server (Falcon → Roda) |
 | `sfl-review` | `exe/sfl-review` | `lib/sfl.rb` → `lib/sfl/gui/review_queue_app.rb` → `SFL::GUI::ReviewQueueApp.new.launch` | GUI | Desktop review queue (Glimmer DSL) |
 
 **Shared composition root**: `Providers::Engine` (`app/config/providers/engine.rb:7-12`) wraps `SFL::API::Context.build` (`lib/sfl/api/context.rb:56`), which is consumed by:
-- `SFL::CLI` — `exe/sfl-analyze:17`
 - Roda routes — `app/sfl.rb:42` via `def ctx = Providers::Engine.get`
 - `SFL::TUI::App.build` — `lib/sfl/tui/app.rb:??` *(to be verified)*
 - `SFL::GUI::ReviewQueueApp` — `lib/sfl/gui/review_queue_app.rb:??` *(to be verified)*
 
 **Current binstub pattern**: Each `exe/sfl-*` file:
-1. Expands `lib/` onto `$LOAD_PATH` (`exe/sfl-analyze:6-7`, same pattern in all four)
+1. Expands `lib/` onto `$LOAD_PATH` (same pattern across all current binstubs)
 2. Requires `lib/sfl.rb` (the Zeitwerk loader)
 3. Calls `SFL::DockerServices.ensure_running!` (where present)
 4. Delegates to a mode-specific runner
@@ -47,11 +46,12 @@ Four separate entry points exist today, each with its own boot sequence and its 
 ### 1.2 What is missing
 
 1. **No unified entry point.** There is no `sfl-engine` command that dispatches to subcommands. The four binstubs are **peer executables**, not modes of one program.
-2. **No subcommand registry.** There is no `Core::Registry`-style lookup for subcommands. Dispatch is hardcoded in shell scripts, not in Ruby.
+2. **No Thor-based subcommand dispatch.** There is no `Thor` subclass mapping subcommand names to command implementations. Dispatch is hardcoded in shell scripts, not in Ruby.
 3. **No shared boot for modes.** Each entry point re-implements its own boot logic (load path setup, Docker check, tracing setup).
 4. **No mode flags.** There is no `--tui` or `--gui` flag to switch interfaces within a subcommand.
 5. **No mode-interface unification.** The CLI, TUI, and GUI do not share a common parameter schema; adding `--tui` to a CLI command does not present the same options in an interactive form.
 6. **`exe/sfl-review` overlap with SCC.** Per [`ecosystem-architecture.md` §4.1](../ecosystem-architecture.md#41-the-fourth-mode--a-decision-to-make), once SCC's review surface reaches parity, `exe/sfl-review` should be retired. This refactor implements that retirement by **not** shipping a `gui` mode flag for the `review` subcommand in the first phase.
+7. **No db-maintenance rake tasks.** There is no `rake` task for pruning stale entries, running migrations, or other routine database upkeep — this maintenance is currently manual or ad hoc.
 
 ---
 
@@ -59,42 +59,42 @@ Four separate entry points exist today, each with its own boot sequence and its 
 
 ### 2.1 Ports and adapters
 
-The CLI refactor introduces **one new driving adapter port** for subcommand dispatch and **mode handlers** that switch between CLI, TUI, and GUI interfaces based on flags:
+The CLI refactor introduces **one new driving adapter port** for subcommand dispatch, implemented as a **`Thor` subclass**, and **mode handlers** that switch between CLI, TUI, and GUI interfaces based on flags:
 
 | Port | Responsibility | Driven / driving | Concrete implementations | Status |
 |---|---|---|---|---|
-| `SFL::Core::Ports::EntryPoint` | Execute a subcommand with argv and mode flags | **driving** | `SFL::CLI::EntryPoint` (dispatch), `SFL::CLI::ModeHandlers::TuiHandler`, `SFL::CLI::ModeHandlers::GuiHandler` | **does not exist yet** |
+| `SFL::Core::Ports::EntryPoint` | Execute a subcommand with argv and mode flags | **driving** | `SFL::CLI::EntryPoint` (a `Thor` subclass), `SFL::CLI::ModeHandlers::TuiHandler`, `SFL::CLI::ModeHandlers::GuiHandler` | **does not exist yet** |
 
-**Composition change**: `Providers::Engine` remains the **single composition root** for the *domain*. The new `EntryPoint` port dispatches to subcommand implementations, and **mode handlers** activate when `--tui` or `--gui` flags are present, wrapping the subcommand's CLI logic with an interactive interface.
+**Composition change**: `Providers::Engine` remains the **single composition root** for the *domain*. `SFL::CLI::EntryPoint < Thor` dispatches to subcommand implementations via Thor's own command methods, and **mode handlers** activate when `--tui` or `--gui` flags are present, wrapping the subcommand's CLI logic with an interactive interface. `thor` is already a Gemfile dependency (used alongside Roda), so no new gem is introduced.
 
 **New module layout**:
 ```
 lib/sfl/cli/
-├── entry_point.rb              # NEW: the subcommand registry and dispatch
+├── entry_point.rb              # NEW: SFL::CLI::EntryPoint < Thor — subcommand dispatch
+├── dispatch.rb                 # NEW: shared --tui/--gui mode detection used by every Thor command method
 ├── mode_handlers/
 │   ├── tui_handler.rb         # NEW: launches TUI for a subcommand, pre-populating from CLI args
 │   ├── gui_handler.rb         # NEW: launches GUI for a subcommand (DEPRECATED per §4.1)
 │   └── base_handler.rb        # NEW: shared interface for mode handlers
 ├── commands/
-│   ├── ingest_command.rb      # NEW: handles `sfl-engine ingest` with --tui/--gui support
-│   ├── analyze_command.rb     # NEW: handles `sfl-engine analyze` with --tui/--gui support
-│   ├── context_command.rb     # NEW: handles `sfl-engine context` with --tui/--gui support
+│   ├── ingest_command.rb      # NEW: handles `sfl-engine ingest` (full pipeline incl. embeddings) with --tui/--gui support
+│   ├── query_command.rb       # NEW: handles `sfl-engine query` (retrieve, fine-grained flags/args) with --tui/--gui support
 │   └── ...
 └── cli.rb                       # EXISTING: logic extracted into command classes
 
 exec/
-├── sfl-analyze                # DEPRECATED: replaced by `sfl-engine analyze`
-├── sfl-tui                   # DEPRECATED: replaced by `sfl-engine analyze --tui`
-├── sfl-api                   # DEPRECATED: replaced by `sfl-engine api` (special case)
-├── sfl-review                 # DEPRECATED: replaced by `sfl-engine review --gui` (then retired per §4.1)
+├── sfl-analyze                # REPLACED by `sfl-engine ingest`
+├── sfl-tui                   # REPLACED by `sfl-engine ingest --tui`
+├── sfl-api                   # REPLACED by `sfl-engine api` (special case)
+├── sfl-review                 # REPLACED by `sfl-engine review --gui` (then retired per §4.1)
 └── sfl-engine                 # NEW: the unified entry point
 ```
 
-**Mermaid hexagon** (driving adapter with mode handlers):
+**Mermaid hexagon** (Thor-based driving adapter with mode handlers):
 ```mermaid
 flowchart TB
   subgraph DRIVING["Driving adapter"]
-    ENTRY["EntryPoint registry<br/>NEW"]
+    ENTRY["EntryPoint (Thor)<br/>NEW"]
   end
 
   subgraph MODES["Mode handlers"]
@@ -122,15 +122,14 @@ The unified `sfl-engine` executable supports the following subcommands, each acc
 
 | Subcommand | Aliases | Purpose | Mode support |
 |---|---|---|---|
-| `analyze` (default) | `a`, `sfl-engine-analyze` | Ingest, analyze, synthesize, retrieve | CLI (default), TUI, GUI |
-| `ingest` | `i`, `sfl-engine-ingest` | Ingest documents, conversations, knowledge-bases | CLI (default), TUI |
-| `context` | `c`, `sfl-engine-context` | Query context | CLI (default), TUI |
-| `review` | `r`, `sfl-engine-review` | Review queue (DEPRECATED with GUI mode) | CLI (default), GUI |
+| `ingest` | `i`, `sfl-engine-ingest` | Full pipeline — ingest documents, conversations, knowledge-bases; generate embeddings; analyze; synthesize | CLI, TUI, GUI |
+| `query` | `q`, `sfl-engine-query` | Retrieve, with fine-grained flags/args | CLI, TUI |
+| `review` | `r`, `sfl-engine-review` | Review queue (DEPRECATED with GUI mode) | CLI, GUI |
 | `api` | `d`, `daemon`, `sfl-engine-api`, `sfl-engine-daemon` | HTTP API server (Falcon → Roda) | **CLI only** (daemon mode) |
 | `version` | `v`, `--version`, `-v` | Print version and exit | Built-in |
 | `help` | `h`, `--help`, `-h` | Print usage and exit | Built-in |
 
-**Default behavior**: With no subcommand or `-`, `sfl-engine` runs the `analyze` subcommand in **CLI mode**.
+**Default behavior (no subcommand given)**: `sfl-engine` presents an **interactive multi-select menu** listing the subcommands in the table above, so the user picks which one to run — there is no longer a single default subcommand that runs silently. The picked subcommand then runs in CLI mode unless `--tui`/`--gui` was also passed. `sfl-engine -` is equivalent to no argument and also opens the menu.
 
 **Global flags** (apply to all subcommands):
 - `--trace` / `--no-trace` — Enable/disable OpenTelemetry/Langfuse tracing (default: enabled if configured)
@@ -144,51 +143,84 @@ The unified `sfl-engine` executable supports the following subcommands, each acc
 
 **Subcommand-specific flags** are shared between CLI, TUI, and GUI modes. Each subcommand defines its parameter schema once, and all modes consume it.
 
-### 2.3 Registry pattern
+### 2.3 Thor-based dispatch
 
-`SFL::CLI::EntryPoint` reuses the `Core::Registry` pattern from [SFL-EMB-01](EMBEDDING-HEXAGON-USER-STORIES.md#sfl-emb-01--dynamic-strategy-registry) for subcommand dispatch, with **mode flag detection** before delegating to command implementations:
+`SFL::CLI::EntryPoint` is a **`Thor` subclass**. Each subcommand is a Thor command method with its own `method_option` flags (including `--tui`/`--gui`); Thor's own `commands` hash replaces a hand-rolled registry, and Thor's built-in `Thor::UndefinedCommandError`/`--help` handling replace custom `UnknownSubcommandError`/usage-printing. A small `Dispatch` module shared by every command method detects `--tui`/`--gui` and hands off to the matching mode handler:
 
 ```ruby
 # lib/sfl/cli/entry_point.rb
+require "thor"
+
 module SFL
   module CLI
-    class EntryPoint
-      SUBCOMMAND_REGISTRY = Core::Registry.new
-      MODE_HANDLERS = {
-        tui: ModeHandlers::TuiHandler,
-        gui: ModeHandlers::GuiHandler
-      }.freeze
+    class EntryPoint < Thor
+      def self.exit_on_failure? = true
 
-      def self.register(name, &factory)
-        SUBCOMMAND_REGISTRY.register(name, &factory)
+      # No subcommand given (bare `sfl-engine` or `sfl-engine -`): prompt
+      # with an interactive multi-select menu instead of running any single
+      # subcommand silently.
+      def self.start(given_args = ARGV, config = {})
+        given_args = [prompt_subcommand] if given_args.empty? || given_args == ["-"]
+        super(given_args, config)
       end
 
-      def self.resolve!(name, argv:, **kwargs)
-        SUBCOMMAND_REGISTRY.resolve!(name, argv: argv, **kwargs)
+      def self.prompt_subcommand
+        require "tty-prompt"
+        TTY::Prompt.new.select("Which sfl-engine command?", commands.keys - %w[help])
       end
 
-      # Detects --tui or --gui and delegates to mode handler
-      def self.run(subcommand_name, argv)
-        mode = detect_mode(argv)
-        command = resolve!(subcommand_name, argv: filter_mode_flags(argv), **kwargs)
-        
-        case mode
-        when :tui
-          ModeHandlers::TuiHandler.new(command, pre_populated_args: parse_cli_args(argv)).run
-        when :gui
-          ModeHandlers::GuiHandler.new(command, pre_populated_args: parse_cli_args(argv)).run
+      desc "ingest [ARGS]", "Full pipeline — ingest, embed, analyze, synthesize"
+      method_option :tui, type: :boolean, desc: "Launch interactive TUI"
+      method_option :gui, type: :boolean, desc: "Launch desktop GUI"
+      method_option :source, type: :string
+      method_option :collection, type: :string
+      method_option :store, type: :boolean
+      method_option :limit, type: :numeric
+      def ingest(*args)
+        Dispatch.run(Commands::IngestCommand.new(args, options: options), options: options)
+      end
+
+      desc "query [QUERY]", "Retrieve, with fine-grained flags/args"
+      method_option :tui, type: :boolean, desc: "Launch interactive TUI"
+      method_option :limit, type: :numeric
+      method_option :filter, type: :string
+      method_option :collection, type: :string
+      def query(*args)
+        Dispatch.run(Commands::QueryCommand.new(args, options: options), options: options)
+      end
+
+      desc "review", "Review queue (DEPRECATED with GUI mode, see §4.1)"
+      method_option :gui, type: :boolean, desc: "Launch desktop GUI"
+      method_option :limit, type: :numeric
+      def review
+        Dispatch.run(Commands::ReviewCommand.new([], options: options), options: options)
+      end
+
+      desc "api", "HTTP API server (Falcon → Roda)"
+      method_option :port, type: :numeric
+      method_option :host, type: :string
+      def api
+        Commands::ApiCommand.new([], options: options).run
+      end
+    end
+  end
+end
+```
+
+```ruby
+# lib/sfl/cli/dispatch.rb
+module SFL
+  module CLI
+    module Dispatch
+      def self.run(command, options:)
+        raise EntryPoint::ConflictingModeError, "--tui and --gui are mutually exclusive" if options[:tui] && options[:gui]
+
+        if options[:tui]
+          ModeHandlers::TuiHandler.new(command, pre_populated_args: options).run
+        elsif options[:gui]
+          ModeHandlers::GuiHandler.new(command, pre_populated_args: options).run
         else
           command.run
-        end
-      end
-
-      private_class_method def self.detect_mode(argv)
-        if argv.include?("--tui")
-          :tui
-        elsif argv.include?("--gui")
-          :gui
-        else
-          :cli
         end
       end
     end
@@ -196,54 +228,24 @@ module SFL
 end
 ```
 
-**Boot-time registration** (`lib/sfl/cli/entry_point.rb`):
-```ruby
-# Register subcommands (not modes — modes are flags)
-SFL::CLI::EntryPoint.register(:analyze) do |argv:, **kw|
-  Commands::AnalyzeCommand.new(argv, **kw)
-end
-
-SFL::CLI::EntryPoint.register(:ingest) do |argv:, **kw|
-  Commands::IngestCommand.new(argv, **kw)
-end
-
-SFL::CLI::EntryPoint.register(:context) do |argv:, **kw|
-  Commands::ContextCommand.new(argv, **kw)
-end
-
-SFL::CLI::EntryPoint.register(:api) do |argv:, **kw|
-  Commands::ApiCommand.new(argv, **kw)
-end
-
-SFL::CLI::EntryPoint.register(:review) do |argv:, **kw|
-  Commands::ReviewCommand.new(argv, **kw)
-end
-```
-
 ---
 
-## 3. Deprecation Strategy
+## 3. Replacement Strategy
+
+This project has no releases yet, so there is no deprecation window and no warn-then-delegate shim: old binstubs are **replaced outright** by `sfl-engine`, in one commit, not deprecated across phases.
 
 ### 3.1 Migration path
 
-| Old command | New command | Status |
-|---|---|---|
-| `bundle exec exe/sfl-analyze <args>` | `bundle exec exe/sfl-engine analyze <args>` | Phase 1 |
-| `bundle exec exe/sfl-tui` | `bundle exec exe/sfl-engine analyze --tui` | Phase 1 |
-| `bundle exec exe/sfl-tui <args>` | `bundle exec exe/sfl-engine <subcommand> --tui <args>` | Phase 1 |
-| `bundle exec exe/sfl-api <args>` | `bundle exec exe/sfl-engine api <args>` | Phase 1 |
-| `bundle exec exe/sfl-review` | `bundle exec exe/sfl-engine review --gui` | Phase 1, then retired |
-| `bundle exec exe/sfl-review <args>` | `bundle exec exe/sfl-engine review --gui <args>` | Phase 1, then retired |
+| Old command | New command |
+|---|---|
+| `bundle exec exe/sfl-analyze <args>` | `bundle exec exe/sfl-engine ingest <args>` |
+| `bundle exec exe/sfl-tui` | `bundle exec exe/sfl-engine ingest --tui` |
+| `bundle exec exe/sfl-tui <args>` | `bundle exec exe/sfl-engine <subcommand> --tui <args>` |
+| `bundle exec exe/sfl-api <args>` | `bundle exec exe/sfl-engine api <args>` |
+| `bundle exec exe/sfl-review` | `bundle exec exe/sfl-engine review --gui` (until retired, see §4.1) |
+| `bundle exec exe/sfl-review <args>` | `bundle exec exe/sfl-engine review --gui <args>` (until retired, see §4.1) |
 
-**Phase 1 gate**: All four old binstubs **emit a deprecation warning** on every invocation:
-```
-WARNING: `sfl-analyze` is deprecated. Use `sfl-engine analyze` instead.
-        For TUI mode: use `sfl-engine analyze --tui`
-        See: https://github.com/b08x/sfl-engine/blob/main/docs/refactor/CLI-HEXAGON-USER-STORIES.md
-        This command will be removed in a future release.
-```
-
-**Phase 2 gate**: The old binstubs are **deleted**. Only `sfl-engine` remains.
+`exe/sfl-analyze`, `exe/sfl-tui`, and `exe/sfl-api` are **deleted** the moment `exe/sfl-engine` ships (SFL-CLI-08/09). `exe/sfl-review` is deleted separately, once SCC review parity is reached (SFL-CLI-11).
 
 ### 3.2 Aliases
 
@@ -251,15 +253,15 @@ WARNING: `sfl-analyze` is deprecated. Use `sfl-engine analyze` instead.
 ```bash
 # ~/.bashrc or ~/.zshrc
 alias sfl=sfl-engine
-alias sfl-analyze='sfl-engine analyze'
-alias sfl-tui='sfl-engine analyze --tui'
+alias sfl-analyze='sfl-engine ingest'
+alias sfl-tui='sfl-engine ingest --tui'
 alias sfl-api='sfl-engine api'
 ```
 
-**Symlink aliases** (shipped in the repo for backward compatibility during Phase 1):
+**Symlink aliases** (shipped in the repo purely for scripting convenience — not a compatibility shim):
 ```bash
 # In the repo root, created by `bin/roda g aliases` or manually:
-ln -sf exe/sfl-engine exe/sfl-engine-analyze
+ln -sf exe/sfl-engine exe/sfl-engine-ingest
 ln -sf exe/sfl-engine exe/sfl-engine-tui
 ln -sf exe/sfl-engine exe/sfl-engine-api
 ```
@@ -268,7 +270,7 @@ These symlinks:
 1. Point to `exe/sfl-engine`
 2. Are **not** committed to git (`.gitignore` entry)
 3. Are created by a Rake task or `bin/roda` generator for local development
-4. Note: `sfl-engine-tui` symlink maps to the `--tui` mode flag, not a separate subcommand
+4. Note: `sfl-engine-tui` symlink maps to the `--tui` mode flag on `ingest`, not a separate subcommand
 
 ---
 
@@ -276,12 +278,13 @@ These symlinks:
 
 | Epic | Goal (one line) |
 |---|---|
-| **E1 — EntryPoint registry** | Introduce `SFL::CLI::EntryPoint` as a `Core::Registry` for subcommand dispatch with mode flag detection (`--tui`, `--gui`). |
+| **E1 — EntryPoint dispatch** | Introduce `SFL::CLI::EntryPoint < Thor` for subcommand dispatch with mode flag detection (`--tui`, `--gui`), and an interactive multi-select menu when no subcommand is given. |
 | **E2 — Mode handlers** | Implement `TuiHandler` and `GuiHandler` that wrap command classes with interactive interfaces, sharing the same parameter schema. |
-| **E3 — Subcommand implementations** | Extract `IngestCommand`, `AnalyzeCommand`, `ContextCommand`, `ApiCommand`, `ReviewCommand` from existing binstubs, each supporting mode flags. |
+| **E3 — Subcommand implementations** | Extract `IngestCommand` (full pipeline, replaces the retired `analyze` subcommand), `QueryCommand` (retrieve, renamed from `ContextCommand`), `ApiCommand`, `ReviewCommand` from existing binstubs, each supporting mode flags. |
 | **E4 — Unified entry point** | Ship `exe/sfl-engine` that reads argv[0] as subcommand, detects mode flags, dispatches via `EntryPoint`, and delegates to command + mode handler. |
-| **E5 — Deprecation warnings** | Make the four old binstubs warn and delegate to `sfl-engine <subcommand> [--tui|--gui]`. |
+| **E5 — Old binstub removal** | Delete `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api` outright once `exe/sfl-engine` ships — no deprecation warnings or delegation shims (this project has no releases yet). |
 | **E6 — GUI retirement** | Retire `exe/sfl-review` and the `--gui` mode flag once SCC review parity is achieved (per ecosystem-architecture §4.1). |
+| **E7 — DB maintenance rake tasks** | Add `rake` tasks for routine database upkeep (pruning stale entries, running migrations). |
 
 ---
 
@@ -290,45 +293,45 @@ These symlinks:
 Conventions every story inherits:
 - Zeitwerk-compatible file layout under `lib/sfl/cli/` with no new inflections needed.
 - `Dry::Monads` `Result` returns for anything that can fail at request time.
-- No new gem added to the Gemfile by a story that is not marked **adopt** in a gem disposition table (none needed here).
+- `thor` is already a Gemfile dependency (used alongside Roda) — `SFL::CLI::EntryPoint` adopts it for subcommand dispatch; no new gem added to the Gemfile by any story here.
 - RuboCop clean under the project's existing config.
 - Existing test patterns preserved: `spec/cli/` mirrors `lib/sfl/cli/`.
 - **Mode flag precedence**: CLI-provided arguments always take precedence over interactive input. Mode handlers pre-populate forms with CLI values.
 
 ---
 
-### SFL-CLI-01 — EntryPoint registry with subcommand dispatch and mode flag detection
+### SFL-CLI-01 — Thor-based EntryPoint with subcommand dispatch and mode flag detection
 
 **Points**: 5 · **Depends on**: none · **Epic**: E1
 
 > **As a** platform engineer
-> **I want** a registry that maps subcommand names to command factories with mode flag detection (`--tui`, `--gui`)
-> **so that** subcommands can seamlessly switch between CLI, TUI, and GUI interfaces using the same parameter schema.
+> **I want** `SFL::CLI::EntryPoint < Thor` with per-command mode flag detection (`--tui`, `--gui`)
+> **so that** subcommands can seamlessly switch between CLI, TUI, and GUI interfaces using the same parameter schema, without hand-rolling a registry Thor already gives us for free.
 
 **Acceptance criteria**
 
-- **Given** `SFL::CLI::EntryPoint::SUBCOMMAND_REGISTRY`, **when** I call `EntryPoint.register(:analyze) { |argv:, **kw| Commands::AnalyzeCommand.new(argv, **kw) }`, **then** `#names` returns `[:analyze]` and `resolve!(:analyze, argv: ["conversation", "input.jsonl"])` returns a `Commands::AnalyzeCommand` instance.
-- **Given** a registry with `:analyze`, `:ingest`, `:context`, `:api`, **when** I call `resolve!(:unknown)`, **then** it raises `SFL::CLI::EntryPoint::UnknownSubcommandError` whose message lists every registered name and a short usage hint.
-- **Given** the same registry, **when** I call `resolve(:unknown)`, **then** it returns `Failure([:unknown_subcommand, :unknown, [:analyze, :ingest, :context, :api]])` — no exception — so a Roda route or CLI can turn it into a user-friendly message.
-- **Given** a name already registered, **when** I `register` it again, **then** it raises `SFL::CLI::EntryPoint::DuplicateSubcommandError`.
-- **Given** a registry, **when** two threads `resolve!` concurrently, **then** both succeed; registration mutates under a `Mutex` and `#names`/`#resolve!` read a frozen snapshot.
-- **Given** `EntryPoint.run(:analyze, ["--tui", "conversation", "input.jsonl"])`, **then** it detects `:tui` mode, resolves the `analyze` command, and delegates to `ModeHandlers::TuiHandler` with pre-populated args from CLI parsing.
-- **Given** `EntryPoint.run(:analyze, ["conversation", "input.jsonl"])`, **then** it defaults to `:cli` mode and calls `command.run` directly.
-- **Given** `EntryPoint.run(:analyze, ["--tui", "--gui", "input.jsonl"])`, **then** it raises `SFL::CLI::EntryPoint::ConflictingModeError` (mutually exclusive flags).
-- **Given** `lib/sfl/cli/entry_point.rb`, **when** grepped, **then** it contains **no** `require` of `sequel`, `pgvector`, `roda`, `falcon`, `glimmer`, or `ENV` (except `ENV.fetch` with defaults for CLI flags like `--quiet`).
-- **Given** `lib/sfl/cli/entry_point.rb`, **when** loaded, **then** it auto-registers the built-in subcommands (`:analyze`, `:ingest`, `:context`, `:api`, `:review`) via `EntryPoint.register` calls at the bottom of the file.
+- **Given** `SFL::CLI::EntryPoint`, **when** inspected, **then** it is a `Thor` subclass and `EntryPoint.commands.keys` includes `"ingest"`, `"query"`, `"review"`, `"api"` (Thor's own command table; no hand-rolled registry).
+- **Given** `EntryPoint.start(["ingest", "conversation", "input.jsonl"])`, **then** Thor dispatches to the `#ingest` command method, which calls `Dispatch.run` with a `Commands::IngestCommand` instance and `options[:tui]`/`options[:gui]` both falsy.
+- **Given** `EntryPoint.start(["unknown-command"])`, **then** Thor's own `Thor::UndefinedCommandError` handling prints "Could not find command \"unknown-command\"." and a usage hint — no custom `UnknownSubcommandError` needed.
+- **Given** `EntryPoint.start(["ingest", "--tui", "conversation", "input.jsonl"])`, **then** `options[:tui]` is `true` and `Dispatch.run` delegates to `ModeHandlers::TuiHandler` with `pre_populated_args: options`.
+- **Given** `EntryPoint.start(["ingest", "conversation", "input.jsonl"])` (no mode flag), **then** `Dispatch.run` calls `command.run` directly.
+- **Given** `EntryPoint.start(["ingest", "--tui", "--gui", "input.jsonl"])`, **then** `Dispatch.run` raises `SFL::CLI::EntryPoint::ConflictingModeError` (mutually exclusive flags).
+- **Given** `EntryPoint.start([])` or `EntryPoint.start(["-"])` (no subcommand given), **then** `EntryPoint.start` calls `EntryPoint.prompt_subcommand`, which presents an interactive multi-select menu (via `TTY::Prompt`) of `commands.keys - %w[help]`, and re-invokes `start` with whichever name the user selects — it does **not** silently run any single subcommand.
+- **Given** `lib/sfl/cli/entry_point.rb`, **when** grepped, **then** it contains **no** `require` of `sequel`, `pgvector`, `roda`, `falcon`, `glimmer`, or `ENV` (except `ENV.fetch` with defaults for CLI flags like `--quiet`) — `require "thor"` and, lazily inside `prompt_subcommand`, `require "tty-prompt"` are expected.
+- **Given** `lib/sfl/cli/entry_point.rb`, **when** loaded, **then** the built-in subcommands (`ingest`, `query`, `api`, `review`) are defined as Thor command methods with `desc`/`method_option` in the same file.
 
 **Integration points**
 
-- New file `lib/sfl/cli/entry_point.rb`.
+- New file `lib/sfl/cli/entry_point.rb` (`SFL::CLI::EntryPoint < Thor`).
+- New file `lib/sfl/cli/dispatch.rb` (`SFL::CLI::Dispatch.run`, shared `--tui`/`--gui` detection used by every command method).
 - New directory `lib/sfl/cli/mode_handlers/` with base handler interface.
-- Reuses `SFL::Core::Registry` from [SFL-EMB-01](EMBEDDING-HEXAGON-USER-STORIES.md#sfl-emb-01--dynamic-strategy-registry).
-- Autoloaded by the `lib/` Zeitwerk loader configured at `lib/sfl.rb:38-44`; `CLI::EntryPoint` is camel-derivable.
-- Built-in subcommands (`help`, `version`) are registered in the same file and **do not** require separate command classes.
+- Autoloaded by the `lib/` Zeitwerk loader configured at `lib/sfl.rb:38-44`; `CLI::EntryPoint` and `CLI::Dispatch` are camel-derivable.
+- `thor` is already a Gemfile dependency (used alongside Roda) — no new gem addition.
+- Built-in `help`/`version` behavior comes from Thor itself (`Thor::Base`'s default `help` command; `map %w[-v --version] => :version` with a small `version` command method for `sfl-engine --version`).
 
 **Definition of done**:
-- `spec/cli/entry_point_spec.rb` covers all criteria including the concurrency case and mode detection.
-- `bundle exec exe/sfl-engine --help` prints a usage message listing all registered subcommands.
+- `spec/cli/entry_point_spec.rb` covers all criteria including the no-args menu case and mode detection.
+- `bundle exec exe/sfl-engine help` prints Thor's usage message listing all registered subcommands.
 - `bundle exec exe/sfl-engine --version` prints the version (from `lib/sfl/version.rb` or Git).
 - RuboCop clean; no Gemfile change.
 
@@ -361,102 +364,85 @@ Conventions every story inherits:
 
 **Definition of done**:
 - `spec/cli/mode_handlers/` tests pass.
-- `bundle exec exe/sfl-engine analyze --tui` launches the TUI with the analyze form.
+- `bundle exec exe/sfl-engine ingest --tui` launches the TUI with the ingest (full pipeline) form.
 - `bundle exec exe/sfl-engine ingest --source ./docs --tui` pre-populates source and only prompts for missing fields.
 - RuboCop clean.
 
 ---
 
-### SFL-CLI-03 — IngestCommand with mode flag support
+### SFL-CLI-03 — IngestCommand as the full pipeline (retires `analyze`), with mode flag support
 
-**Points**: 5 · **Depends on**: SFL-CLI-01, SFL-CLI-02 · **Epic**: E3
+**Points**: 8 · **Depends on**: SFL-CLI-01, SFL-CLI-02 · **Epic**: E3
 
-> **As a** user ingesting content
-> **I want** `sfl-engine ingest` to accept `--tui` and `--gui` flags
-> **so that** I can use an interactive form to enter ingest parameters.
+**Retirement note**: The `analyze` subcommand is retired. `IngestCommand` absorbs its full pipeline — ingest, embedding generation, analysis, synthesis — so `sfl-engine ingest` is now the one-shot equivalent of the old `sfl-analyze`. Pure retrieval moves to `QueryCommand` (SFL-CLI-05). This story supersedes the former SFL-CLI-04 (`AnalyzeCommand`), which is removed.
+
+> **As a** user ingesting and analyzing content
+> **I want** `sfl-engine ingest` to run the full pipeline (ingest, embed, analyze, synthesize) and accept `--tui` and `--gui` flags
+> **so that** I can use an interactive form to enter pipeline parameters, with one subcommand replacing the old `analyze`/`ingest` split.
 
 **Acceptance criteria**
 
 - **Given** `SFL::CLI::Commands::IngestCommand`, **when** constructed with `argv: ["--source", "./docs", "--collection", "worknotes", "--store"]`, **then** it parses and validates the same options as the existing `sfl-analyze` ingest logic.
-- **Given** a command with parsed options, **when** `#run` is called in CLI mode, **then** it executes the ingest pipeline identically to `exe/sfl-analyze` with the same flags.
+- **Given** a command with parsed options, **when** `#run` is called in CLI mode, **then** it executes the full pipeline (ingest → embed → analyze → synthesize) identically to `exe/sfl-analyze` with the same flags.
+- **Given** `SFL::CLI::Commands::IngestCommand`, **when** constructed with `argv: ["conversation", "input.jsonl", "--store", "--limit", "10"]`, **then** it parses and validates the same options as `SFL::CLI.parse` (`lib/sfl/cli.rb:99-??`), the former entry point for `analyze`.
+- **Given** `sfl-engine ingest --help`, **then** it prints the **same** usage text as `sfl-analyze --help` today (the `USAGE` constant at `lib/sfl/cli.rb:40-93`), minus any pure-retrieve flags now owned by `QueryCommand`.
 - **Given** a command constructed with `argv: ["--tui"]`, **then** the `EntryPoint` detects `:tui` mode and delegates to `TuiHandler` with an empty `pre_populated_args` hash.
 - **Given** a command constructed with `argv: ["--source", "./docs", "--tui"]`, **then** the `EntryPoint` detects `:tui` mode and delegates to `TuiHandler` with `pre_populated_args: { source: "./docs" }`.
-- **Given** a command, **when** queried for its parameter schema, **then** it returns a list of required and optional parameters that the TUI/GUI can use to build forms.
+- **Given** a command with `argv: ["conversation", "input.jsonl", "--store"]`, **then** the command's parameter schema identifies `input_type`, `input_path`, `store`, `limit` as the configurable parameters for TUI/GUI forms.
+- **Given** an unknown flag passed to the command, **then** it raises `SFL::CLI::UsageError` with the same message format as the existing CLI.
 - **Given** `lib/sfl/cli/commands/ingest_command.rb`, **when** grepped, **then** it contains **no** TUI or GUI code — only CLI parsing and execution logic.
 
 **Integration points**
 
 - New file `lib/sfl/cli/commands/ingest_command.rb`.
-- Extracts ingest logic from existing `lib/sfl/cli.rb` (shared with `AnalyzeCommand`).
-- `spec/cli/commands/ingest_command_spec.rb` tests CLI mode execution.
+- Extracts and merges ingest logic and the former `analyze` pipeline logic from existing `lib/sfl/cli.rb`.
+- `spec/cli/commands/ingest_command_spec.rb` tests CLI mode execution, mirroring the former `spec/cli/cli_spec.rb`.
 
 **Definition of done**:
 - `spec/cli/commands/ingest_command_spec.rb` passes.
 - `bundle exec exe/sfl-engine ingest --source ./docs --collection worknotes --store` produces the same result as `bundle exec exe/sfl-analyze` with equivalent flags.
-- `bundle exec exe/sfl-engine ingest --tui` launches the TUI ingest form.
+- `bundle exec exe/sfl-engine ingest conversation input.jsonl --store` produces the same result as `bundle exec exe/sfl-analyze conversation input.jsonl --store`.
+- `bundle exec exe/sfl-engine ingest --tui` launches the TUI ingest (full pipeline) form.
 - RuboCop clean.
 
 ---
 
-### SFL-CLI-04 — AnalyzeCommand with mode flag support
+### SFL-CLI-04 — Retired: merged into SFL-CLI-03
+
+`AnalyzeCommand` and the `analyze` subcommand no longer exist. Their scope (ingest, analyze, synthesize) is folded into `IngestCommand` (SFL-CLI-03); retrieval moves to `QueryCommand` (SFL-CLI-05). This entry is kept as a placeholder so existing cross-references to `SFL-CLI-04` resolve to this note.
+
+---
+
+### SFL-CLI-05 — QueryCommand (retrieve) with fine-grained flags/args and mode flag support
 
 **Points**: 5 · **Depends on**: SFL-CLI-01, SFL-CLI-02 · **Epic**: E3
 
-> **As a** user running analysis
-> **I want** `sfl-engine analyze` to accept `--tui` and `--gui` flags
-> **so that** I can use the same command with an interactive interface.
+**Renamed/expanded from `ContextCommand`**: `query` replaces the former `context` subcommand and absorbs the retrieve step from the retired `analyze` subcommand, exposing it through fine-grained flags and positional args rather than analyze's monolithic options.
+
+> **As a** user retrieving previously ingested content
+> **I want** `sfl-engine query` to accept fine-grained retrieve flags/args plus `--tui` and `--gui`
+> **so that** I can use an interactive form to enter my query, with the same retrieve capability the old `analyze` subcommand offered.
 
 **Acceptance criteria**
 
-- **Given** `SFL::CLI::Commands::AnalyzeCommand`, **when** constructed with `argv: ["conversation", "input.jsonl", "--store", "--limit", "10"]`, **then** it parses and validates the same options as `SFL::CLI.parse` (`lib/sfl/cli.rb:99-??`).
-- **Given** a command with parsed options, **when** `#run` is called in CLI mode, **then** it delegates to the existing `SFL::CLI` execution path, producing identical output and exit code.
-- **Given** `sfl-engine analyze --help`, **then** it prints the **same** usage text as `sfl-analyze --help` today (the `USAGE` constant at `lib/sfl/cli.rb:40-93`).
-- **Given** a command with `argv: ["--tui", "conversation", "input.jsonl"]`, **then** the `EntryPoint` detects `:tui` mode and delegates to `TuiHandler` with `pre_populated_args: { input_type: "conversation", input_path: "input.jsonl" }`.
-- **Given** a command with `argv: ["conversation", "input.jsonl", "--store"]`, **then** the command's parameter schema identifies `input_type`, `input_path`, `store`, `limit` as the configurable parameters for TUI/GUI forms.
-- **Given** an unknown flag passed to the command, **then** it raises `SFL::CLI::UsageError` with the same message format as the existing CLI.
-- **Given** `lib/sfl/cli/commands/analyze_command.rb`, **when** grepped, **then** it contains **no** business logic duplication — it delegates to existing `SFL::CLI` for execution.
-
-**Integration points**
-
-- New file `lib/sfl/cli/commands/analyze_command.rb`.
-- Wraps existing `lib/sfl/cli.rb` logic without modification.
-- `spec/cli/commands/analyze_command_spec.rb` mirrors existing `spec/cli/cli_spec.rb`.
-
-**Definition of done**:
-- `spec/cli/commands/analyze_command_spec.rb` passes.
-- `bundle exec exe/sfl-engine analyze conversation input.jsonl --store` produces the same result as `bundle exec exe/sfl-analyze conversation input.jsonl --store`.
-- `bundle exec exe/sfl-engine analyze --tui` launches the TUI with analyze parameters.
-- RuboCop clean.
-
----
-
-### SFL-CLI-05 — ContextCommand with mode flag support
-
-**Points**: 3 · **Depends on**: SFL-CLI-01, SFL-CLI-02 · **Epic**: E3
-
-> **As a** user querying context
-> **I want** `sfl-engine context` to accept `--tui` and `--gui` flags
-> **so that** I can use an interactive form to enter my query.
-
-**Acceptance criteria**
-
-- **Given** `SFL::CLI::Commands::ContextCommand`, **when** constructed with `argv: ["what happened?", "--limit", "10"]`, **then** it parses and validates the same options as the existing context query logic.
-- **Given** a command with parsed options, **when** `#run` is called in CLI mode, **then** it executes the context query and prints results identically to `exe/sfl-analyze context` with the same flags.
+- **Given** `SFL::CLI::Commands::QueryCommand`, **when** constructed with `argv: ["what happened?", "--limit", "10"]`, **then** it parses and validates the same options as the existing context/retrieve query logic.
+- **Given** a command with parsed options, **when** `#run` is called in CLI mode, **then** it executes the retrieve query and prints results identically to `exe/sfl-analyze`'s retrieve step, with the same flags.
+- **Given** a command, **when** queried for its parameter schema, **then** it exposes the fine-grained retrieve flags/args (e.g. query string, `--limit`, `--filter`, `--collection`) that the old `analyze` subcommand bundled into one set of options.
 - **Given** a command with `argv: ["--tui"]`, **then** the `EntryPoint` detects `:tui` mode and delegates to `TuiHandler` which prompts for the query string and optional parameters.
 - **Given** a command with `argv: ["--limit", "10", "--tui"]`, **then** the `EntryPoint` detects `:tui` mode and delegates to `TuiHandler` with `pre_populated_args: { limit: "10" }`, prompting only for the query.
-- **Given** `sfl-engine context --help`, **then** it prints usage text for context subcommand.
-- **Given** `lib/sfl/cli/commands/context_command.rb`, **when** grepped, **then** it contains **no** TUI or GUI code — only CLI parsing and execution logic.
+- **Given** `sfl-engine query --help`, **then** it prints usage text for the query subcommand.
+- **Given** `lib/sfl/cli/commands/query_command.rb`, **when** grepped, **then** it contains **no** TUI or GUI code — only CLI parsing and execution logic.
 
 **Integration points**
 
-- New file `lib/sfl/cli/commands/context_command.rb`.
-- Extracts context query logic from existing `lib/sfl/cli.rb`.
-- `spec/cli/commands/context_command_spec.rb` tests CLI mode execution.
+- New file `lib/sfl/cli/commands/query_command.rb`.
+- Extracts context query logic from existing `lib/sfl/cli.rb`, plus the retrieve-step logic formerly in the `analyze` pipeline.
+- `spec/cli/commands/query_command_spec.rb` tests CLI mode execution.
 
 **Definition of done**:
-- `spec/cli/commands/context_command_spec.rb` passes.
-- `bundle exec exe/sfl-engine context "what happened?" --limit 10` produces the same result as `bundle exec exe/sfl-analyze context "what happened?" --limit 10`.
-- `bundle exec exe/sfl-engine context --tui` launches the TUI with a query prompt.
+- `spec/cli/commands/query_command_spec.rb` passes.
+- `bundle exec exe/sfl-engine query "what happened?" --limit 10` produces the same result as `bundle exec exe/sfl-analyze`'s retrieve step with equivalent flags.
+- `bundle exec exe/sfl-engine query --tui` launches the TUI with a query prompt.
 - RuboCop clean.
 
 ---
@@ -525,7 +511,7 @@ Conventions every story inherits:
 
 ### SFL-CLI-08 — Unified `sfl-engine` entry point
 
-**Points**: 5 · **Depends on**: SFL-CLI-01, SFL-CLI-02, SFL-CLI-03, SFL-CLI-04, SFL-CLI-05, SFL-CLI-06, SFL-CLI-07 · **Epic**: E4
+**Points**: 5 · **Depends on**: SFL-CLI-01, SFL-CLI-02, SFL-CLI-03, SFL-CLI-05, SFL-CLI-06, SFL-CLI-07 · **Epic**: E4
 
 > **As a** user
 > **I want** a single `sfl-engine` command that dispatches to subcommands with mode flag support
@@ -533,68 +519,58 @@ Conventions every story inherits:
 
 **Acceptance criteria**
 
-- **Given** `exe/sfl-engine`, **when** it is invoked with no arguments, **then** it runs the `analyze` subcommand with an empty argv (equivalent to `sfl-engine analyze` with no arguments).
-- **Given** `exe/sfl-engine analyze conversation input.jsonl`, **then** it dispatches to `AnalyzeCommand` and produces the same output as `exe/sfl-analyze conversation input.jsonl`.
-- **Given** `exe/sfl-engine analyze --tui conversation input.jsonl`, **then** it dispatches to `AnalyzeCommand`, detects `:tui` mode, and delegates to `TuiHandler` with pre-populated args.
+- **Given** `exe/sfl-engine`, **when** it is invoked with no arguments (or `-`), **then** it presents an interactive multi-select menu listing `ingest`, `query`, `review`, `api`, and dispatches to the selected subcommand with an empty argv.
+- **Given** `exe/sfl-engine ingest conversation input.jsonl`, **then** it dispatches to `IngestCommand` and produces the same output as `exe/sfl-analyze conversation input.jsonl`.
+- **Given** `exe/sfl-engine ingest --tui conversation input.jsonl`, **then** it dispatches to `IngestCommand`, detects `:tui` mode, and delegates to `TuiHandler` with pre-populated args.
 - **Given** `exe/sfl-engine ingest --source ./docs --tui`, **then** it dispatches to `IngestCommand`, detects `:tui` mode, and launches the TUI with source pre-populated.
 - **Given** `exe/sfl-engine api`, **then** it dispatches to `ApiCommand` and starts the HTTP server.
 - **Given** `exe/sfl-engine review --gui`, **then** it dispatches to `ReviewCommand`, detects `:gui` mode, and launches the GUI (with deprecation warning).
-- **Given** `exe/sfl-engine --help`, **then** it prints a usage message listing all registered subcommands, their short descriptions, and available mode flags.
+- **Given** `exe/sfl-engine help`, **then** Thor's own help output lists all registered subcommands, their short descriptions, and available mode flags (from `desc`/`method_option`).
 - **Given** `exe/sfl-engine --version`, **then** it prints the version string (e.g., `sfl-engine 0.1.0` or Git SHA).
-- **Given** `exe/sfl-engine unknown-command`, **then** it prints an error message: `Unknown subcommand: unknown-command` followed by the same usage hint as `--help`.
-- **Given** `exe/sfl-engine analyze --tui --gui`, **then** it prints an error message: `Conflicting mode flags: --tui and --gui are mutually exclusive`.
-- **Given** `exe/sfl-engine`, **when** grepped, **then** it contains **no** mode-specific logic — only subcommand dispatch via `SFL::CLI::EntryPoint.run`.
+- **Given** `exe/sfl-engine unknown-command`, **then** Thor prints `Could not find command "unknown-command".` followed by the same usage hint as `help`.
+- **Given** `exe/sfl-engine ingest --tui --gui`, **then** `Dispatch.run` raises `SFL::CLI::EntryPoint::ConflictingModeError` with message: `--tui and --gui are mutually exclusive`.
+- **Given** `exe/sfl-engine`, **when** grepped, **then** it contains **no** mode-specific logic — only `SFL::CLI::EntryPoint.start(ARGV)`.
 
 **Integration points**
 
 - New file `exe/sfl-engine` (replaces the need for `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api`, `exe/sfl-review`).
-- Loads `lib/sfl.rb` via the same load path setup as the existing binstubs (`exe/sfl-analyze:6-7`).
+- Loads `lib/sfl.rb` via the same load path setup as the existing binstubs.
 - Calls `SFL::DockerServices.ensure_running!` **before** dispatching to any subcommand (except `version` and `help`).
-- Calls `SFL::CLI::EntryPoint.run` with the subcommand name, full argv (including mode flags), and global flags.
+- Calls `SFL::CLI::EntryPoint.start(ARGV)` — Thor's own entry point, which handles the no-args menu (§2.3), mode flags via `Dispatch.run`, and subcommand lookup.
 
 **Definition of done**:
 - `spec/cli/sfl_engine_spec.rb` passes (tests the `exe/sfl-engine` script behavior with mode flags).
-- All four old binstubs continue to work with deprecation warnings (SFL-CLI-09).
+- `bundle exec exe/sfl-engine` with no arguments presents the multi-select subcommand menu and dispatches correctly on selection.
+- `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api` are deleted (SFL-CLI-09); `exe/sfl-review` remains until SFL-CLI-11.
 - RuboCop clean.
 
 ---
 
-### SFL-CLI-09 — Deprecation warnings in old binstubs
+### SFL-CLI-09 — Delete old binstubs (no deprecation shim)
 
-**Points**: 2 · **Depends on**: SFL-CLI-08 · **Epic**: E5
+**Points**: 1 · **Depends on**: SFL-CLI-08 · **Epic**: E5
+
+**No-deprecation note**: This project has no releases yet — there is no installed base to warn, so there is no warn-then-delegate phase. `exe/sfl-analyze`, `exe/sfl-tui`, and `exe/sfl-api` are deleted in the same change that ships `exe/sfl-engine`. `exe/sfl-review` is the one exception: it is kept until SFL-CLI-11 retires it, gated on SCC review parity (an unrelated, functional gate — not a deprecation window).
 
 > **As a** maintainer
-> **I want** the old binstubs to warn users to migrate to `sfl-engine <subcommand> [--tui|--gui]`
-> **so that** the deprecation is visible and actionable.
+> **I want** the old binstubs removed the moment `sfl-engine` ships
+> **so that** there is exactly one CLI entry point, with no legacy shim to maintain.
 
 **Acceptance criteria**
 
-- **Given** `exe/sfl-analyze conversation input.jsonl`, **then** it prints to stderr:
-  ```
-  WARNING: `sfl-analyze` is deprecated. Use `sfl-engine analyze` instead.
-          For TUI mode: use `sfl-engine analyze --tui`
-          See: https://github.com/b08x/sfl-engine/blob/main/docs/refactor/CLI-HEXAGON-USER-STORIES.md
-          This command will be removed in a future release.
-  ```
-  **Then** it executes `exec exe/sfl-engine analyze conversation input.jsonl` (same argv, same exit code).
-- **Given** `exe/sfl-tui`, **then** it prints the same warning (with `sfl-tui` → `sfl-engine analyze --tui`) and execs `exe/sfl-engine analyze --tui`.
-- **Given** `exe/sfl-tui <args>`, **then** it prints the same warning and execs `exe/sfl-engine analyze --tui <args>`.
-- **Given** `exe/sfl-api --port 3002`, **then** it prints the same warning (with `sfl-api` → `sfl-engine api`) and execs `exe/sfl-engine api --port 3002`.
-- **Given** `exe/sfl-review`, **then** it prints the same warning (with `sfl-review` → `sfl-engine review --gui`) **plus** the GUI-specific deprecation note:
-  ```
-  NOTE: The GUI is also deprecated per ecosystem-architecture.md §4.1 and will be removed once SCC reaches parity.
-  ```
-  Then it execs `exe/sfl-engine review --gui`.
-- **Given** the old binstubs, **when** grepped, **then** the only changes are the addition of the warning + exec, with **no** other logic modified.
+- **Given** `exe/sfl-engine` has shipped (SFL-CLI-08 done), **then** `exe/sfl-analyze`, `exe/sfl-tui`, and `exe/sfl-api` no longer exist in the repo (`ls exe/sfl-analyze` etc. fail).
+- **Given** a user runs `bundle exec exe/sfl-analyze`, **then** the shell reports "No such file or directory" — there is **no** wrapper script that warns and delegates.
+- **Given** `exe/sfl-review`, **then** it still exists and is **unmodified**; its removal is scoped to SFL-CLI-11, gated on SCC review parity.
+- **Given** the repo's git history, **when** inspected, **then** the deletion of the three binstubs and the addition of `exe/sfl-engine` land in the same commit/PR.
 
 **Integration points**
 
-- Modify `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api`, `exe/sfl-review` to prepend the warning and exec.
-- The warning is **always** printed to stderr, even if `--quiet` is set (deprecation warnings are non-suppressible).
+- Delete `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api`.
+- Leave `exe/sfl-review` untouched (handled by SFL-CLI-11).
+- Update any README/AGENTS.md usage examples that still invoke the deleted binstubs directly.
 
 **Definition of done**:
-- Manual verification that all four old binstubs print the warning and delegate correctly.
-- `spec/cli/legacy_binstub_spec.rb` (optional) verifies the warning message and exec behavior.
+- `git status`/`ls exe/` confirms only `exe/sfl-engine`, `exe/sfl-review`, and the symlink aliases (SFL-CLI-10) remain.
 - RuboCop clean.
 
 ---
@@ -604,13 +580,13 @@ Conventions every story inherits:
 **Points**: 1 · **Depends on**: SFL-CLI-08 · **Epic**: E4
 
 > **As a** scripter
-> **I want** `sfl-engine-analyze`, `sfl-engine-tui`, etc. to work as symlinks to `sfl-engine`
+> **I want** `sfl-engine-ingest`, `sfl-engine-tui`, etc. to work as symlinks to `sfl-engine`
 > **so that** I can use either form in scripts.
 
 **Acceptance criteria**
 
-- **Given** a symlink `exe/sfl-engine-analyze` → `exe/sfl-engine`, **when** I run `bundle exec exe/sfl-engine-analyze conversation input.jsonl`, **then** it behaves identically to `bundle exec exe/sfl-engine analyze conversation input.jsonl`.
-- **Given** a symlink `exe/sfl-engine-tui` → `exe/sfl-engine`, **when** I run `bundle exec exe/sfl-engine-tui`, **then** it behaves identically to `bundle exec exe/sfl-engine analyze --tui`.
+- **Given** a symlink `exe/sfl-engine-ingest` → `exe/sfl-engine`, **when** I run `bundle exec exe/sfl-engine-ingest conversation input.jsonl`, **then** it behaves identically to `bundle exec exe/sfl-engine ingest conversation input.jsonl`.
+- **Given** a symlink `exe/sfl-engine-tui` → `exe/sfl-engine`, **when** I run `bundle exec exe/sfl-engine-tui`, **then** it behaves identically to `bundle exec exe/sfl-engine ingest --tui`.
 - **Given** symlinks for `sfl-engine-api`, **then** they behave identically to their subcommand equivalents.
 - **Given** the symlinks, **when** listed in git, **then** they are **not** tracked (added to `.gitignore`).
 
@@ -622,7 +598,7 @@ Conventions every story inherits:
 
 **Definition of done**:
 - `bundle exec rake cli:symlinks` creates all four symlinks.
-- `bundle exec exe/sfl-engine-analyze --help` works.
+- `bundle exec exe/sfl-engine-ingest --help` works.
 - `bundle exec exe/sfl-engine-tui` launches the TUI.
 
 ---
@@ -662,6 +638,34 @@ Conventions every story inherits:
 
 ---
 
+### SFL-CLI-12 — DB maintenance rake tasks
+
+**Points**: 3 · **Depends on**: none · **Epic**: E7
+
+> **As a** maintainer
+> **I want** `rake` tasks for pruning stale database entries and running migrations
+> **so that** routine database upkeep is scripted and repeatable instead of manual/ad hoc (per §1.2 item 7).
+
+**Acceptance criteria**
+
+- **Given** `rake -T`, **then** it lists a `db` namespace with at least `db:prune` (removes stale/expired entries older than a configurable retention window) and `db:migrate` (runs pending Sequel migrations).
+- **Given** `bundle exec rake db:prune`, **then** it deletes rows older than the configured retention window from the relevant tables and prints a summary count of rows removed.
+- **Given** `bundle exec rake db:prune RETENTION_DAYS=7`, **then** it uses the given retention window instead of the default.
+- **Given** `bundle exec rake db:migrate`, **then** it applies any pending Sequel migrations and is idempotent (a second run does nothing and exits 0).
+- **Given** `lib/tasks/db.rake` (or equivalent), **when** grepped, **then** each task requires only the existing Sequel/pgvector connection setup — no new gem.
+
+**Integration points**
+
+- New file `lib/tasks/db.rake` (or `Rakefile` addition) defining the `db` namespace.
+- Reuses the existing Sequel connection/config already used by the app; no new database adapter.
+
+**Definition of done**:
+- `bundle exec rake -T` shows `db:prune` and `db:migrate` with descriptions.
+- `spec/tasks/db_rake_spec.rb` (or a Rake-task test harness) covers `db:prune`'s retention-window behavior.
+- RuboCop clean.
+
+---
+
 ## 6. Open Questions
 
 ### Q1 — Should `sfl-engine` be installed as a gem with binstubs, or remain a checkout-only script?
@@ -669,7 +673,7 @@ Conventions every story inherits:
 **Current state**: `sfl-engine` is **not** a gem (no `sfl-engine.gemspec`, no `gem install sfl-engine`). It is run as `bundle exec exe/sfl-analyze` from a checkout.
 
 **Pros of gem installation**:
-- Users can `gem install sfl-engine` and run `sfl-engine analyze ...` globally.
+- Users can `gem install sfl-engine` and run `sfl-engine ingest ...` globally.
 - Symlinks/aliases become unnecessary.
 
 **Cons of gem installation**:
@@ -687,9 +691,9 @@ Conventions every story inherits:
 
 **Current design**: Mode flags only (`--tui`, `--gui`). The old `sfl-engine tui` subcommand is **not** implemented.
 
-**Alternative**: Support both `sfl-engine analyze --tui` (mode flag) and `sfl-engine tui` (legacy subcommand) for backward compatibility.
+**Alternative**: Support both `sfl-engine ingest --tui` (mode flag) and `sfl-engine tui` (legacy subcommand) for backward compatibility.
 
-**Tentative decision**: **Mode flags only.** Having both would create two paths to the same functionality, increasing maintenance burden. Users of `sfl-tui` should migrate to `sfl-engine analyze --tui`. The deprecation warnings (SFL-CLI-09) guide users to the new pattern.
+**Tentative decision**: **Mode flags only.** Having both would create two paths to the same functionality, increasing maintenance burden. Users of `sfl-tui` should migrate to `sfl-engine ingest --tui`; since the old binstubs are deleted outright (SFL-CLI-09, no deprecation period), there is no legacy `sfl-engine tui` subcommand to keep around either.
 
 **Resolution target**: Phase 1 gate.
 
@@ -712,8 +716,7 @@ Conventions every story inherits:
 | [`ecosystem-architecture.md` §3.1](../ecosystem-architecture.md#31-shape) | The target-state diagram showing SCC as a driving adapter; this doc applies the same principle with **mode flags** (`--tui`, `--gui`) for interface switching. |
 | [`ecosystem-architecture.md` §4.1](../ecosystem-architecture.md#41-the-fourth-mode--a-decision-to-make) | Explicit recommendation to retire `exe/sfl-review` — this doc implements that retirement via SFL-CLI-11 (removing `--gui` mode flag). |
 | [`ecosystem-architecture.md` §6.1](../ecosystem-architecture.md#61-integration-contract) | The HTTP API contract that `ApiCommand` exposes via Roda/Falcon. |
-| [SFL-EMB-01](EMBEDDING-HEXAGON-USER-STORIES.md#sfl-emb-01--dynamic-strategy-registry) | The `Core::Registry` pattern reused here for subcommand dispatch. |
-| [SFL-ING-19](INGEST-PARSER-HEXAGON-USER-STORIES.md) | `TargetResolver` — precedent for runtime resolution by name, which this doc mirrors for subcommands. |
+| [SFL-ING-19](INGEST-PARSER-HEXAGON-USER-STORIES.md) | `TargetResolver` — precedent for runtime resolution by name; superseded here by Thor's own command lookup, but still the model for `Commands::*` argument resolution. |
 | `track-ecosystem-architecture-engine-visual-driver-1odobii` | This doc's durable record on the sfl-engine side. |
 
 ---
@@ -723,6 +726,11 @@ Conventions every story inherits:
 | Date | Change | Author |
 |---|---|---|
 | 2026-09-13 | **Reimagined architecture based on Plannotator feedback** — Replaced adapter-per-mode design with mode-flag pattern (`--tui`, `--gui`). Adapters retired in favor of mode handlers that wrap command implementations. Subcommands now accept mode flags to switch interfaces. See Revision Note at top of document. | Plannotator annotation |
+| 2026-09-13 | **Retired the `analyze` subcommand** per Plannotator feedback on §2.2 — `ingest` becomes the full pipeline (ingest, embeddings, analyze, synthesize); `context` is renamed `query` and absorbs analyze's retrieve step with fine-grained flags/args. `AnalyzeCommand`/`ContextCommand` become `IngestCommand`/`QueryCommand`; former story SFL-CLI-04 merged into SFL-CLI-03. | Plannotator annotation |
+| 2026-09-13 | **Replaced the single default subcommand with an interactive multi-select menu** — with no subcommand given (or `-`), `sfl-engine` now prompts the user to pick from the registered subcommands instead of silently running `ingest`. No subcommand is "default" anymore; `EntryPoint.prompt_subcommand` (§2.3) implements the menu. Updated SFL-CLI-01 and SFL-CLI-08 acceptance criteria accordingly. | Plannotator annotation |
+| 2026-09-13 | **Overhauled subcommand dispatch to use `thor`** (already a Gemfile dependency alongside Roda), replacing the hand-rolled `Core::Registry`-based `EntryPoint`. `SFL::CLI::EntryPoint` is now a `Thor` subclass; each subcommand is a Thor command method; a new `SFL::CLI::Dispatch` module handles shared `--tui`/`--gui` detection. SFL-CLI-01 and §2.1/§2.3 rewritten; the `EMBEDDING-HEXAGON-USER-STORIES.md`/`SFL-EMB-01` `Core::Registry` cross-references are removed as no longer applicable. | Plannotator annotation |
+| 2026-09-13 | **Removed the deprecation-warning/phased-migration strategy** — this project has no releases yet, so there is no installed base to warn. §3 is retitled "Replacement Strategy"; `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api` are now deleted outright in the same change that ships `exe/sfl-engine` (SFL-CLI-09, rewritten from "deprecation warnings" to "delete old binstubs"), with no warn-then-delegate shim. `exe/sfl-review`'s removal is unaffected — it is still gated on SCC review parity (a functional condition, not a deprecation window). Dropped the "sfl-analyze" row from the §1.1 "what already exists" table and the standalone commentary sentences under §2.2 per direct feedback. | Plannotator annotation |
+| 2026-09-13 | **Added §1.2 item 7 and story SFL-CLI-12** for `rake` tasks covering routine database maintenance (pruning stale entries, running migrations) — a new Epic E7, independent of the CLI refactor phases. | Plannotator annotation |
 
 ---
 
@@ -731,30 +739,32 @@ Conventions every story inherits:
 | File | Verdict | Rationale |
 |---|---|---|
 | `exe/sfl-engine` | **NEW** | Unified entry point with mode flag support. |
-| `exe/sfl-analyze` | **DEPRECATED** | Delegates to `sfl-engine analyze` with warning. Removed in Phase 2. |
-| `exe/sfl-tui` | **DEPRECATED** | Delegates to `sfl-engine analyze --tui` with warning. Removed in Phase 2. |
-| `exe/sfl-api` | **DEPRECATED** | Delegates to `sfl-engine api` with warning. Removed in Phase 2. |
-| `exe/sfl-review` | **DEPRECATED** | Delegates to `sfl-engine review --gui` with warning. Removed in SFL-CLI-11. |
-| `exe/sfl-engine-*` | **NEW (symlinks)** | Symlink aliases for backward compatibility. Not committed to git. |
-| `lib/sfl/cli/entry_point.rb` | **NEW** | Subcommand registry and dispatch with mode flag detection. |
+| `exe/sfl-analyze` | **DELETED** | `analyze` subcommand retired; replaced outright by `sfl-engine ingest`. No deprecation shim (SFL-CLI-09). |
+| `exe/sfl-tui` | **DELETED** | Replaced outright by `sfl-engine ingest --tui`. No deprecation shim (SFL-CLI-09). |
+| `exe/sfl-api` | **DELETED** | Replaced outright by `sfl-engine api`. No deprecation shim (SFL-CLI-09). |
+| `exe/sfl-review` | **UNCHANGED (then DELETED)** | Superseded by `sfl-engine review --gui`; deleted separately once SCC review parity is reached (SFL-CLI-11) — a functional gate, not a deprecation window. |
+| `exe/sfl-engine-*` | **NEW (symlinks)** | Scripting-convenience symlinks. Not committed to git. |
+| `lib/sfl/cli/entry_point.rb` | **NEW** | `SFL::CLI::EntryPoint < Thor` — subcommand dispatch with mode flag detection. |
+| `lib/sfl/cli/dispatch.rb` | **NEW** | `SFL::CLI::Dispatch.run` — shared `--tui`/`--gui` detection used by every Thor command method. |
 | `lib/sfl/cli/mode_handlers/` | **NEW** | Directory containing `base_handler.rb`, `tui_handler.rb`, `gui_handler.rb`. |
-| `lib/sfl/cli/commands/` | **NEW** | Directory containing `ingest_command.rb`, `analyze_command.rb`, `context_command.rb`, `api_command.rb`, `review_command.rb`. |
+| `lib/sfl/cli/commands/` | **NEW** | Directory containing `ingest_command.rb` (full pipeline, replaces the retired `analyze_command.rb`), `query_command.rb` (renamed from `context_command.rb`), `api_command.rb`, `review_command.rb`. |
 | `lib/sfl/cli.rb` | **UNCHANGED** | Logic extracted into command classes; not modified. |
 | `lib/sfl/tui/app.rb` | **UNCHANGED** | Consumed by `TuiHandler`. |
 | `lib/sfl/gui/review_queue_app.rb` | **UNCHANGED (then orphaned)** | Consumed by `GuiHandler` until SFL-CLI-11. |
 | `config.ru` | **UNCHANGED** | Consumed by `ApiCommand`. |
 | `app/sfl.rb` | **UNCHANGED** | Consumed by `ApiCommand` via Roda. |
 | `spec/cli/entry_point_spec.rb` | **NEW** | Tests for SFL-CLI-01. |
+| `spec/cli/dispatch_spec.rb` | **NEW** | Tests for `SFL::CLI::Dispatch.run` (mode detection), part of SFL-CLI-01. |
 | `spec/cli/mode_handlers/tui_handler_spec.rb` | **NEW** | Tests for SFL-CLI-02. |
 | `spec/cli/mode_handlers/gui_handler_spec.rb` | **NEW (then DELETED)** | Tests for SFL-CLI-02. Deleted in SFL-CLI-11. |
-| `spec/cli/commands/ingest_command_spec.rb` | **NEW** | Tests for SFL-CLI-03. |
-| `spec/cli/commands/analyze_command_spec.rb` | **NEW** | Tests for SFL-CLI-04. |
-| `spec/cli/commands/context_command_spec.rb` | **NEW** | Tests for SFL-CLI-05. |
+| `spec/cli/commands/ingest_command_spec.rb` | **NEW** | Tests for SFL-CLI-03 (full pipeline, replaces the retired `analyze_command_spec.rb`). |
+| `spec/cli/commands/query_command_spec.rb` | **NEW** | Tests for SFL-CLI-05 (renamed from `context_command_spec.rb`). |
 | `spec/cli/commands/api_command_spec.rb` | **NEW** | Tests for SFL-CLI-06. |
 | `spec/cli/commands/review_command_spec.rb` | **NEW (then DELETED)** | Tests for SFL-CLI-07. Deleted in SFL-CLI-11. |
 | `spec/cli/sfl_engine_spec.rb` | **NEW** | Tests for SFL-CLI-08. |
-| `spec/cli/legacy_binstub_spec.rb` | **NEW (optional)** | Tests for SFL-CLI-09. |
 | `.gitignore` | **MODIFIED** | Add `/exe/sfl-engine-*` entry. |
+| `lib/tasks/db.rake` | **NEW** | `db:prune`/`db:migrate` rake tasks (SFL-CLI-12). |
+| `spec/tasks/db_rake_spec.rb` | **NEW** | Tests for SFL-CLI-12. |
 
 ---
 
@@ -763,9 +773,9 @@ Conventions every story inherits:
 | Phase | Gate | Stories |
 |---|---|---|
 | **Phase 0** | Doc accepted | This document + open questions resolved |
-| **Phase 1** | `sfl-engine` works end-to-end | SFL-CLI-01, SFL-CLI-02, SFL-CLI-03, SFL-CLI-04, SFL-CLI-05, SFL-CLI-06, SFL-CLI-07, SFL-CLI-08, SFL-CLI-09, SFL-CLI-10 |
-| **Phase 2** | Old binstubs removed | Delete `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api` (after deprecation period) |
-| **Phase 3** | GUI retired | SFL-CLI-11 (gated on SCC review parity) |
+| **Phase 1** | `sfl-engine` works end-to-end and old binstubs are gone | SFL-CLI-01, SFL-CLI-02, SFL-CLI-03, SFL-CLI-05, SFL-CLI-06, SFL-CLI-07, SFL-CLI-08, SFL-CLI-09 (delete `exe/sfl-analyze`, `exe/sfl-tui`, `exe/sfl-api` outright — no deprecation period), SFL-CLI-10 |
+| **Phase 2** | GUI retired | SFL-CLI-11 (gated on SCC review parity — a functional gate, unrelated to Phase 1's binstub deletion) |
+| **Independent** | DB maintenance scripted | SFL-CLI-12 (no dependency on the CLI refactor; can ship in any phase) |
 
 ---
 
@@ -776,16 +786,16 @@ Conventions every story inherits:
 
 **Test matrix** (must all pass for CLI and TUI modes):
 
-| Capability | `sfl-engine analyze` (CLI) | `sfl-engine analyze --tui` | `sfl-engine ingest --tui` | `sfl-engine api` | `sfl-engine review --gui` (until retired) |
-|---|---|---|---|---|---|
-| Ingest conversation | ✅ | ✅ | ✅ | ✅ (POST /ingest) | ❌ |
-| Ingest documentation | ✅ | ✅ | ✅ | ✅ (POST /ingest) | ❌ |
-| Ingest knowledge-base | ✅ | ✅ | ✅ | ✅ (POST /ingest) | ❌ |
-| Context query | ✅ | ✅ | ❌ | ✅ (POST /retrieve) | ❌ |
-| Review queue | ✅ (`review` subcommand) | ❌ | ❌ | ✅ (GET /review-queue) | ✅ |
-| Synthesis | ✅ (`synthesize` subcommand) | ✅ | ❌ | ✅ (POST /synthesize) | ❌ |
-| Pipeline compile | ✅ (`pipeline compile` subcommand) | ✅ | ❌ | ✅ (POST /pipeline/compile) | ❌ |
-| Topic modeling | ✅ (`--topics N` flag) | ✅ | ❌ | ❌ | ❌ |
+| Capability | `sfl-engine ingest` (CLI) | `sfl-engine ingest --tui` | `sfl-engine query` (CLI) | `sfl-engine query --tui` | `sfl-engine api` | `sfl-engine review --gui` (until retired) |
+|---|---|---|---|---|---|---|
+| Ingest conversation | ✅ | ✅ | ❌ | ❌ | ✅ (POST /ingest) | ❌ |
+| Ingest documentation | ✅ | ✅ | ❌ | ❌ | ✅ (POST /ingest) | ❌ |
+| Ingest knowledge-base | ✅ | ✅ | ❌ | ❌ | ✅ (POST /ingest) | ❌ |
+| Retrieve / context query | ❌ | ❌ | ✅ | ✅ | ✅ (POST /retrieve) | ❌ |
+| Review queue | ✅ (`review` subcommand) | ❌ | ❌ | ❌ | ✅ (GET /review-queue) | ✅ |
+| Synthesis | ✅ (part of the full pipeline) | ✅ | ❌ | ❌ | ✅ (POST /synthesize) | ❌ |
+| Pipeline compile | ✅ (`pipeline compile` subcommand) | ✅ | ❌ | ❌ | ✅ (POST /pipeline/compile) | ❌ |
+| Topic modeling | ✅ (`--topics N` flag) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 **Key**: ✅ = supported, ❌ = not applicable for that mode/subcommand.
 
