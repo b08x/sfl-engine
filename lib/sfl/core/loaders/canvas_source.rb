@@ -25,13 +25,13 @@ module SFL
       class CanvasSource
         include Source
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a .canvas JSON file
         # @param file_id [String, nil] Override the auto-derived file identifier.
         # @param skip_empty [Boolean] Drop text nodes whose content is blank/too short.
         # @param min_length [Integer] Minimum character length to emit a unit.
-        def initialize(path, file_id: nil, skip_empty: true, min_length: 40)
-          @path = path.to_s
-          @file_id = file_id || File.basename(@path, ".*")
+        def initialize(ref, file_id: nil, skip_empty: true, min_length: 40)
+          @ref = ref
+          @file_id = file_id || ref.name
           @skip_empty = skip_empty
           @min_length = min_length
         end
@@ -48,7 +48,7 @@ module SFL
         end
 
         private def text_nodes
-          canvas = JsonCanvas.parse(File.read(@path, encoding: "utf-8"))
+          canvas = JsonCanvas.parse(@ref.read)
           canvas.nodes.grep(::JsonCanvas::TextNode)
         end
 

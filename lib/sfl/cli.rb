@@ -276,7 +276,9 @@ module SFL
     # @return [String, nil] a label for the aggregated failure list when this
     #   file's report is degraded, nil when it is sound
     module_function def process_conversation_file(file, files, options, engine, boot_result)
-      source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
+      source = Analysis::ConversationSource.new(
+        Core::Refs::FileRefBuilder.call(file[:path]), source_type: file[:source_type]
+      )
       result = engine.analyze(source, label: file[:label], store: options[:store],
         resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
       output_dir = if files.size > 1
@@ -352,7 +354,7 @@ module SFL
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
       engine = build_conversation_engine(boot_result, options, stop_flag)
 
-      source = Analysis::DocumentationSource.new(input)
+      source = Analysis::DocumentationSource.new(single_ref: Core::Refs::FileRefBuilder.call(input))
       result = engine.analyze(source, label: File.basename(input.to_s, ".*"), store: options[:store],
         resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
       finish_report(result, options[:output_dir])
@@ -375,7 +377,7 @@ module SFL
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
       source = build_kb_source(boot_result, options, stop_flag)
 
-      result = source.analyze(input, store: options[:store], resume: options[:resume])
+      result = source.analyze(kb_refs(input), store: options[:store], resume: options[:resume])
 
       paths = Formatters::KBReportWriter.write(result, options[:output_dir])
       puts "\nGenerated:"
@@ -526,6 +528,24 @@ module SFL
     # dedicated vision task, and reusing the one general-purpose chat task
     # already registered is more defensible than inventing an unrelated
     # default.
+    # Build FileRefs for a knowledge_base input path — a single file or
+    # a directory of supported extensions. This is a temporary bridge until
+    # FilesystemCorpusSource (SFL-ING-17) takes over enumeration.
+    module_function def kb_refs(input)
+      path = input.to_s
+      extensions = Analysis::KnowledgeBaseSource::TEXT_EXTENSIONS +
+        (Analysis::KnowledgeBaseSource::IMAGE_EXTENSIONS || [])
+
+      if File.directory?(path)
+        Dir.glob(File.join(path, "**", "*"))
+          .select { |f| File.file?(f) && extensions.include?(File.extname(f).downcase) }
+          .sort
+          .map { |f| Core::Refs::FileRefBuilder.call(f, source_id: path) }
+      else
+        [Core::Refs::FileRefBuilder.call(path)]
+      end
+    end
+
     module_function def build_kb_source(boot_result, options, stop_flag)
       logger, instrumenter, breaker = build_collaborators
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)

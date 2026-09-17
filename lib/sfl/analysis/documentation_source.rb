@@ -32,9 +32,13 @@ module SFL
 
       MIN_CLAUSE_THRESHOLD = 30
 
-      # @param path [String] a .md/.pdf file, or a directory containing them
-      def initialize(path)
-        @path = path.to_s
+      # @param refs [Array<SFL::Core::Refs::FileRef>] refs whose content is
+      #   .md or .pdf files. The CorpusSource adapter handles directory
+      #   globbing — this class receives already-enumerated refs.
+      # @param single_ref [SFL::Core::Refs::FileRef, nil] convenience for a
+      #   single-file case; if present, wraps it in a one-element array.
+      def initialize(refs = nil, single_ref: nil)
+        @refs = single_ref ? [single_ref] : Array(refs)
         @unit_chunks = []
       end
 
@@ -42,9 +46,9 @@ module SFL
         return to_enum(:each_unit) unless block_given?
 
         @unit_chunks = []
-        files.each do |file|
-          pdf_chunk = pdf?(file)
-          loader_for(file).each_unit do |unit|
+        @refs.each do |ref|
+          pdf_chunk = pdf?(ref)
+          loader_for(ref).each_unit do |unit|
             @unit_chunks << { file_id: unit.metadata["file_id"], pdf_chunk: }
             yield unit
           end
@@ -114,15 +118,11 @@ module SFL
         }
       end
 
-      private def files
-        File.directory?(@path) ? Dir.glob(File.join(@path, "**", "*.{md,pdf}")) : [@path]
+      private def loader_for(ref)
+        pdf?(ref) ? Core::Loaders::PdfSource.new(ref) : Core::Loaders::MarkdownSource.new(ref)
       end
 
-      private def loader_for(file)
-        pdf?(file) ? Core::Loaders::PdfSource.new(file) : Core::Loaders::MarkdownSource.new(file)
-      end
-
-      private def pdf?(file) = File.extname(file).casecmp(".pdf").zero?
+      private def pdf?(ref) = ref.extension.casecmp(".pdf").zero?
 
       private def contiguous_pdf_chunk?(prev, nxt)
         prev[:pdf_chunk] && nxt[:pdf_chunk] && prev[:file_id] == nxt[:file_id]

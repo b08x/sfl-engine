@@ -89,16 +89,17 @@ module SFL
         @assessor = MigrationAssessor.new
       end
 
-      # @param path [String] a file or directory
+      # @param refs [Array<SFL::Core::Refs::FileRef>] refs to analyze
       # @param store [Boolean] persist clauses + embeddings
       # @param resume [Boolean] reuse cached Pass 2 results
       # @return [Core::Types::KnowledgeBaseReport]
       # three-step file-walk/compile/assess pipeline that builds it; every step is already its
       # own private method call, ported verbatim from legacy's own #analyze.
-      def analyze(path, store: false, resume: false)
+      def analyze(refs, store: false, resume: false)
         @resume = resume
+        refs = Array(refs)
 
-        tuples = load_all_units(path.to_s)
+        tuples = load_all_units(refs)
         total = tuples.size
 
         artifacts, skipped = compile_artifacts(tuples, total, store)
@@ -106,7 +107,7 @@ module SFL
         artifacts = backfill_migration(artifacts, manifest)
 
         Core::Types::KnowledgeBaseReport.new(
-          metadata: report_metadata(path, artifacts, tuples, store, skipped),
+          metadata: report_metadata(refs, artifacts, tuples, store, skipped),
           artifacts:,
           migration_manifest: manifest,
           content_type_distribution: type_distribution(artifacts),
@@ -140,38 +141,25 @@ module SFL
       end
       # ported verbatim from legacy's own #load_all_sections; the rescue is what makes a single
       # unreadable file (permissions, corrupt binary) non-fatal for the rest of the corpus.
-      private def load_all_units(path)
-        collect_files(path).flat_map do |file|
-          ext = File.extname(file).downcase
-          mtime = File.mtime(file)
-          loader = loader_for(file, ext)
+      private def load_all_units(refs)
+        refs.flat_map do |ref|
+          ext = ref.extension.downcase
+          loader = loader_for(ref, ext)
           next [] unless loader
 
           source_type = source_type_for(ext)
-          loader.each_unit.map { |unit| [unit, file, mtime, source_type] }
+          loader.each_unit.map { |unit| [unit, ref.path_hint || ref.name, ref.mtime, source_type] }
         rescue => e
-          warn "[WARN] KnowledgeBaseSource: skipping #{file}: #{e.message}"
+          warn "[WARN] KnowledgeBaseSource: skipping #{ref.name}: #{e.message}"
           []
         end
       end
-      private def collect_files(path)
-        extensions = TEXT_EXTENSIONS + (@analyze_images ? IMAGE_EXTENSIONS : [])
-
-        if File.directory?(path)
-          Dir.glob(File.join(path, "**", "*"))
-            .select { |f| File.file?(f) && extensions.include?(File.extname(f).downcase) }
-            .sort
-        else
-          [path]
-        end
-      end
-
-      private def loader_for(file, ext)
+      private def loader_for(ref, ext)
         case ext
-        when ".md" then Core::Loaders::MarkdownSource.new(file)
-        when ".canvas" then Core::Loaders::CanvasSource.new(file)
-        when ".pdf" then Core::Loaders::PdfSource.new(file)
-        when *IMAGE_EXTENSIONS then Core::Loaders::ImageSource.new(file, chat: @chat)
+        when ".md" then Core::Loaders::MarkdownSource.new(ref)
+        when ".canvas" then Core::Loaders::CanvasSource.new(ref)
+        when ".pdf" then Core::Loaders::PdfSource.new(ref)
+        when *IMAGE_EXTENSIONS then Core::Loaders::ImageSource.new(ref, chat: @chat)
         end
       end
 
@@ -310,9 +298,9 @@ module SFL
       end
 
       # -- one flat KnowledgeBaseReport#metadata literal.
-      private def report_metadata(path, artifacts, tuples, store, skipped)
+      private def report_metadata(refs, artifacts, tuples, store, skipped)
         {
-          source_path: path.to_s,
+          source_path: refs.map { |r| r.path_hint || r.name }.join(", "),
           analyzed_at: Time.now.iso8601,
           artifact_count: artifacts.size,
           file_count: tuples.map { |(_unit, file, _mtime, _source_type)| file }.uniq.size,

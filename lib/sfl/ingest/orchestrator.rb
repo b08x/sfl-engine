@@ -113,22 +113,23 @@ module SFL
       end
 
       private def dispatch(file, classification)
+        ref = Core::Refs::FileRefBuilder.call(file)
         case classification[:mode]
-        when "conversation" then dispatch_conversation(file, classification)
-        when "documentation" then dispatch_documentation(file)
-        when "knowledge_base" then kb_source.analyze(file)
+        when "conversation" then dispatch_conversation(ref, classification)
+        when "documentation" then dispatch_documentation(ref)
+        when "knowledge_base" then kb_source.analyze(ref)
         end
       end
 
-      private def dispatch_conversation(file, classification)
+      private def dispatch_conversation(ref, classification)
         source = Analysis::ConversationSource.new(
-          file, source_type: classification[:source_type] || classification[:format]
+          ref, source_type: classification[:source_type] || classification[:format]
         )
-        conversation_engine.analyze(source, label: label_for(file))
+        conversation_engine.analyze(source, label: ref.name)
       end
 
-      private def dispatch_documentation(file)
-        conversation_engine.analyze(Analysis::DocumentationSource.new(file), label: label_for(file))
+      private def dispatch_documentation(ref)
+        conversation_engine.analyze(Analysis::DocumentationSource.new(single_ref: ref), label: ref.name)
       end
 
       private def label_for(file) = File.basename(file, ".*")

@@ -32,18 +32,18 @@ module SFL
 
         SYNTHETIC_SPEAKER = "Speaker"
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a subtitle file
         # @param file_id [String, nil]
-        def initialize(path, file_id: nil)
-          @path = path.to_s
-          @file_id = file_id || File.basename(@path, ".*")
+        def initialize(ref, file_id: nil)
+          @ref = ref
+          @file_id = file_id || ref.name
         end
 
         def each_unit
           return to_enum(:each_unit) unless block_given?
 
           cues = parse
-          raise Loaders::Error, "No cues found in #{@path}" if cues.empty?
+          raise Loaders::Error, "No cues found in #{@ref.name}" if cues.empty?
 
           merge_into_turns(cues).each_with_index { |turn, index| yield build_unit(turn, index) }
         end
@@ -60,11 +60,11 @@ module SFL
         end
 
         private def parse
-          case File.extname(@path).downcase
+          case @ref.extension.downcase
           when ".srt" then parse_srt
           when ".vtt" then parse_vtt
           when ".ass" then parse_ass
-          else raise Loaders::Error, "Unsupported subtitle format: #{File.extname(@path)}"
+          else raise Loaders::Error, "Unsupported subtitle format: #{@ref.extension}"
           end
         end
 
@@ -73,7 +73,7 @@ module SFL
         # for one subtitle grammar; splitting the timecode-match/text-join/Cue-build steps into
         # separate methods would scatter one format's parsing across the file for no reader benefit.
         private def parse_srt
-          blocks = File.read(@path).split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
+          blocks = @ref.read.split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
 
           blocks.filter_map do |block|
             lines = block.lines.map(&:chomp)
@@ -106,7 +106,7 @@ module SFL
         # voice-tag extraction; same rationale as #parse_srt.
         # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         private def parse_vtt
-          blocks = File.read(@path).split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
+          blocks = @ref.read.split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
 
           blocks.filter_map do |block|
             lines = block.lines.map(&:chomp)
@@ -143,7 +143,7 @@ module SFL
         # per-Dialogue-line field extraction); same rationale as #parse_srt/#parse_vtt.
         # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         private def parse_ass
-          lines = File.read(@path).lines.map(&:chomp)
+          lines = @ref.read.lines.map(&:chomp)
           events_index = lines.index { |l| l.strip == "[Events]" }
           return [] if events_index.nil?
 
@@ -184,7 +184,7 @@ module SFL
         # new-turn-Hash branch are two halves of one rule (see the class doc comment on cue
         # merging), not independently extractable steps.
         private def merge_into_turns(cues)
-          base_time = File.mtime(@path)
+          base_time = @ref.mtime || Time.now
           turns = []
 
           cues.each do |cue|

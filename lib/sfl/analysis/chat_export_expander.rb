@@ -70,9 +70,10 @@ module SFL
       end
 
       module_function def loader_for(format, path)
+        ref = Core::Refs::FileRefBuilder.call(path)
         case format
-        when :chatgpt then [Core::Loaders::ChatgptExportSource.new(path), "chat_chatgpt"]
-        when :claude then [Core::Loaders::ClaudeExportSource.new(path), "chat_claude"]
+        when :chatgpt then [Core::Loaders::ChatgptExportSource.new(ref), "chat_chatgpt"]
+        when :claude then [Core::Loaders::ClaudeExportSource.new(ref), "chat_claude"]
         else raise ArgumentError, "unknown format #{format.inspect}"
         end
       end

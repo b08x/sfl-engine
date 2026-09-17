@@ -73,7 +73,7 @@ RSpec.describe "Analysis::Engine conversation golden master" do
 
   let(:pipeline) { SFL::Core::Pipeline.new(pass_one:, pass_two:, ideational_extractor:) }
   let(:engine) { SFL::Analysis::Engine.new(pipeline:) }
-  let(:source) { SFL::Analysis::ConversationSource.new("spec/fixtures/inputs/sample.jsonl") }
+  let(:source) { SFL::Analysis::ConversationSource.new(SFL::Core::Refs::FileRefBuilder.call("spec/fixtures/inputs/sample.jsonl")) }
 
   it "never calls Pass 2 (proves the documentation golden-master bug's fix generalizes)" do
     allow(pass_two).to receive(:annotate_batch)

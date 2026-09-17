@@ -25,13 +25,14 @@ module SFL
         # use cases, not clause-extraction).
         DEFAULT_CHUNKING = Kreuzberg::Config::Chunking.new(max_chars: 1000, max_overlap: 0).freeze
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a PDF
         # @param file_id [String, nil] Override the auto-derived file identifier.
         # @param skip_empty [Boolean] Drop chunks whose cleaned text is blank.
         # @param min_length [Integer] Minimum character length of cleaned text to emit.
-        def initialize(path, file_id: nil, skip_empty: true, min_length: 40)
-          @path = path.to_s
-          @file_id = file_id || File.basename(@path, ".*")
+        def initialize(ref, file_id: nil, skip_empty: true, min_length: 40)
+          @ref = ref
+          @path = ref.path_hint
+          @file_id = file_id || ref.name
           @skip_empty = skip_empty
           @min_length = min_length
         end

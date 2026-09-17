@@ -8,6 +8,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
 
   let(:pipeline) { instance_double(SFL::Core::Pipeline) }
   let(:sample_path) { "spec/fixtures/inputs/sample.md" }
+  let(:sample_ref) { SFL::Core::Refs::FileRefBuilder.call(sample_path) }
 
   def clauses_for(count, id_prefix:)
     Array.new(count) { |i| build_annotated_clause(id: "#{id_prefix}#{i}", annotation_source: "llm", modality: 0.8) }
@@ -38,7 +39,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
     it "assembles a Core::Types::KnowledgeBaseReport from a markdown fixture's sections" do
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report).to be_a(SFL::Core::Types::KnowledgeBaseReport)
       expect(report.artifacts.size).to eq(3) # Introduction / Usage / Advanced Topics
@@ -48,7 +49,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
     it "assigns sequential artifact_ids starting at 1" do
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report.artifacts.map(&:artifact_id)).to eq([1, 2, 3])
     end
@@ -56,7 +57,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
     it "backfills migration_action/migration_reason from the migration_manifest onto each artifact" do
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       manifest_by_id = report.migration_manifest.to_h { |m| [m.artifact_id, m] }
       report.artifacts.each do |artifact|
@@ -68,7 +69,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
     it "computes content_type_distribution/quality_distribution/staleness_flags over the artifacts" do
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report.content_type_distribution.values.sum).to eq(report.artifacts.size)
       expect(report.quality_distribution.values.sum).to eq(report.artifacts.size)
@@ -78,7 +79,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
     it "records file_count/artifact_count/images_analyzed/store in metadata" do
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path, store: false)
+      report = source.analyze(sample_ref, store: false)
 
       expect(report.metadata[:file_count]).to eq(1)
       expect(report.metadata[:artifact_count]).to eq(3)
@@ -91,7 +92,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       allow(review_queue_repo).to receive(:enqueue)
       source = described_class.new(pipeline:, review_queue_repo:)
 
-      source.analyze(sample_path, store: false)
+      source.analyze(sample_ref, store: false)
 
       expect(review_queue_repo).not_to have_received(:enqueue)
     end
@@ -100,7 +101,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       progress_calls = []
       source = described_class.new(pipeline:, on_progress: -> (**kwargs) { progress_calls << kwargs })
 
-      source.analyze(sample_path)
+      source.analyze(sample_ref)
 
       expect(progress_calls.size).to eq(3)
       expect(progress_calls.first).to include(artifact_id: 1, total: 3, source_file: sample_path)
@@ -114,7 +115,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       }
       source = described_class.new(pipeline:, stop_requested: stop)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report.artifacts.size).to eq(1)
     end
@@ -129,7 +130,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       )
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report.artifacts.size).to eq(2)
       expect(report.metadata[:skipped_count]).to eq(1)
@@ -142,7 +143,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       allow(pipeline).to receive(:compile).and_return(Failure([:pass_one_failed, "boom"]))
       source = described_class.new(pipeline:)
 
-      report = source.analyze(sample_path)
+      report = source.analyze(sample_ref)
 
       expect(report.artifacts).to be_empty
       expect(report.metadata[:skipped_count]).to eq(3)

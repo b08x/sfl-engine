@@ -82,7 +82,7 @@ RSpec.describe SFL::Analysis::Engine do
 
     it "a real DocumentationSource over pure-markdown input never marks any clause chunk_artifact " \
       "(chunk_boundaries returns [] by construction — see documentation_source_spec.rb)" do
-      source = SFL::Analysis::DocumentationSource.new("spec/fixtures/inputs/sample.md")
+      source = SFL::Analysis::DocumentationSource.new(single_ref: SFL::Core::Refs::FileRefBuilder.call("spec/fixtures/inputs/sample.md"))
       source.units # populate the source's internal unit-tracking before the hook is queried
       turns = [
         build_turn(turn_id: 1, clauses: [build_annotated_clause(id: "c1")]),

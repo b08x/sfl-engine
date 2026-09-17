@@ -26,13 +26,14 @@ module SFL
           Write 2-5 sentences. Do not use bullet points.
         PROMPT
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose path_hint points to the image file
         # @param chat [#ask] a vision-capable RubyLLM::Chat (or compatible double)
         # @param file_id [String, nil]
-        def initialize(path, chat:, file_id: nil)
-          @path = path.to_s
+        def initialize(ref, chat:, file_id: nil)
+          @ref = ref
+          @path = ref.path_hint
           @chat = chat
-          @file_id = file_id || File.basename(@path, ".*")
+          @file_id = file_id || ref.name
         end
 
         def each_unit

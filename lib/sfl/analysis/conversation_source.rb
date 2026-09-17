@@ -21,16 +21,16 @@ module SFL
     class ConversationSource
       include Core::Loaders::Source
 
-      # @param path [String] a .jsonl conversation or .srt/.vtt/.ass transcript
+      # @param ref [SFL::Core::Refs::FileRef] a .jsonl conversation or .srt/.vtt/.ass transcript
       # @param source_type [String] provenance tag for review-queue entries —
       #   "chat_native" for the built-in {name, mes, send_date} JSONL format;
       #   pass e.g. "chat_claude"/"chat_chatgpt" for exports normalized by a
       #   chat-export loader upstream.
-      def initialize(path, source_type: "chat_native")
-        @path = path.to_s
+      def initialize(ref, source_type: "chat_native")
+        @ref = ref
         @source_type = source_type
-        @conversation_id = File.basename(@path, ".*")
-        @audio_modality = %w[.srt .vtt .ass].include?(File.extname(@path).downcase)
+        @conversation_id = ref.name
+        @audio_modality = %w[.srt .vtt .ass].include?(ref.extension.downcase)
       end
 
       attr_reader :conversation_id, :audio_modality
@@ -40,7 +40,7 @@ module SFL
         return to_enum(:each_unit) unless block_given?
 
         if @audio_modality
-          Core::Loaders::SubtitleSource.new(@path, file_id: @conversation_id).each_unit(&)
+          Core::Loaders::SubtitleSource.new(@ref, file_id: @conversation_id).each_unit(&)
         else
           raw_turns.each_with_index { |turn_data, idx| yield build_unit(turn_data, idx) }
         end
@@ -68,8 +68,8 @@ module SFL
       def extra_metadata(_turns) = {}
 
       private def raw_turns
-        raise Core::Loaders::Error, "Unsupported conversation input format: #{File.extname(@path)}" unless
-          File.extname(@path).casecmp(".jsonl").zero?
+        raise Core::Loaders::Error, "Unsupported conversation input format: #{@ref.extension}" unless
+          @ref.extension.casecmp(".jsonl").zero?
 
         load_jsonl
       end
@@ -79,13 +79,13 @@ module SFL
       # header record before the actual {name:, mes:, send_date:, ...}
       # turns, which JSON::ParserError can't catch (syntactically valid).
       private def load_jsonl
-        turns = File.readlines(@path).filter_map do |line|
+        turns = @ref.read.lines.filter_map do |line|
           turn = JSON.parse(line.strip, symbolize_names: true)
           turn if turn.is_a?(Hash) && turn[:mes]
         rescue JSON::ParserError
           nil
         end
-        raise Core::Loaders::Error, "No turns found in #{@path}" if turns.empty?
+        raise Core::Loaders::Error, "No turns found in #{@ref.name}" if turns.empty?
 
         turns
       end
