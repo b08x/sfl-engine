@@ -12,6 +12,16 @@ RSpec.shared_examples "a syntactic parser port" do
   end
 end
 
+RSpec.shared_examples "a loader" do
+  it "returns an Enumerator from #each_unit when no block is given" do
+    expect(subject.each_unit).to be_an(Enumerator)
+  end
+
+  it "returns an Array of Units from #units" do
+    expect(subject.units).to be_an(Array)
+  end
+end
+
 RSpec.shared_examples "an annotator port" do
   let(:clause) do
     SFL::Core::Types::SyntacticClause.new(
