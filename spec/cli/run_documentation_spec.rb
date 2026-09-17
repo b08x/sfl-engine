@@ -43,7 +43,9 @@ RSpec.describe SFL::CLI do
     it "drives a single DocumentationSource over the whole input (no per-file batching, unlike conversation)" do
       described_class.run_documentation("./docs", options)
 
-      expect(SFL::Analysis::DocumentationSource).to have_received(:new).with("./docs")
+      expect(SFL::Analysis::DocumentationSource).to have_received(:new).with(
+        single_ref: satisfy { |arg| arg.is_a?(SFL::Core::Refs::FileRef) && arg.path_hint == "./docs" }
+      )
       expect(engine).to have_received(:analyze).with(
         source, label: "docs", store: false, resume: false, topics: nil, pass_one_only: true
       )

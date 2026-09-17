@@ -47,19 +47,16 @@ module SFL
       # @return [Hash{dispatched:, review_entries:, drafted:}]
       def run(path)
         counts = { dispatched: 0, review_entries: 0, drafted: 0 }
-        files(path).each { |file| process(file, counts) }
+        corpus = Core::Ports::Adapters::FilesystemCorpusSource.new(path)
+        corpus.each_ref do |ref|
+          process(ref.path_hint, counts)
+        end
         logger.info { "ingest run complete: #{counts}" }
         counts
       end
 
       attr_reader :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
       private :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
-
-      private def files(path)
-        return [path] unless File.directory?(path)
-
-        Dir.glob(File.join(path, "**", "*")).select { |p| File.file?(p) }.sort
-      end
 
       # One file's failure must not take the rest of the run down with it — same F11
       # partial-failure-isolation principle SFL::CLI.run_conversation's own per-file rescue

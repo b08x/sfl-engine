@@ -119,6 +119,20 @@ RSpec.shared_examples "a cache port" do
   end
 end
 
+RSpec.shared_examples "a corpus source" do
+  it "returns an Enumerator from #each_ref when no block is given" do
+    expect(subject.each_ref).to be_an(Enumerator)
+  end
+
+  it "returns an Array of refs from #refs" do
+    expect(subject.refs).to be_an(Array)
+  end
+
+  it "returns a Hash from #stats" do
+    expect(subject.stats).to be_a(Hash)
+  end
+end
+
 RSpec.shared_examples "a breaker port" do
   it "yields the block and returns its value from #call" do
     expect(subject.call("test") { 42 }).to eq(42)

@@ -377,7 +377,7 @@ module SFL
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
       source = build_kb_source(boot_result, options, stop_flag)
 
-      result = source.analyze(kb_refs(input), store: options[:store], resume: options[:resume])
+      result = source.analyze(corpus_refs(input, options), store: options[:store], resume: options[:resume])
 
       paths = Formatters::KBReportWriter.write(result, options[:output_dir])
       puts "\nGenerated:"
@@ -528,22 +528,14 @@ module SFL
     # dedicated vision task, and reusing the one general-purpose chat task
     # already registered is more defensible than inventing an unrelated
     # default.
-    # Build FileRefs for a knowledge_base input path — a single file or
-    # a directory of supported extensions. This is a temporary bridge until
-    # FilesystemCorpusSource (SFL-ING-17) takes over enumeration.
-    module_function def kb_refs(input)
-      path = input.to_s
-      extensions = Analysis::KnowledgeBaseSource::TEXT_EXTENSIONS +
-        (Analysis::KnowledgeBaseSource::IMAGE_EXTENSIONS || [])
-
-      if File.directory?(path)
-        Dir.glob(File.join(path, "**", "*"))
-          .select { |f| File.file?(f) && extensions.include?(File.extname(f).downcase) }
-          .sort
-          .map { |f| Core::Refs::FileRefBuilder.call(f, source_id: path) }
-      else
-        [Core::Refs::FileRefBuilder.call(path)]
-      end
+    # Build FileRefs via FilesystemCorpusSource (SFL-ING-17). Replaces the
+    # former kb_refs helper's directory glob with the adapter's lazy walk,
+    # which centralizes dot-dir/.gitignore/image policy in one testable place.
+    module_function def corpus_refs(input, options)
+      source = Core::Ports::Adapters::FilesystemCorpusSource.new(
+        input, include_images: options[:images]
+      )
+      source.refs
     end
 
     module_function def build_kb_source(boot_result, options, stop_flag)
