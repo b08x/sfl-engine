@@ -212,6 +212,9 @@ This remains infrastructure and a research-oriented engineering artifact, not a 
 
 ## Related
 
+- [API Reference](docs/api-reference.md) — HTTP routes and wire formats
+- [Data Model](docs/data-model.md) — ERD, table reference, and migration timeline
+- [Architecture Diagrams](docs/architecture-diagrams.md) — Mermaid flowcharts and component graphs
 - [Architectural Lineage](docs/architectural-lineage.md) — the intellectual foundations
 - [SIFT System Design Assessment](docs/sift-system-design-assessment.md)
 - [GEB Lens on SFL Engine](docs/geb-lens-on-sfl-engine.md) — Hofstadter's formal systems applied to the two-pass architecture

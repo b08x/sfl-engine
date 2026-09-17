@@ -79,6 +79,40 @@ Do not use `bundle exec sfl-analyze` or `bundle exec sfl-api`: this checkout has
 - `SFL_AUTO_START_DOCKER=1` is an explicit opt-in for CLI/API Docker auto-start; otherwise start services manually.
 - Langfuse tracing can prompt when configured but unreachable; use CLI `--disable-tracing` to skip it. ENV must be set before `Dotenv.load` (Boot reads at call-time).
 
+## Documentation and Prose Conventions
+
+Source: working session 2026-09-15, author-stated intent while drafting `docs/introduction.md`.
+
+- **Do not assign mental or behavioural processes to the model in project prose.** In SFL
+  terms, *read*, *understand*, *know*, *believe*, *see*, *absorb*, and *hallucinate* each
+  require a conscious Senser. Using them is a silent ideational commitment, not a style
+  choice. Substitute material or verbal processes: *generate*, *retrieve*, *condition on*,
+  *reproduce*, *supply as input*, *carry*. Material verbs that merely imply agency are
+  fine — *fabricate* and *invent* take an ordinary Actor and a machine can be one. Check
+  new docs with `grep -nE '\b(read|reads|reading|understand|know|knows|sees|absorb)' <file>`
+  and confirm each hit has a human Senser.
+- **Rationale, so the rule is not mistaken for pedantry:** the engine's thesis is that
+  stance and process type are measurable properties of text that commit to nothing behind
+  the text. Documentation that attributes a mind to the model contradicts the thing the
+  project is built to demonstrate. Grammatical metaphor also hides factual error — "the
+  model read GEB" concealed that the input was chapter summaries, not the book.
+- **The project has two intents, and docs should reflect both.** Near-term: stance-filtered
+  retrieval as a defense against context poisoning. Longer-term: describing what a
+  generative language system literally is — a construct produced by conditioning on a
+  context window, analogous to human language production closely enough to be useful and
+  closely enough to be mistaken for identity. Treat the analogy as the object of study, not
+  as an embarrassment. Restating "hallucination" ideationally (unsupported
+  participant-process links) and interpersonally (high modality with absent grounding)
+  makes it countable; the mental-process version is not.
+- **Model-generated documentation pages open with a dated authorship note.** State: that a
+  model generated the text, which model and *when* (the date outlives the model name), what
+  the inputs actually were, and the split between model output (selection, ordering,
+  phrasing) and author's material (claims, architecture, open questions). See the
+  blockquote at the top of `docs/introduction.md`. Place it as a blockquote directly under
+  the H1 — `scripts/sync-docs.sh` in the `b08x.github.io` repo skips `>` paragraphs when
+  promoting a lede to front-matter `description`, so a blockquote note does not hijack the
+  page description.
+
 ## Existing Instruction Files
 
 `README.md` (architecture and usage), `rebuild-blueprint-with-plugin.md` (SIFT backlog), `docs/` (lineage, use cases, assessments), `ROADMAP.md`, `.rubocop.yml`, `.rspec`, `.env.example`, and `docker-compose.yml`.
