@@ -13,7 +13,7 @@ source "https://rubygems.org"
 # Core loading, typing, and application foundation (track decision 1: single app, no gemspec)
 
 # Autoloading and dependency management
-gem "zeitwerk", "~> 2.6"
+gem "zeitwerk"
 
 # Pin below 3.0: json 3.0 removed the `create_additions` keyword entirely
 # (a deliberate security-hardening breaking change), but Sequel 5.108.0's
@@ -22,8 +22,11 @@ gem "zeitwerk", "~> 2.6"
 # just doesn't exist anymore in 3.x, so every jsonb-column read raises
 # `ArgumentError: unknown keyword: create_additions`. Un-pin once Sequel
 # ships a 3.x-compatible release.
+# gem "json", "~> 2.21"
+#
+#
+# Gem::ConflictError: Unable to activate ruby_llm-2.0.0, because json-3.0.2 conflicts with json (< 3)
 gem "json", "~> 2.21"
-
 # Type system and data structures
 gem "dry-monads", "~> 1.6"
 gem "dry-struct", "~> 1.6"
@@ -42,28 +45,27 @@ gem "amatch", "~> 0.4" # Jaro-Winkler fuzzy matching for ClassificationRegistry
 # Pass 2 LLM annotation (track decision 7: reverted from ruby_llm to DSPy)
 
 # DSPy core and provider integrations
-gem "dspy", "~> 1.0"
-gem "dspy-anthropic", "~> 1.0"
-gem "dspy-o11y", "~> 1.0"
-gem "dspy-o11y-langfuse", "~> 1.0"
-gem "dspy-openai", "~> 1.0"
+gem "dspy"
+gem "dspy-anthropic"
+gem "dspy-o11y"
+gem "dspy-o11y-langfuse"
+gem "dspy-openai"
 
 # Alternative/Extended LLM tooling
-gem "nexo_ai", "~> 0.11.0"
-gem "ruby_llm-docker", "~> 0.3.0"
-gem "ruby_llm-mcp", "~> 1.0"
-gem "ruby_llm-template", "~> 0.1.6"
-
+gem "nexo_ai"
+gem "ruby_llm-docker"
+gem "ruby_llm-mcp"
+gem "ruby_llm-template"
 # =============================================================================
 # OBSERVABILITY & TRACING
 # =============================================================================
 # Tracing continuity to Langfuse via OTel (track decision 7), replacing dspy-o11y-langfuse
 
-gem "opentelemetry-exporter-otlp", "~> 0.34"
-gem "opentelemetry-sdk", "~> 1.12"
+gem "opentelemetry-exporter-otlp"
+gem "opentelemetry-sdk"
 
 # Logging
-gem "journald-logger", "~> 3.1"
+gem "journald-logger"
 
 # =============================================================================
 # SOURCE LOADERS (Phase 1)
@@ -74,17 +76,17 @@ gem "journald-logger", "~> 3.1"
 gem "csv", "~> 3.3" # no longer a default gem as of Ruby 3.4, for CsvSource
 
 # Markdown processing
-gem "inkmark", "~> 0.1" # markdown -> HTML AST, for MarkdownSource
-gem "pragmatic_tokenizer", "~> 3.2" # prose normalisation, for MarkdownSource
+gem "inkmark" # markdown -> HTML AST, for MarkdownSource
+gem "pragmatic_tokenizer" # prose normalisation, for MarkdownSource
 
 # JSON processing
-gem "yajl-ruby", "~> 1.4", require: "yajl" # JSON/JSONL parsing, for the export/JSON Sources
+gem "yajl-ruby", require: "yajl" # JSON/JSONL parsing, for the export/JSON Sources
 
 # Obsidian Canvas
-gem "json_canvas", "~> 0.1" # Obsidian .canvas node-graph parsing, for CanvasSource
+gem "json_canvas" # Obsidian .canvas node-graph parsing, for CanvasSource
 
 # PDF processing
-gem "kreuzberg", "~> 4.10" # PDF text + sentence-aware chunking, for PdfSource
+gem "kreuzberg" # PDF text + sentence-aware chunking, for PdfSource
 
 # =============================================================================
 # TOPIC MODELING & ANALYSIS (Phase 3)
@@ -95,21 +97,21 @@ gem "kreuzberg", "~> 4.10" # PDF text + sentence-aware chunking, for PdfSource
 # #topic_words/#burn_in=) matches what legacy's TopicModeler calls, verified by
 # reading the installed gem's source directly (lib/tomoto/{lda,hdp}.rb).
 
-gem "tomoto", "~> 0.6"
+gem "tomoto"
 
 # Language detection
-gem "lingua", "~> 0.6.2"
+gem "lingua"
 
 # =============================================================================
 # RETRIEVAL & SEARCH ALGORITHMS
 # =============================================================================
 
 # Vector search algorithms
-gem "bm25f", "~> 0.2.6"
-gem "tf-idf-similarity", "~> 0.3.0"
+gem "bm25f"
+gem "tf-idf-similarity"
 
 # Schema validation
-gem "schematist", "~> 1.1"
+gem "schematist"
 
 # =============================================================================
 # STORAGE (Phase 2)
@@ -121,9 +123,9 @@ gem "schematist", "~> 1.1"
 # for both sequel's foreign_key key: option and pgvector-ruby's Pgvector.encode).
 
 # Database drivers
-gem "pg", "~> 1.5"
-gem "pgvector", "~> 0.3"
-gem "sequel", "~> 5.88"
+gem "pg"
+gem "pgvector"
+gem "sequel"
 
 # =============================================================================
 # HTTP API (Phase 5)
@@ -132,11 +134,11 @@ gem "sequel", "~> 5.88"
 # falcon is the Rack server config.ru/ exe/sfl-api run under (matches legacy's choice).
 
 # Rack-based server
-gem "falcon", "~> 0.47"
-gem "rack", "~> 3.1"
+gem "falcon"
+gem "rack"
 
 # Alternative web framework
-gem "roda", "~> 3.107"
+gem "roda"
 
 # =============================================================================
 # CLI UX
@@ -146,12 +148,12 @@ gem "roda", "~> 3.107"
 # — both from the TTY toolkit (ruby-dev skill's TUI Builder gem set).
 
 # TTY toolkit
-gem "tty-progressbar", "~> 0.18"
-gem "tty-prompt", "~> 0.23"
-gem "tty-spinner", "~> 0.9"
+gem "tty-progressbar"
+gem "tty-prompt"
+gem "tty-spinner"
 
 # Alternative progress bar
-gem "informers", "~> 1.3"
+gem "informers"
 
 # =============================================================================
 # GUI (Phase 6)
@@ -161,13 +163,13 @@ gem "informers", "~> 1.3"
 # native windows.
 
 # Native GUI framework
-gem "glimmer-dsl-libui", "~> 0.13"
+gem "glimmer-dsl-libui"
 
 # fiddle dropped out of Ruby's default gems as of 4.0 (this app's pinned Ruby);
 # the `libui` gem's FFI layer requires "fiddle/import" unconditionally, so it must
 # be declared explicitly here or `require "glimmer-dsl-libui"` raises LoadError
 # under `bundle exec` (discovered running this task's spike).
-gem "fiddle", "~> 1.1"
+gem "fiddle"
 
 # =============================================================================
 # TUI (Phase 7)
@@ -185,31 +187,31 @@ gem "fiddle", "~> 1.1"
 # lipgloss/glamour ship prebuilt .so; bubbles is pure Ruby.
 
 # Elm-style MVU runtime
-gem "bubbletea", "~> 0.1.4" # Elm-style MVU runtime (Runner, Model, Message)
+gem "bubbletea" # Elm-style MVU runtime (Runner, Model, Message)
 
 # UI component libraries
-gem "bubbles", "~> 0.1.1" # List/Viewport/TextInput/Spinner sub-models
-gem "glamour", "~> 0.2.2" # markdown -> ANSI for the synthesis/detail panes
-gem "lipgloss", "~> 0.2.2" # pane styling + join_horizontal/join_vertical layout
+gem "bubbles" # List/Viewport/TextInput/Spinner sub-models
+gem "glamour" # markdown -> ANSI for the synthesis/detail panes
+gem "lipgloss" # pane styling + join_horizontal/join_vertical layout
 
 # Alternative TUI framework
-gem "ratatui_ruby", "~> 1.5"
+gem "ratatui_ruby"
 
 # =============================================================================
 # MEDIA PROCESSING
 # =============================================================================
 
-gem "image_processing", "~> 2.1"
+gem "image_processing"
 
 # =============================================================================
 # UTILITIES
 # =============================================================================
 
 # General-purpose algorithms
-gem "algorithms", "~> 1.1"
+gem "algorithms"
 
 # CLI tool for running external commands
-gem "terrapin", "~> 1.1"
+gem "terrapin"
 
 # =============================================================================
 # DEVELOPMENT & TEST DEPENDENCIES
@@ -257,4 +259,15 @@ group :perf do
   gem "stackprof"
 end
 
-gem "jsonl", "~> 0.1.5"
+gem "jsonl"
+
+gem "pycall"
+gem "ruby-spacy"
+
+gem "tty-which"
+
+gem "tty-command"
+
+gem "tree_sitter_language_pack", "~> 1.20"
+
+gem "rllama", "~> 1.2"
