@@ -1,0 +1,268 @@
+{
+  "id": "2026-09-15-095519",
+  "generated_at": "2026-09-15T13:55:19.607569291Z",
+  "language": "en",
+  "pages": [
+    {
+      "slug": "1-overview",
+      "title": "Overview",
+      "file": "1-overview.md",
+      "section": "Get Started",
+      "level": "Beginner"
+    },
+    {
+      "slug": "2-quick-start",
+      "title": "Quick Start",
+      "file": "2-quick-start.md",
+      "section": "Get Started",
+      "level": "Beginner"
+    },
+    {
+      "slug": "3-docker-compose-setup",
+      "title": "Docker Compose Setup",
+      "file": "3-docker-compose-setup.md",
+      "section": "Get Started",
+      "group": "Installation \u0026 Setup",
+      "level": "Beginner"
+    },
+    {
+      "slug": "4-environment-configuration",
+      "title": "Environment Configuration",
+      "file": "4-environment-configuration.md",
+      "section": "Get Started",
+      "group": "Installation \u0026 Setup",
+      "level": "Beginner"
+    },
+    {
+      "slug": "5-python-sidecar-setup",
+      "title": "Python Sidecar Setup",
+      "file": "5-python-sidecar-setup.md",
+      "section": "Get Started",
+      "group": "Installation \u0026 Setup",
+      "level": "Beginner"
+    },
+    {
+      "slug": "6-systemic-functional-linguistics-concepts",
+      "title": "Systemic Functional Linguistics Concepts",
+      "file": "6-systemic-functional-linguistics-concepts.md",
+      "section": "Deep Dive",
+      "level": "Beginner"
+    },
+    {
+      "slug": "7-two-pass-pipeline-architecture",
+      "title": "Two-Pass Pipeline Architecture",
+      "file": "7-two-pass-pipeline-architecture.md",
+      "section": "Deep Dive",
+      "group": "Architecture \u0026 Design",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "8-hexagonal-architecture-pattern",
+      "title": "Hexagonal Architecture Pattern",
+      "file": "8-hexagonal-architecture-pattern.md",
+      "section": "Deep Dive",
+      "group": "Architecture \u0026 Design",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "9-rhetorical-firewall-design",
+      "title": "Rhetorical Firewall Design",
+      "file": "9-rhetorical-firewall-design.md",
+      "section": "Deep Dive",
+      "group": "Architecture \u0026 Design",
+      "level": "Advanced"
+    },
+    {
+      "slug": "10-ecosystem-integration",
+      "title": "Ecosystem Integration",
+      "file": "10-ecosystem-integration.md",
+      "section": "Deep Dive",
+      "group": "Architecture \u0026 Design",
+      "level": "Advanced"
+    },
+    {
+      "slug": "11-pass-1-syntactic-parsing",
+      "title": "Pass 1: Syntactic Parsing",
+      "file": "11-pass-1-syntactic-parsing.md",
+      "section": "Deep Dive",
+      "group": "Core Pipeline Components",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "12-pass-2-llm-annotation",
+      "title": "Pass 2: LLM Annotation",
+      "file": "12-pass-2-llm-annotation.md",
+      "section": "Deep Dive",
+      "group": "Core Pipeline Components",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "13-core-pipeline-orchestration",
+      "title": "Core Pipeline Orchestration",
+      "file": "13-core-pipeline-orchestration.md",
+      "section": "Deep Dive",
+      "group": "Core Pipeline Components",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "14-analysis-engine",
+      "title": "Analysis Engine",
+      "file": "14-analysis-engine.md",
+      "section": "Deep Dive",
+      "group": "Core Pipeline Components",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "15-annotatedclause-type",
+      "title": "AnnotatedClause Type",
+      "file": "15-annotatedclause-type.md",
+      "section": "Deep Dive",
+      "group": "Data Model \u0026 Types",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "16-ideational-payload",
+      "title": "Ideational Payload",
+      "file": "16-ideational-payload.md",
+      "section": "Deep Dive",
+      "group": "Data Model \u0026 Types",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "17-interpersonal-payload",
+      "title": "Interpersonal Payload",
+      "file": "17-interpersonal-payload.md",
+      "section": "Deep Dive",
+      "group": "Data Model \u0026 Types",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "18-database-schema",
+      "title": "Database Schema",
+      "file": "18-database-schema.md",
+      "section": "Deep Dive",
+      "group": "Data Model \u0026 Types",
+      "level": "Beginner"
+    },
+    {
+      "slug": "19-postgres-integration",
+      "title": "Postgres Integration",
+      "file": "19-postgres-integration.md",
+      "section": "Deep Dive",
+      "group": "Storage \u0026 Retrieval",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "20-hybrid-retrieval-with-rrf",
+      "title": "Hybrid Retrieval with RRF",
+      "file": "20-hybrid-retrieval-with-rrf.md",
+      "section": "Deep Dive",
+      "group": "Storage \u0026 Retrieval",
+      "level": "Advanced"
+    },
+    {
+      "slug": "21-vector-embeddings-with-pgvector",
+      "title": "Vector Embeddings with pgvector",
+      "file": "21-vector-embeddings-with-pgvector.md",
+      "section": "Deep Dive",
+      "group": "Storage \u0026 Retrieval",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "22-scalar-stance-filters",
+      "title": "Scalar Stance Filters",
+      "file": "22-scalar-stance-filters.md",
+      "section": "Deep Dive",
+      "group": "Storage \u0026 Retrieval",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "23-cli-usage",
+      "title": "CLI Usage",
+      "file": "23-cli-usage.md",
+      "section": "Deep Dive",
+      "group": "APIs \u0026 Interfaces",
+      "level": "Beginner"
+    },
+    {
+      "slug": "24-http-api-reference",
+      "title": "HTTP API Reference",
+      "file": "24-http-api-reference.md",
+      "section": "Deep Dive",
+      "group": "APIs \u0026 Interfaces",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "25-roda-routes-architecture",
+      "title": "Roda Routes Architecture",
+      "file": "25-roda-routes-architecture.md",
+      "section": "Deep Dive",
+      "group": "APIs \u0026 Interfaces",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "26-graph-api-endpoints",
+      "title": "Graph API Endpoints",
+      "file": "26-graph-api-endpoints.md",
+      "section": "Deep Dive",
+      "group": "APIs \u0026 Interfaces",
+      "level": "Advanced"
+    },
+    {
+      "slug": "27-topic-modeling",
+      "title": "Topic Modeling",
+      "file": "27-topic-modeling.md",
+      "section": "Deep Dive",
+      "group": "Advanced Features",
+      "level": "Advanced"
+    },
+    {
+      "slug": "28-context-synthesis",
+      "title": "Context Synthesis",
+      "file": "28-context-synthesis.md",
+      "section": "Deep Dive",
+      "group": "Advanced Features",
+      "level": "Advanced"
+    },
+    {
+      "slug": "29-review-queues",
+      "title": "Review Queues",
+      "file": "29-review-queues.md",
+      "section": "Deep Dive",
+      "group": "Advanced Features",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "30-ingest-orchestration",
+      "title": "Ingest Orchestration",
+      "file": "30-ingest-orchestration.md",
+      "section": "Deep Dive",
+      "group": "Advanced Features",
+      "level": "Advanced"
+    },
+    {
+      "slug": "31-ports-and-adapters-pattern",
+      "title": "Ports and Adapters Pattern",
+      "file": "31-ports-and-adapters-pattern.md",
+      "section": "Deep Dive",
+      "group": "Development \u0026 Testing",
+      "level": "Intermediate"
+    },
+    {
+      "slug": "32-golden-master-testing",
+      "title": "Golden Master Testing",
+      "file": "32-golden-master-testing.md",
+      "section": "Deep Dive",
+      "group": "Development \u0026 Testing",
+      "level": "Advanced"
+    },
+    {
+      "slug": "33-running-specs",
+      "title": "Running Specs",
+      "file": "33-running-specs.md",
+      "section": "Deep Dive",
+      "group": "Development \u0026 Testing",
+      "level": "Beginner"
+    }
+  ]
+}
