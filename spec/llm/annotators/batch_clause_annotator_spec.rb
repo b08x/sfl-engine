@@ -44,4 +44,29 @@ RSpec.describe SFL::LLM::Annotators::BatchClauseAnnotator do
 
     expect(annotator.call(contexts)).to eq([{ index: 0, mood: "declarative" }])
   end
+
+  describe "malformed provider responses" do
+    let(:dspy_type_error) do
+      TypeError.new("no implicit conversion of Float into Hash").tap do |error|
+        error.set_backtrace(["/home/b08x/.rbenv/gems/dspy-0.34.0/lib/dspy/predict.rb:88:in 'call'"])
+      end
+    end
+    let(:own_type_error) do
+      TypeError.new("boom").tap do |error|
+        error.set_backtrace(["/home/b08x/WorkspaceV3/sfl-engine/lib/sfl/llm/annotators/batch_clause_annotator.rb:30:in 'call'"])
+      end
+    end
+
+    it "wraps a TypeError raised from dspy/predict.rb as LLM::MalformedResponse" do
+      allow(fake_predictor).to receive(:call).and_raise(dspy_type_error)
+
+      expect { annotator.call(contexts) }.to raise_error(SFL::LLM::MalformedResponse, /no implicit conversion/)
+    end
+
+    it "lets a TypeError raised from our own code keep propagating unchanged" do
+      allow(fake_predictor).to receive(:call).and_raise(own_type_error)
+
+      expect { annotator.call(contexts) }.to raise_error(TypeError, "boom")
+    end
+  end
 end

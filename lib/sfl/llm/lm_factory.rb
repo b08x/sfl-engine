@@ -25,9 +25,13 @@ module SFL
 
         kwargs = {}
         kwargs[:api_key] = api_key if api_key
-        kwargs[:temperature] = task_config.params[:temperature] if task_config.params.key?(:temperature)
 
-        DSPy::LM.new(identifier, **kwargs)
+        # temperature is not passed here: the adapter hardcodes its own value
+        # and OpenRouterAdapter rejects the keyword. RequestPinning rewrites each
+        # request instead. Installed even with no knobs, because the OpenRouter
+        # provider pin must reach every request.
+        RequestPinning.install!(DSPy::LM.new(identifier, **kwargs),
+          params: task_config.params, openrouter: provider_name == "openrouter")
       end
 
       attr_reader :config, :env

@@ -149,6 +149,7 @@ module SFL
       private def retryable?(error)
         return false if PROGRAMMER_ERRORS.any? { |klass| error.is_a?(klass) }
         return false if error.is_a?(Dry::Struct::Error)
+        return false if error.is_a?(LLM::MalformedResponse)
         return true if RETRYABLE_ERRORS.any? { |klass| error.is_a?(klass) }
 
         status = http_status_from(error)

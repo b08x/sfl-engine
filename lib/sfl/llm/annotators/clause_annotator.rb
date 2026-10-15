@@ -28,6 +28,10 @@ module SFL
           serialized = instrumenter.instrument("pass_two.parse.deserialization") { raw.to_h }
           normalized = instrumenter.instrument("pass_two.parse.normalization") { ResponseSymbolizer.call(serialized) }
           instrumenter.instrument("pass_two.parse.classification") { normalized }
+        rescue TypeError => e
+          raise unless LLM::MalformedResponse.from_predictor?(e)
+
+          raise LLM::MalformedResponse, "clause response could not be decoded: #{e.message}"
         end
 
         private

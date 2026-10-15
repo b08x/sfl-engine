@@ -131,6 +131,22 @@ RSpec.describe SFL::LLM::Engine do
   end
 
   describe "#annotate_batch" do
+    it "degrades the batch to fallback, with no retry, when DSPy cannot decode the response (fact 3)" do
+      dspy_error = TypeError.new("no implicit conversion of Float into Hash").tap do |error|
+        error.set_backtrace(["/home/b08x/.rbenv/gems/dspy-0.34.0/lib/dspy/predict.rb:88:in 'call'"])
+      end
+      predictor = instance_double(DSPy::Predict, configure: nil)
+      allow(DSPy::Predict).to receive(:new).and_return(predictor)
+      allow(predictor).to receive(:call).and_raise(dspy_error)
+      batch_clause_annotator = SFL::LLM::Annotators::BatchClauseAnnotator.new(lm: double)
+      engine = described_class.new(clause_annotator: double, batch_clause_annotator:, sleeper: -> (_) {})
+
+      results = engine.annotate_batch([[clause, ideational]])
+
+      expect(results.first.interpersonal.annotation_source).to eq("fallback")
+      expect(predictor).to have_received(:call).once
+    end
+
     it "does not render the cumulative timing report for every batch" do
       batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator, call: [])
       instrumenter = instance_spy(SFL::Core::Ports::TimingInstrumenter)
