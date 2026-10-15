@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Providers
   module DB
     class Conn

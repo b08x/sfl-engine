@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Providers
   module Logger
     def self.boot

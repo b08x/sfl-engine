@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl
   hash_branch("synthesize") do |r|
     r.is do

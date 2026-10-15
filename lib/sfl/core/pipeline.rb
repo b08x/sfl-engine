@@ -3,7 +3,6 @@
 require "dry/monads"
 require "securerandom"
 require "digest"
-require "set"
 
 module SFL
   module Core

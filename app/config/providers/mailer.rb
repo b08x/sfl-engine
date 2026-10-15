@@ -1,10 +1,10 @@
+# frozen_string_literal: true
+
 module Providers
   module Mailer
     def self.boot
       ::Mail.defaults do
-        if Config.not_production?
-          delivery_method :logger
-        end
+        delivery_method :logger if Config.not_production?
       end
     end
   end

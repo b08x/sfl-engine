@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl
   hash_branch("review-queue") do |r|
     r.is do
@@ -18,14 +20,10 @@ class Sfl
           body = r.params
           decision = body["decision"]
           decisions = SFL::Core::Types::ReviewQueueDecision.values
-          unless decisions.include?(decision)
-            raise ArgumentError, "decision must be one of #{decisions.join(', ')}"
-          end
+          raise ArgumentError, "decision must be one of #{decisions.join(', ')}" unless decisions.include?(decision)
 
           edited_text = body["edited_text"]
-          if decision == "edit" && presence(edited_text).nil?
-            raise ArgumentError, "edited_text is required for decision: edit"
-          end
+          raise ArgumentError, "edited_text is required for decision: edit" if decision == "edit" && presence(edited_text).nil?
 
           row = ctx.review_queue_repo.find(id)
           unless row

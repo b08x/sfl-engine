@@ -2,7 +2,6 @@
 
 require "sequel"
 require "time"
-require "set"
 
 module SFL
   module Store

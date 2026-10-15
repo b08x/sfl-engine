@@ -78,7 +78,6 @@ module SFL
         # Builds a frontmatter hash from Kreuzberg's document-level metadata.
         # Returns nil when the PDF carries no extractable metadata — avoids
         # polluting downstream classifiers with empty hashes.
-        # rubocop:disable Metrics/CyclomaticComplexity, -- one Hash
         # literal plus a #select filtering out absent fields; the branching is inherent to
         # "only include fields Kreuzberg actually extracted," not decomposable further.
         private def pdf_frontmatter(result)
@@ -94,8 +93,6 @@ module SFL
 
           fields.empty? ? nil : fields
         end
-        # rubocop:enable Metrics/CyclomaticComplexity
-
         private def non_blank(val)
           str = val.to_s.strip
           str.empty? ? nil : str

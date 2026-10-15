@@ -87,7 +87,6 @@ module SFL
         json(500, body)
       end
 
-      # rubocop:disable Metrics/CyclomaticComplexity
       # One flat routing table, one `in` clause per route; splitting this into smaller methods
       # would only relocate the branch count, not reduce it.
       private def dispatch(req)
@@ -114,8 +113,6 @@ module SFL
           json(404, { error: "Not Found", path: req.path_info })
         end
       end
-      # rubocop:enable Metrics/CyclomaticComplexity
-
       # POST /pipeline/compile
       #
       # Body: {text:, document_id:, store:, embed:}

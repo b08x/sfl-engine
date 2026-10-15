@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl
   hash_branch("retrieve") do |r|
     r.is do

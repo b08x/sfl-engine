@@ -104,7 +104,6 @@ module SFL
 
         # one cohesive parse routine for one subtitle grammar, including VTT's optional <v>
         # voice-tag extraction; same rationale as #parse_srt.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         private def parse_vtt
           blocks = @ref.read.split(/\r?\n\r?\n+/).map(&:strip).reject(&:empty?)
 
@@ -134,8 +133,6 @@ module SFL
             Cue.new(speaker:, start_offset:, text:)
           end
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
-
         ASS_TIMECODE = /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/
         ASS_OVERRIDE_TAG = /\{[^}]*\}/
 

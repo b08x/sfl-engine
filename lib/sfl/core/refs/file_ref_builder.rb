@@ -23,8 +23,8 @@ module SFL
             content_identity: "#{stat.mtime.to_i}:#{stat.size}",
             size_bytes: stat.size,
             mtime: stat.mtime,
-            source_id: source_id,
-            path_hint: full,
+            source_id:,
+            path_hint: full
           )
         end
       end

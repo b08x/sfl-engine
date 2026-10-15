@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl
   hash_branch("graph") do |r|
     r.is "nodes" do

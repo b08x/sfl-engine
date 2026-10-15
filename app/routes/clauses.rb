@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl
   STRING_CLAUSE_FILTERS = %w[source_type mood process_type].freeze
   NUMERIC_CLAUSE_FILTERS = %w[min_modality max_modality min_tenor max_tenor].freeze
@@ -35,9 +37,7 @@ class Sfl
           body = r.params
           decision = body["decision"]
           decisions = SFL::Core::Types::ReviewDecision.values
-          unless decisions.include?(decision)
-            raise ArgumentError, "decision must be one of #{decisions.join(', ')}"
-          end
+          raise ArgumentError, "decision must be one of #{decisions.join(', ')}" unless decisions.include?(decision)
 
           review = ctx.clause_review_service.review(
             clause_id:, decision:, reviewer: body["reviewer"], notes: body["notes"]

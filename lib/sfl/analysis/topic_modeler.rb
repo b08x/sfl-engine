@@ -249,7 +249,6 @@ module SFL
       end
 
       # @return [Hash{Integer => Float}]
-      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy
       def conversation_baseline
         return {} unless @fitted && @turns && !@turns.empty?
 
@@ -268,8 +267,6 @@ module SFL
 
         sum.transform_values { |v| (v / count).round(4) }
       end
-      # rubocop:enable Metrics/CyclomaticComplexity
-
       # ported verbatim from legacy.
       private def assign_coherence_scores_to_turns
         was_fitted = @fitted
@@ -350,7 +347,6 @@ module SFL
         text.gsub(UNICODE_PUNCTUATION_RE, UNICODE_PUNCTUATION_MAP)
       end
 
-      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy
       private def cosine_distance(dist_a, dist_b)
         keys = dist_a.keys | dist_b.keys
         return 1.0 if keys.empty?
@@ -363,8 +359,6 @@ module SFL
 
         (1.0 - (dot / (mag_a * mag_b))).round(4)
       end
-      # rubocop:enable Metrics/CyclomaticComplexity
-
       private def topic_name(topic_id)
         words = @topic_labels[topic_id] || []
         words.empty? ? "topic #{topic_id}" : words.first(3).join("/")

@@ -172,7 +172,7 @@ module SFL
         ancestors = clause_store.ancestor_chain(row.clause_id)
         return row.text if ancestors.empty?
 
-        "#{ancestors.map(&:text).join(" ")} #{row.text}"
+        "#{ancestors.map(&:text).join(' ')} #{row.text}"
       end
     end
   end

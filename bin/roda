@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
+
 require "thor"
 require "roda/project/bin/generators"
 
@@ -18,26 +20,25 @@ class Db < Thor
     end
     puts "* database migration complete."
   end
-  
-  [:drop, :create].each do |action|
+
+  %i[drop create].each do |action|
     desc action.to_s, "#{action.capitalize} the database"
     define_method(action) do
       require_db_deps
       require_relative "../app/config/config"
-      db_config =
-        PG::Connection
+      db_config = PG::Connection
         .conninfo_parse(Config.get[:db][:url])
-        .each_with_object({}) { |h, o|
+        .each_with_object({}) do |h, o|
           o[h[:keyword].to_sym] = h[:val] if h[:val]
-        }
+        end
       ok = system("PGPASSWORD='#{db_config[:password]}' #{action}db -h #{db_config[:host]} -p #{db_config[:port]} -U #{db_confi
-      g[:user]} #{db_config[:dbname]}")
+                                                                                                                       g[:user]} #{db_config[:dbname]}")
       puts "* #{action} database #{db_config[:dbname]} ✓" if ok
     end
   end
-  
+
   private
-  
+
   def require_db_deps
     require_relative "../boot"
     require "sequel"
@@ -72,7 +73,7 @@ class CLI < Thor
   def dev
     system("RACK_ENV=development bundle exec guard")
   end
-  
+
   desc "server", "Runs the project, alias roda s"
   def server
     if ENV["RACK_ENV"] == "production"
@@ -90,10 +91,10 @@ class CLI < Thor
     end
   end
   map "s" => "server"
-  
+
   desc "db", "Database functions"
   subcommand "db", Db
-  
+
   desc "generate", "Commands to generate code"
   option :main_context, type: :hash, default: {
     project_name: "sfl",
@@ -102,7 +103,7 @@ class CLI < Thor
     tests: Roda::Project::RSPEC,
     database: true,
     database_type: Roda::Project::POSTGRESQL,
-    }
+  }
   subcommand "generate", Roda::Project::Bin::Generators
 
   def self.exit_on_failure?

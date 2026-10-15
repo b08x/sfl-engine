@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Providers
   # Single composition point Roda routes pull collaborators from. Wraps
   # SFL::API::Context.build (lib/sfl/api/context.rb) so the CLI and the

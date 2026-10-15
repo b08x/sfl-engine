@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe SFL::Core::PassOne::IdeationalExtractor do
   subject(:extractor) { described_class.new }
 
-  def token(text:, lemma:, pos: "VERB", tag: "VBZ", dep: "ROOT", index: 0) # rubocop:disable Metrics/ParameterLists -- one keyword per SyntacticToken attribute this helper builds
+  def token(text:, lemma:, pos: "VERB", tag: "VBZ", dep: "ROOT", index: 0)
     SFL::Core::Types::SyntacticToken.new(text:, lemma:, pos:, tag:, dep:, head_index: -1, morphology: {}, index:)
   end
 

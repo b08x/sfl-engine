@@ -11,7 +11,7 @@ module SFL
           include Ports::CorpusSource
 
           def each_ref
-            return enum_for(:each_ref) unless block_given?
+            enum_for(:each_ref) unless block_given?
 
             # yields nothing
           end

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class Sfl < Roda
   # Routing
   plugin :autoload_hash_branches

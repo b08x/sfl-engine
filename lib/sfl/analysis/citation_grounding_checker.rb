@@ -120,7 +120,6 @@ module SFL
       # Build a flat id->text lookup supporting:
       #   - exact UUID or slug match:  index["abc-123"] -> "clause text"
       #   - compound doc:id match:     index["doc-1:abc-123"] -> "clause text"
-      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy; Hash/Struct duck-typing on every field is inherent to accepting both AnnotatedClause structs and plain Hashes.
       private def build_index(clauses)
         clauses.each_with_object({}) do |clause, idx|
           id   = clause.is_a?(Hash) ? (clause[:id]   || clause["id"])   : clause.id
@@ -132,8 +131,6 @@ module SFL
           idx["#{doc_id}:#{id}"] = text.to_s if doc_id
         end
       end
-      # rubocop:enable Metrics/CyclomaticComplexity
-
       # Split prose into individual sentences on sentence-terminal punctuation.
       private def extract_sentences(text)
         text.scan(/[^.!?\n]+[.!?]+/).map(&:strip).reject(&:empty?)

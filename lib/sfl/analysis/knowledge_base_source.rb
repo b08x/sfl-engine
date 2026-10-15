@@ -65,7 +65,6 @@ module SFL
       #   default — expensive)
       # @param chat [#ask, nil] a vision-capable RubyLLM::Chat (or compatible double), forwarded
       #   to Core::Loaders::ImageSource; required (raises otherwise) when analyze_images: true
-      # rubocop:disable Metrics/ParameterLists -- six independently-injectable collaborators,
       # matching Engine#initialize's own house style (see its class comment).
       def initialize(
         pipeline:,
@@ -75,7 +74,6 @@ module SFL
         analyze_images: false,
         chat: nil
       )
-        # rubocop:enable Metrics/ParameterLists
         raise ArgumentError, "chat: is required when analyze_images: true" if analyze_images && chat.nil?
 
         @pipeline = pipeline

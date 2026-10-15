@@ -27,7 +27,6 @@ module SFL
       # a constant, tune later (design doc's Open Questions).
       CONFIDENCE_THRESHOLD = 0.6
 
-      # rubocop:disable Metrics/ParameterLists -- five independently-injectable collaborators
       # (two dispatch targets, the classifier, the drafter, the review repo) plus logger,
       # matching this codebase's existing per-class DI convention (see LLM::Engine#initialize).
       def initialize(
@@ -41,7 +40,6 @@ module SFL
         @review_repo = review_repo
         @logger = logger
       end
-      # rubocop:enable Metrics/ParameterLists
 
       # @param path [String] a single file, or a directory walked recursively
       # @return [Hash{dispatched:, review_entries:, drafted:}]

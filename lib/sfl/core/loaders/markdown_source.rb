@@ -121,7 +121,6 @@ module SFL
         # split -> tokenize), ported from legacy verbatim; each step is one line, splitting
         # them into separate methods would just relocate, not reduce, the same five sequential
         # transformations.
-        # rubocop:disable Metrics/CyclomaticComplexity
         private def clean_text(markdown)
           return "" if markdown.nil? || markdown.strip.empty?
 
@@ -153,8 +152,6 @@ module SFL
 
           cleaned.join("\n\n")
         end
-        # rubocop:enable Metrics/CyclomaticComplexity
-
         # Tokenise a prose paragraph and rejoin with natural spacing.
         # PragmaticTokenizer separates punctuation as distinct tokens;
         # CLOSING_PUNCT tokens reattach without a leading space.

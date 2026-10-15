@@ -104,7 +104,6 @@ module SFL
 
         header + rows.join("\n")
       end
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat breakdown-by-content-type loop, ported verbatim from legacy.
       private def content_type_breakdown
         dist = result.content_type_distribution
         return "_No content type data._" if dist.empty?
@@ -124,8 +123,6 @@ module SFL
 
         sections.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
-
       private def staleness_section
         return "" if result.staleness_flags.empty?
 

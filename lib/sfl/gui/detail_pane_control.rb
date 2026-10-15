@@ -19,7 +19,6 @@ module SFL
 
       options :viewmodel
 
-      # rubocop:disable Metrics/BlockLength
       body {
         vertical_box {
           label {
@@ -72,7 +71,6 @@ module SFL
           }
         }
       }
-      # rubocop:enable Metrics/BlockLength
     end
   end
 end

@@ -19,10 +19,10 @@ module SFL
 
           attr_reader :refs
 
-          def each_ref
+          def each_ref(&)
             return enum_for(:each_ref) unless block_given?
 
-            @refs.each { |ref| yield ref }
+            @refs.each(&)
           end
 
           def stats
