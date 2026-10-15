@@ -187,14 +187,23 @@ module SFL
       end
 
       seed = presence(env["#{prefix}SEED"])
-      params[:seed] = Integer(seed, 10) if seed
+      params[:seed] = env_integer("#{prefix}SEED", seed) if seed
       max_tokens = presence(env["#{prefix}MAX_TOKENS"])
-      params[:max_tokens] = Integer(max_tokens, 10) if max_tokens
+      params[:max_tokens] = env_integer("#{prefix}MAX_TOKENS", max_tokens) if max_tokens
 
       effort = presence(env["#{prefix}REASONING_EFFORT"])
       params[:reasoning_effort] = effort.strip if effort && !effort.strip.casecmp?("none")
 
       params
+    end
+
+    # Parses an integer ENV var, failing at startup with the variable's name
+    # rather than a bare "invalid value for Integer()" that doesn't say which
+    # knob to fix.
+    module_function def env_integer(var, raw)
+      Integer(raw, 10)
+    rescue ArgumentError, TypeError
+      raise Error, "#{var} must be an integer (got #{raw.inspect})"
     end
 
     # @param env [#[]] environment source

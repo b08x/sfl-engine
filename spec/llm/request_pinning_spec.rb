@@ -78,6 +78,12 @@ RSpec.describe SFL::LLM::RequestPinning do
       adapter = Object.new.tap { |a| a.instance_variable_set(:@client, client) }
       Struct.new(:adapter).new(adapter)
     end
+    # An adapter whose @client doesn't expose chat.completions — what a
+    # dspy-openai client-shape change would leave install! looking at.
+    let(:unwrappable_lm) do
+      adapter = Object.new.tap { |a| a.instance_variable_set(:@client, Object.new) }
+      Struct.new(:adapter).new(adapter)
+    end
 
     it "routes the adapter's create call through the pinned params, which win over the adapter's own values" do
       described_class.install!(lm, params: { temperature: 0.0, seed: 3 }, openrouter: true)
@@ -91,6 +97,20 @@ RSpec.describe SFL::LLM::RequestPinning do
 
     it "returns the lm it was given" do
       expect(described_class.install!(lm, params: {}, openrouter: false)).to be(lm)
+    end
+
+    it "raises when knobs are configured but the client shape cannot be wrapped" do
+      expect { described_class.install!(unwrappable_lm, params: { temperature: 0.0 }, openrouter: false) }
+        .to raise_error(SFL::LLM::RequestPinning::Error, /chat\.completions/)
+    end
+
+    it "raises when the OpenRouter provider pin must be applied but the client shape cannot be wrapped" do
+      expect { described_class.install!(unwrappable_lm, params: {}, openrouter: true) }
+        .to raise_error(SFL::LLM::RequestPinning::Error, /chat\.completions/)
+    end
+
+    it "returns the lm unchanged when nothing is configured to pin, even if the shape is unrecognized" do
+      expect(described_class.install!(unwrappable_lm, params: {}, openrouter: false)).to be(unwrappable_lm)
     end
   end
 end

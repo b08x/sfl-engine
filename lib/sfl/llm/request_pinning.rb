@@ -19,16 +19,32 @@ module SFL
       # silently drop a parameter the chosen endpoint does not support.
       OPENROUTER_PROVIDER = { require_parameters: true }.freeze
 
+      # Raised when knobs are configured but the adapter's client doesn't
+      # expose the shape install! can wrap (chat.completions). The
+      # alternative — returning the LM unpinned — sends requests the
+      # operator believes carry temperature/seed/max_tokens when they do
+      # not, so a dspy-openai client-shape change must fail here, loudly.
+      class Error < SFL::LLM::Error; end
+
       # Wraps the adapter's completions#create so each request carries the
-      # pinned params. A no-op when the adapter has no chat.completions.
+      # pinned params. A no-op when nothing is configured to pin (no knobs
+      # and not OpenRouter); raises Error when pins are configured and the
+      # client shape is not one this module knows how to wrap.
       # @param language_model [DSPy::LM]
       # @param params [Hash] TaskConfig#params (temperature, omit_temperature,
       #   seed, max_tokens, reasoning_effort)
       # @param openrouter [Boolean] whether the provider is OpenRouter
       # @return [DSPy::LM] the same language_model
+      # @raise [Error] pins are configured but the client shape is unrecognized
       module_function def install!(language_model, params:, openrouter:)
+        return language_model if params.empty? && !openrouter
+
         client = language_model.adapter.instance_variable_get(:@client)
-        return language_model unless client.respond_to?(:chat) && client.chat.respond_to?(:completions)
+        unless client.respond_to?(:chat) && client.chat.respond_to?(:completions)
+          raise Error, "cannot pin request params: adapter client " \
+            "#{client.class} does not expose chat.completions " \
+            "(dspy-openai client shape changed?)"
+        end
 
         completions = client.chat.completions
         original_create = completions.method(:create)

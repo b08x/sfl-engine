@@ -122,6 +122,18 @@ RSpec.describe SFL::Boot do
       expect(result.llm_config.for(:pass_two_annotation).params).to eq(seed: 42, max_tokens: 2048, reasoning_effort: "low")
     end
 
+    it "fails at startup naming the ENV var when SEED is not an integer" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_SEED" => "four")
+
+      expect { boot(env:) }.to raise_error(SFL::Boot::Error, /SFL_TASK_PASS_TWO_ANNOTATION_SEED must be an integer/)
+    end
+
+    it "fails at startup naming the ENV var when MAX_TOKENS is not an integer" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_MAX_TOKENS" => "2_048x")
+
+      expect { boot(env:) }.to raise_error(SFL::Boot::Error, /SFL_TASK_PASS_TWO_ANNOTATION_MAX_TOKENS must be an integer/)
+    end
+
     it "treats TEMPERATURE=none as omit_temperature, not as 0.0 (fact 6)" do
       env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_TEMPERATURE" => "none")
 
