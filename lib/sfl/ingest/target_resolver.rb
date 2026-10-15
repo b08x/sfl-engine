@@ -17,10 +17,14 @@ module SFL
     # Future web/MCP adapters: add a new branch here plus a new adapter —
     # no change to CorpusSource, RoutingTable, or either driving adapter.
     class TargetResolver
-      UnresolvableTarget = Class.new(ArgumentError)
+      class UnresolvableTarget < ArgumentError
+      end
 
       KNOWN_FORGE_HOSTS = %w[
-        github.com gitlab.com bitbucket.org codeberg.org
+        github.com
+        gitlab.com
+        bitbucket.org
+        codeberg.org
         git.sr.ht
       ].freeze
 
@@ -58,8 +62,7 @@ module SFL
 
       def rule(name)
         @rules_tried << name
-        result = yield
-        result
+        yield
       end
 
       def match_scp_remote(arg)
@@ -70,7 +73,7 @@ module SFL
       end
 
       def match_https_git(arg)
-        return nil unless arg.start_with?("https://") || arg.start_with?("http://")
+        return nil unless arg.start_with?("https://", "http://")
 
         uri = begin
           URI.parse(arg)
@@ -80,7 +83,7 @@ module SFL
         return nil unless uri.host
 
         is_git = arg.end_with?(".git") ||
-                 KNOWN_FORGE_HOSTS.any? { |h| uri.host == h || uri.host.end_with?(".#{h}") }
+          KNOWN_FORGE_HOSTS.any? { |h| uri.host == h || uri.host.end_with?(".#{h}") }
         return nil unless is_git
 
         { type: :git, repo: arg, ref: "HEAD" }
@@ -95,13 +98,17 @@ module SFL
       end
 
       def match_git_dir(arg)
+        # Only an existing local path can sit inside a repository. A string
+        # such as "https://host/x" is relative to the cwd, so walking up from
+        # it would reach "." and match the cwd's own .git.
+        return nil unless File.exist?(arg)
+
         # Walk upward from the path looking for a .git directory
         path = arg
         loop do
           git_path = File.join(path, ".git")
-          if File.directory?(git_path)
-            return { type: :git, repo: path, ref: "HEAD" }
-          end
+          return { type: :git, repo: path, ref: "HEAD" } if File.directory?(git_path)
+
           parent = File.dirname(path)
           break if parent == path
 
@@ -124,9 +131,9 @@ module SFL
 
       def raise_unresolvable(arg)
         raise UnresolvableTarget,
-              "could not resolve target: #{arg.inspect}. " \
-              "Rules tried: #{@rules_tried.join(", ")}. " \
-              "Web and other non-filesystem/git sources are not supported in this phase."
+          "could not resolve target: #{arg.inspect}. " \
+            "Rules tried: #{@rules_tried.join(', ')}. " \
+            "Web and other non-filesystem/git sources are not supported in this phase."
       end
     end
   end

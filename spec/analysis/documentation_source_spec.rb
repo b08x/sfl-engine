@@ -7,14 +7,14 @@ require "tmpdir"
 RSpec.describe SFL::Analysis::DocumentationSource do
   describe "#each_unit" do
     it "delegates a single .md file to Core::Loaders::MarkdownSource" do
-      units = described_class.new("spec/fixtures/inputs/sample.md").units
+      units = described_class.new(single_ref: file_ref("spec/fixtures/inputs/sample.md")).units
 
       expect(units).not_to be_empty
       expect(units.first.heading).to eq("Introduction")
     end
 
     it "delegates a single .pdf file to Core::Loaders::PdfSource" do
-      units = described_class.new("spec/fixtures/loaders/sample.pdf").units
+      units = described_class.new(single_ref: file_ref("spec/fixtures/loaders/sample.pdf")).units
 
       expect(units).not_to be_empty
     end
@@ -24,7 +24,7 @@ RSpec.describe SFL::Analysis::DocumentationSource do
         FileUtils.cp("spec/fixtures/inputs/sample.md", File.join(dir, "doc.md"))
         FileUtils.cp("spec/fixtures/loaders/sample.pdf", File.join(dir, "doc.pdf"))
 
-        units = described_class.new(dir).units
+        units = described_class.new(Dir.children(dir).sort.map { |name| file_ref(File.join(dir, name)) }).units
 
         md_units = units.select { |u| u.document_id.start_with?("doc.md#", "doc#") }
         expect(units).not_to be_empty
@@ -33,19 +33,23 @@ RSpec.describe SFL::Analysis::DocumentationSource do
     end
 
     it "returns an Enumerator when no block is given" do
-      expect(described_class.new("spec/fixtures/inputs/sample.md").each_unit).to be_an(Enumerator)
+      expect(described_class.new(single_ref: file_ref("spec/fixtures/inputs/sample.md")).each_unit).to be_an(Enumerator)
     end
   end
 
   describe "#chunk_boundaries" do
+    let(:pdf_ref) do
+      SFL::Core::Refs::FileRef.new(name: "doc", extension: ".pdf", content_identity: "stub", size_bytes: 0, source_id: "doc.pdf", path_hint: "doc.pdf")
+    end
+
     it "returns [] when #each_unit has yielded fewer than two units" do
-      source = described_class.new("spec/fixtures/inputs/sample.md")
+      source = described_class.new(single_ref: file_ref("spec/fixtures/inputs/sample.md"))
 
       expect(source.chunk_boundaries([])).to eq([])
     end
 
     it "returns [] for a pure-markdown run — no pdf_chunk pair is ever recorded, by construction" do
-      source = described_class.new("spec/fixtures/inputs/sample.md")
+      source = described_class.new(single_ref: file_ref("spec/fixtures/inputs/sample.md"))
       turns = source.units.map { |_u| build_turn(clauses: [build_annotated_clause]) }
 
       expect(source.chunk_boundaries(turns)).to eq([])
@@ -58,7 +62,7 @@ RSpec.describe SFL::Analysis::DocumentationSource do
       allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
       allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
 
-      source = described_class.new("doc.pdf")
+      source = described_class.new(single_ref: pdf_ref)
       turns = [
         build_turn(clauses: [build_annotated_clause(id: "c1"), build_annotated_clause(id: "c2")]),
         build_turn(clauses: [build_annotated_clause(id: "c3")]),
@@ -75,7 +79,7 @@ RSpec.describe SFL::Analysis::DocumentationSource do
       allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
       allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
 
-      source = described_class.new("doc.pdf")
+      source = described_class.new(single_ref: pdf_ref)
       turns = [
         build_turn(clauses: [build_annotated_clause(id: "c1")]),
         build_turn(clauses: [build_annotated_clause(id: "c2")]),

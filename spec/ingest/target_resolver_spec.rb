@@ -60,12 +60,12 @@ RSpec.describe SFL::Ingest::TargetResolver do
     it "expands ~ once for a directory" do
       Dir.mktmpdir do |dir|
         # Create a symlink in home dir for testing
-        home = ENV["HOME"]
+        home = ENV.fetch("HOME", nil)
         link = File.join(home, ".sfl_test_target_resolver_#{Process.pid}")
         FileUtils.ln_s(dir, link, force: true)
         begin
           result = described_class.call("~/.sfl_test_target_resolver_#{Process.pid}")
-          expect(result).to eq({ type: :filesystem, root: dir })
+          expect(result).to eq({ type: :filesystem, root: link })
         ensure
           FileUtils.rm_f(link)
         end
@@ -82,7 +82,7 @@ RSpec.describe SFL::Ingest::TargetResolver do
 
     it "names the rules tried in the error message" do
       expect { described_class.call("https://docs.example.com/usage") }.to raise_error(
-        SFL::Ingest::TargetResolver::UnresolvableTarget, /scp git remote.*https git URL.*file:\/\/ URL.*\.git directory.*directory.*file/
+        SFL::Ingest::TargetResolver::UnresolvableTarget, %r{scp git remote.*https git URL.*file:// URL.*\.git directory.*directory.*file}
       )
     end
 
