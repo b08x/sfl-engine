@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Langfuse ingestion smoke check. Sends one trace through the public ingestion
+# endpoint, then polls the traces API until that trace is listed. Exits 0 when
+# it appears within the window, 1 otherwise.
+#
+# Reads LANGFUSE_BASE_URL (or LANGFUSE_HOST), LANGFUSE_PUBLIC_KEY and
+# LANGFUSE_SECRET_KEY from .env or the environment. Prints no key material.
+#
+#   bin/check-langfuse             # 90s window
+#   bin/check-langfuse --timeout 30
+
+require "bundler/setup"
+require "dotenv"
+require "json"
+require "net/http"
+require "base64"
+require "securerandom"
+require "time"
+require "uri"
+
+Dotenv.load(File.expand_path("../.env", __dir__))
+
+DEFAULT_TIMEOUT = 90
+POLL_INTERVAL = 5
+
+timeout = DEFAULT_TIMEOUT
+timeout = Integer(ARGV[ARGV.index("--timeout") + 1]) if ARGV.include?("--timeout")
+
+base_url = ENV["LANGFUSE_BASE_URL"] || ENV.fetch("LANGFUSE_HOST", nil)
+public_key = ENV.fetch("LANGFUSE_PUBLIC_KEY", nil)
+secret_key = ENV.fetch("LANGFUSE_SECRET_KEY", nil)
+
+if [base_url, public_key, secret_key].any? { |value| value.nil? || value.strip.empty? }
+  warn "check-langfuse: LANGFUSE_BASE_URL/LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must all be set"
+  exit 1
+end
+
+base = URI(base_url)
+auth = "Basic #{Base64.strict_encode64("#{public_key}:#{secret_key}")}"
+
+request = lambda do |method, path, body = nil|
+  klass = (method == :post) ? Net::HTTP::Post : Net::HTTP::Get
+  req = klass.new(path)
+  req["Authorization"] = auth
+  req["Content-Type"] = "application/json"
+  req.body = JSON.generate(body) if body
+
+  http = Net::HTTP.new(base.host, base.port)
+  http.use_ssl = base.scheme == "https"
+  http.open_timeout = 5
+  http.read_timeout = 15
+  res = http.request(req)
+  [res.code.to_i, res.body.to_s]
+end
+
+trace_id = SecureRandom.uuid
+now = Time.now.utc.iso8601(3)
+
+code, body = request.call(:post, "/api/public/ingestion", {
+  batch: [
+{
+  id: SecureRandom.uuid,
+  type: "trace-create",
+  timestamp: now,
+  body: { id: trace_id, name: "check-langfuse", timestamp: now, tags: ["smoke"] },
+},
+],
+})
+unless [207, 200].include?(code)
+  warn "check-langfuse: ingestion returned HTTP #{code}: #{body[0, 300]}"
+  exit 1
+end
+
+deadline = Time.now + timeout
+loop do
+  code, body = request.call(:get, "/api/public/traces/#{trace_id}")
+  if code == 200 && body.include?(trace_id)
+    puts "check-langfuse: trace #{trace_id} visible after #{(timeout - (deadline - Time.now)).round(1)}s"
+    exit 0
+  end
+
+  if Time.now >= deadline
+    warn "check-langfuse: trace #{trace_id} not visible within #{timeout}s (last HTTP #{code})"
+    exit 1
+  end
+  sleep POLL_INTERVAL
+end
