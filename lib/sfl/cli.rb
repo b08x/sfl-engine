@@ -300,8 +300,9 @@ module SFL
       failures.empty? ? 0 : 1
     end
     # @return [Array<Hash>] {path:, source_type:, label:} — native .jsonl/.srt/.vtt/.ass files
-    #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude exports,
-    #   each expanded (Analysis::ChatExportExpander) into one native JSONL file per conversation
+    #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude/Mistral
+    #   exports, each expanded (Analysis::ChatExportExpander) into one native JSONL file per
+    #   conversation
     #   under `<output_dir>/_expanded`, tagged with the right source_type for the loader that
     #   actually parsed them. A raw export .json file skipped format validation entirely as a
     #   single-file argument before this method existed (only directory-glob mode filtered by
