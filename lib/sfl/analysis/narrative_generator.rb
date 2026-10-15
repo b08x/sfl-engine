@@ -52,13 +52,10 @@ module SFL
       # Source-agnostic, string-keyed snapshot of an analysis, plus its
       # serialization to the exact text block the LLM receives.
       #
-      # Legacy also built a Digest.from_json (report-JSON round trip via
-      # Formatters::JSONFormatter, for a `narrate` subcommand operating on
-      # a previously-written report file). Formatters don't exist in this
-      # rebuild yet — that's later, separate work — so only #from_result
-      # is ported here; from_json/canonicalize_metadata are deliberately
-      # left out rather than half-built against a module that doesn't
-      # exist.
+      # Two constructors: .from_result builds from an in-memory
+      # Core::Types::AnalysisResult; .from_json builds from a report JSON
+      # previously written by Formatters::JSONFormatter, so narration can
+      # run on a saved report without re-running the analysis.
       # rubocop:disable Metrics/ClassLength -- one snapshot builder (from_result + its private row
       # helpers) plus one serializer (#to_text + its private helpers), ported verbatim from legacy.
       class Digest
