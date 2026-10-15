@@ -5,12 +5,15 @@ require "dspy"
 module SFL
   module LLM
     module Signatures
+      # V0: the original narrator signature, kept as the baseline for the
+      # narrative-nuance evaluation. One-line description, no style guidance.
+      #
       # Structured-output contract for Analysis::NarrativeGenerator's
       # narrator: duck (`#call(digest_text) -> Hash` of
       # Analysis::NarrativeGenerator::SECTION_KEYS) — one string field per
       # section, mirrored 1:1 against that constant so a future section
       # added there has an obvious matching field to add here.
-      class NarrativeSignature < DSPy::Signature
+      class NarrativeSignatureV0 < DSPy::Signature
         description "Generate a synthesized narrative from the provided analysis digest."
 
         input do

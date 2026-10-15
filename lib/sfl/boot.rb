@@ -23,6 +23,7 @@ module SFL
       pass_two_annotation
       pass_two_batch_annotation
       context_synthesis
+      narrative_generation
       embedding
       ingest_classification
       loader_drafting
@@ -97,9 +98,10 @@ module SFL
       pass1_env = pass1_command ? { "PYTHONPATH" => PYTHON_TARGET_DIR } : nil
       api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
       api_cors_origins = resolve_api_cors_origins(env)
+      narrative_variant = resolve_narrative_variant(env)
 
       Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
-        api_debug_errors:, api_cors_origins:)
+        api_debug_errors:, api_cors_origins:, narrative_variant:)
     end
     # rubocop:enable Metrics/ParameterLists
 
@@ -124,6 +126,13 @@ module SFL
         :context_synthesis, env,
         default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
       )
+      # narrative_generation is the narrator for --narrative reports. It defaults to
+      # context_synthesis, so an unconfigured install behaves as before, and it can be
+      # set separately with SFL_TASK_NARRATIVE_GENERATION_*.
+      narrative_generation = task_config_from_env(
+        :narrative_generation, env,
+        default_provider: context_synthesis.provider, default_model: context_synthesis.model
+      )
       embedding = embedding_task_config(env)
       # ingest_classification borrows defaults from embedding (cheapest configured task)
       ingest_classification = task_config_from_env(
@@ -139,6 +148,7 @@ module SFL
         pass_two_annotation:,
         pass_two_batch_annotation:,
         context_synthesis:,
+        narrative_generation:,
         embedding:,
         ingest_classification:,
         loader_drafting:,
@@ -155,14 +165,36 @@ module SFL
       )
     end
 
+    # Every knob is optional. TEMPERATURE=none and REASONING_EFFORT=none mean
+    # "do not send this param": some models (gpt-5.6-luna-pro) reject
+    # temperature, and omitting reasoning lets the endpoint choose.
     module_function def task_config_from_env(name, env, default_provider:, default_model:)
       prefix = "SFL_TASK_#{name.to_s.upcase}_"
       model = presence(env["#{prefix}MODEL"]) || default_model
       provider = presence(env["#{prefix}PROVIDER"])&.to_sym || default_provider
-      temperature = presence(env["#{prefix}TEMPERATURE"])&.to_f
-      params = temperature ? { temperature: } : {}
 
-      LLM::TaskConfig.new(model:, provider:, params:)
+      LLM::TaskConfig.new(model:, provider:, params: task_params_from_env(prefix, env))
+    end
+
+    module_function def task_params_from_env(prefix, env)
+      params = {}
+
+      temperature = presence(env["#{prefix}TEMPERATURE"])
+      if temperature&.strip&.casecmp?("none")
+        params[:omit_temperature] = true
+      elsif temperature
+        params[:temperature] = temperature.to_f
+      end
+
+      seed = presence(env["#{prefix}SEED"])
+      params[:seed] = Integer(seed, 10) if seed
+      max_tokens = presence(env["#{prefix}MAX_TOKENS"])
+      params[:max_tokens] = Integer(max_tokens, 10) if max_tokens
+
+      effort = presence(env["#{prefix}REASONING_EFFORT"])
+      params[:reasoning_effort] = effort.strip if effort && !effort.strip.casecmp?("none")
+
+      params
     end
 
     # @param env [#[]] environment source
@@ -173,6 +205,17 @@ module SFL
       return [] unless raw
 
       raw.split(",").map(&:strip).reject(&:empty?)
+    end
+
+    # SFL_NARRATIVE_VARIANT selects the narrator signature: v0, v1 or v2. Unset
+    # means v1. An unknown value raises here, so a typo fails at startup rather
+    # than partway through a run.
+    module_function def resolve_narrative_variant(env)
+      raw = presence(env["SFL_NARRATIVE_VARIANT"]) || "v1"
+      variant = raw.strip.downcase.to_sym
+      return variant if LLM::Narrators::NarrativeGenerator::SIGNATURES.key?(variant)
+
+      raise Error, "SFL_NARRATIVE_VARIANT must be one of v0, v1, v2 (got #{raw.inspect})"
     end
 
     module_function def presence(value)
@@ -212,6 +255,7 @@ module SFL
     # Configure Langfuse tracing if requested. Performs a reachability check first.
     # Raises Boot::Error on cancellation (caller should rescue and exit appropriately).
     module_function def configure_tracing(env, tty:, input:)
+      LangfuseReachability.normalize_host!(env)
       return unless LangfuseReachability.tracing_requested?(env)
 
       decision = LangfuseReachability.decide(env:, tty:, input:)
