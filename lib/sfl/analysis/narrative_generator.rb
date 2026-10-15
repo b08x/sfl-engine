@@ -125,7 +125,7 @@ module SFL
         # the METADATA section of #to_text keeps the same order as from_result.
         def self.canonicalize_metadata(meta)
           key_map = {
-            (meta["id_label"] || "conversation_id") => "conversation_id",
+            meta["id_label"] || "conversation_id" => "conversation_id",
             "#{(meta['unit_label'] || 'turn').downcase}_count" => "turn_count",
             (meta["actors_list_label"] || "speakers").downcase => "speakers",
           }

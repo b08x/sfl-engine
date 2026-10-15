@@ -15,8 +15,14 @@ RSpec.describe SFL::Analysis::NarrativeGenerator::Digest do
     ]
     build_analysis_result(
       metadata: {
-        conversation_id: "conv-json", source_file: "conv-json.jsonl", turn_count: 2, speakers: %w[Alice Bob],
-        analyzed_at: "2026-10-15T10:00:00+00:00", topics_enabled: false, interrupted: false, total: 2,
+        conversation_id: "conv-json",
+        source_file: "conv-json.jsonl",
+        turn_count: 2,
+        speakers: %w[Alice Bob],
+        analyzed_at: "2026-10-15T10:00:00+00:00",
+        topics_enabled: false,
+        interrupted: false,
+        total: 2,
       },
       turns:,
       speaker_profiles: {},
@@ -42,9 +48,13 @@ RSpec.describe SFL::Analysis::NarrativeGenerator::Digest do
 
     it "accepts a documentation report whose keys use the document vocabulary" do
       doc_metadata = {
-        "id_label" => "document_id", "unit_label" => "Section", "actor_label" => "Section",
-        "actors_list_label" => "Headings", "document_id" => "doc-7", "section_count" => 2,
-        "headings" => %w[A B]
+        "id_label" => "document_id",
+        "unit_label" => "Section",
+        "actor_label" => "Section",
+        "actors_list_label" => "Headings",
+        "document_id" => "doc-7",
+        "section_count" => 2,
+        "headings" => %w[A B],
       }
       doc_json = json.merge("metadata" => doc_metadata, "section_profiles" => {})
 

@@ -41,9 +41,7 @@ module SFL
       private def grounding_section
         return "" unless @grounding
 
-        if @grounding.findings.empty?
-          return "\n## Grounding Check\n\nNo checkable claim failed against the digest.\n"
-        end
+        return "\n## Grounding Check\n\nNo checkable claim failed against the digest.\n" if @grounding.findings.empty?
 
         lines = @grounding.findings.each_with_index.map do |finding, i|
           band = finding.band || "unmarked"
