@@ -9,11 +9,11 @@ module SFL
         class Logger
           include Ports::Logger
 
-          def debug(_message = nil, &) = nil
-          def info(_message = nil, &) = nil
-          def warn(_message = nil, &) = nil
-          def error(_message = nil, &) = nil
-          def fatal(_message = nil, &) = nil
+          def debug(_message = nil, **_fields, &) = nil
+          def info(_message = nil, **_fields, &) = nil
+          def warn(_message = nil, **_fields, &) = nil
+          def error(_message = nil, **_fields, &) = nil
+          def fatal(_message = nil, **_fields, &) = nil
         end
       end
     end

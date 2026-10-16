@@ -12,6 +12,11 @@ module SFL
       # writes discrete human-readable lines — different consumers, different
       # backends, no reason to force them through one interface.
       #
+      # Every level also takes keyword fields. Adapters that support structured
+      # output (journald) emit each as its own field, upper-cased; the others
+      # append them to the line as key=value. Put state in fields, not in the
+      # message string, so it stays queryable (journalctl DOCUMENT_ID=doc-1).
+      #
       # Level guidance (apply this consistently across call sites, not
       # just here):
       #   debug — fine-grained, high-volume diagnostic detail (e.g. a
@@ -30,32 +35,37 @@ module SFL
       #           gone, or the process is about to exit.
       module Logger
         # @param message [String, nil]
+        # @param fields [Hash{Symbol => #to_s}] structured fields (document_id:, count:, ...)
         # @yield returns the message when no message argument is given
-        def debug(message = nil, &)
+        def debug(message = nil, **fields, &)
           raise NotImplementedError, "#{self.class} must implement #debug"
         end
 
         # @param message [String, nil]
+        # @param fields [Hash{Symbol => #to_s}] structured fields (document_id:, count:, ...)
         # @yield returns the message when no message argument is given
-        def info(message = nil, &)
+        def info(message = nil, **fields, &)
           raise NotImplementedError, "#{self.class} must implement #info"
         end
 
         # @param message [String, nil]
+        # @param fields [Hash{Symbol => #to_s}] structured fields (document_id:, count:, ...)
         # @yield returns the message when no message argument is given
-        def warn(message = nil, &)
+        def warn(message = nil, **fields, &)
           raise NotImplementedError, "#{self.class} must implement #warn"
         end
 
         # @param message [String, nil]
+        # @param fields [Hash{Symbol => #to_s}] structured fields (document_id:, count:, ...)
         # @yield returns the message when no message argument is given
-        def error(message = nil, &)
+        def error(message = nil, **fields, &)
           raise NotImplementedError, "#{self.class} must implement #error"
         end
 
         # @param message [String, nil]
+        # @param fields [Hash{Symbol => #to_s}] structured fields (document_id:, count:, ...)
         # @yield returns the message when no message argument is given
-        def fatal(message = nil, &)
+        def fatal(message = nil, **fields, &)
           raise NotImplementedError, "#{self.class} must implement #fatal"
         end
       end

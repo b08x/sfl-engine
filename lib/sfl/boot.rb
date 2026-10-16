@@ -105,6 +105,30 @@ module SFL
     end
     # rubocop:enable Metrics/ParameterLists
 
+    LOG_TARGETS = %w[stderr journald].freeze
+    LOG_LEVELS = { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4 }.freeze
+    JOURNALD_LEVELS = { "debug" => 7, "info" => 6, "warn" => 4, "error" => 3, "fatal" => 2 }.freeze
+
+    # Logger for the CLI and API. SFL_LOG_TARGET picks stderr (default) or
+    # journald; SFL_LOG_LEVEL picks the minimum severity (default info).
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [Core::Ports::Logger]
+    # @raise [Error] on an unknown target or level
+    module_function def logger(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      target = env["SFL_LOG_TARGET"].to_s.empty? ? "stderr" : env["SFL_LOG_TARGET"]
+      level = env["SFL_LOG_LEVEL"].to_s.empty? ? "info" : env["SFL_LOG_LEVEL"].downcase
+      raise Error, "SFL_LOG_TARGET must be one of #{LOG_TARGETS.join(', ')} (got #{target.inspect})" unless LOG_TARGETS.include?(target)
+      raise Error, "SFL_LOG_LEVEL must be one of #{LOG_LEVELS.keys.join(', ')} (got #{level.inspect})" unless LOG_LEVELS.key?(level)
+
+      if target == "journald"
+        Core::Ports::JournaldLogger.new(level: JOURNALD_LEVELS.fetch(level))
+      else
+        Core::Ports::StderrLogger.new(level: LOG_LEVELS.fetch(level))
+      end
+    end
+
     module_function def build_llm_collaborators(env)
       llm_config = build_llm_config(env)
       validate_api_keys!(llm_config, env)

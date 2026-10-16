@@ -67,7 +67,7 @@ module SFL
         vectors = breaker.call("embedder.embed_batch") { fetch_batch(texts) }
 
         elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
-        logger.info { "embed_batch completed (size=#{texts.size}, latency_ms=#{elapsed_ms})" }
+        logger.info("embed_batch completed", size: texts.size, latency_ms: elapsed_ms)
         vectors
       rescue => e
         fail_embed("embed_batch", e)
@@ -118,7 +118,7 @@ module SFL
       end
 
       private def fail_embed(context, error)
-        logger.error { "embedder #{context} failed: #{error.class}: #{error.message}" }
+        logger.error("embedder #{context} failed", error_class: error.class, error_message: error.message)
         raise Error, "embedder #{context} failed: #{error.message}"
       end
     end

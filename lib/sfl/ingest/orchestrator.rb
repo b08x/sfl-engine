@@ -49,7 +49,7 @@ module SFL
         corpus.each_ref do |ref|
           process(ref.path_hint, counts)
         end
-        logger.info { "ingest run complete: #{counts}" }
+        logger.info("ingest run complete", **counts)
         counts
       end
 
@@ -69,7 +69,7 @@ module SFL
         classification = classify(file)
         dispatch_or_review(file, classification, counts)
       rescue Analysis::Error, Core::Loaders::Error, Store::Error, SystemCallError => e
-        logger.error { "ingest failed for #{file}: #{e.class}: #{e.message}" }
+        logger.error("ingest failed", file:, error_class: e.class, error_message: e.message)
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Dispatch failed: #{e.message}")
         counts[:review_entries] += 1
       end
@@ -144,7 +144,7 @@ module SFL
         enqueue_drafted(file, classification, draft)
         counts[:drafted] += 1
       rescue LoaderDrafter::Error => e
-        logger.warn { "loader draft failed for #{file}: #{e.message}" }
+        logger.warn("loader draft failed", file:, error_message: e.message)
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Draft failed: #{e.message}")
         counts[:review_entries] += 1
       end

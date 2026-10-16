@@ -31,7 +31,7 @@ module SFL
           format: raw.fetch(:format), mode: raw.fetch(:mode), confidence: raw.fetch(:confidence), reasoning: raw.fetch(:reasoning)
         )
       rescue => e
-        logger.warn { "ingest classifier failed: #{e.class}: #{e.message}" }
+        logger.warn("ingest classifier failed", error_class: e.class, error_message: e.message)
         Core::Types::ClassificationResult.new(
           format: "unknown", mode: nil, confidence: 0.0, reasoning: "Classification failed: #{e.message}"
         )

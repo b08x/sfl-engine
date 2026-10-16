@@ -19,24 +19,32 @@ module SFL
           end
         end
 
-        def debug(message = nil, &)
-          @logger.debug(message, &)
+        def debug(message = nil, **fields, &)
+          log(:debug, message, fields, &)
         end
 
-        def info(message = nil, &)
-          @logger.info(message, &)
+        def info(message = nil, **fields, &)
+          log(:info, message, fields, &)
         end
 
-        def warn(message = nil, &)
-          @logger.warn(message, &)
+        def warn(message = nil, **fields, &)
+          log(:warn, message, fields, &)
         end
 
-        def error(message = nil, &)
-          @logger.error(message, &)
+        def error(message = nil, **fields, &)
+          log(:error, message, fields, &)
         end
 
-        def fatal(message = nil, &)
-          @logger.fatal(message, &)
+        def fatal(message = nil, **fields, &)
+          log(:fatal, message, fields, &)
+        end
+
+        # ::Logger takes one message, so fields become trailing key=value pairs.
+        private def log(severity, message, fields, &block)
+          @logger.public_send(severity) do
+            text = message || block&.call
+            fields.empty? ? text : [text, *fields.map { |key, value| "#{key}=#{value}" }].join(" ")
+          end
         end
       end
     end

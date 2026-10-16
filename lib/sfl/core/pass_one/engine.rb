@@ -34,7 +34,7 @@ module SFL
         private :parser, :instrumenter, :logger
 
         private def parse_with_logging(text, document_id)
-          logger.debug { "pass_one started (document_id=#{document_id.inspect}, text_length=#{text.length})" }
+          logger.debug("pass_one started", document_id:, text_length: text.length)
           started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
           clauses = instrumenter.instrument("pass_one.process", document_id:) do
@@ -47,14 +47,11 @@ module SFL
 
         private def log_completion(document_id, clauses, started_at)
           elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
-          logger.info do
-            "pass_one completed (document_id=#{document_id.inspect}, clause_count=#{clauses.size}, " \
-              "latency_ms=#{elapsed_ms})"
-          end
+          logger.info("pass_one completed", document_id:, clause_count: clauses.size, latency_ms: elapsed_ms)
         end
 
         private def log_failure(document_id, error)
-          logger.error { "pass_one failed (document_id=#{document_id.inspect}): #{error.message}" }
+          logger.error("pass_one failed", document_id:, error_class: error.class, error_message: error.message)
         end
       end
     end

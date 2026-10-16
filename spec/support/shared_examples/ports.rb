@@ -180,4 +180,12 @@ RSpec.shared_examples "a logger port" do
     expect { subject.error { "e" } }.not_to raise_error
     expect { subject.fatal { "f" } }.not_to raise_error
   end
+
+  it "accepts structured fields at every severity without raising" do
+    expect { subject.debug("d", document_id: "doc-1") }.not_to raise_error
+    expect { subject.info("i", count: 3) }.not_to raise_error
+    expect { subject.warn("w", reason: "retry") }.not_to raise_error
+    expect { subject.error("e", error_class: "RuntimeError") }.not_to raise_error
+    expect { subject.fatal("f", component: "sidecar") }.not_to raise_error
+  end
 end

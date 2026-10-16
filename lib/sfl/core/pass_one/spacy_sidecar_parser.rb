@@ -44,7 +44,7 @@ module SFL
         # @return [void]
         def close
           @mutex.synchronize do
-            logger.debug { "closing sidecar (pid=#{wait_thread&.pid})" }
+            logger.debug("closing sidecar", pid: wait_thread&.pid)
             stop_process
           end
         end
@@ -53,7 +53,7 @@ module SFL
         private :stdin, :stdout, :wait_thread, :logger
 
         private def start_process
-          logger.debug { "spawning sidecar: #{@command.join(' ')}" }
+          logger.debug("spawning sidecar", command: @command.join(" "))
           # pgroup: true puts the sidecar in its own process group so a
           # terminal Ctrl+C (SIGINT to the foreground process group) hits
           # only the Ruby process, not this child. CLI.install_interrupt_trap
@@ -61,7 +61,7 @@ module SFL
           # needs a live sidecar) before shutting down cleanly.
           @stdin, @stdout, @wait_thread = Open3.popen2(@env, *@command, pgroup: true)
           await_ready
-          logger.info { "sidecar ready (model=#{@model}, pid=#{wait_thread.pid})" }
+          logger.info("sidecar ready", model: @model, pid: wait_thread.pid)
         end
 
         private def await_ready
@@ -93,11 +93,11 @@ module SFL
 
         private def fail_or_retry(text, document_id, error, retried:)
           if retried
-            logger.error { "sidecar transport failed permanently: #{error.message}" }
+            logger.error("sidecar transport failed permanently", error_class: error.class, error_message: error.message)
             raise SidecarError, "sidecar transport failed: #{error.message}"
           end
 
-          logger.warn { "sidecar transport failed (#{error.message}), restarting and retrying once" }
+          logger.warn("sidecar transport failed, restarting and retrying once", error_class: error.class, error_message: error.message)
           restart_process
           request(text, document_id, retried: true)
         end

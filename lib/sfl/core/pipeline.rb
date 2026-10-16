@@ -83,7 +83,7 @@ module SFL
       def compile(text, document_id: nil, store: true, embed: true, resume: false, semantic_coherence_score: nil,
         pass_one_only: false
       )
-        logger.debug { "pipeline started (document_id=#{document_id.inspect}, text_length=#{text.length})" }
+        logger.debug("pipeline started", document_id:, text_length: text.length)
         started_at = now
 
         result = parse(text, document_id)
@@ -105,7 +105,7 @@ module SFL
       private def parse(text, document_id)
         Success(pass_one.process(text, document_id:))
       rescue PassOne::Error => e
-        logger.error { "pipeline pass_one failed (document_id=#{document_id.inspect}): #{e.message}" }
+        logger.error("pipeline pass_one failed", document_id:, error_class: e.class, error_message: e.message)
         Failure([:pass_one_failed, e.message])
       end
 
@@ -156,7 +156,7 @@ module SFL
 
         fresh_by_key = fresh_annotations(keyed, miss_keys, semantic_coherence_score)
 
-        logger.info { "pipeline cache (document_id=#{document_id}): #{hits.size} hits, #{miss_keys.size} misses" }
+        logger.info("pipeline cache", document_id:, hits: hits.size, misses: miss_keys.size)
         keyed.map { |key, _clause, _ideational| hits[key] || fresh_by_key.fetch(key) }
       end
 
@@ -202,7 +202,7 @@ module SFL
       private def persist(annotated, document_id, store)
         return Success(annotated) unless store && document_id
 
-        logger.debug { "persisting #{annotated.size} clauses to database (document_id=#{document_id.inspect})" }
+        logger.debug("persisting clauses to database", document_id:, clause_count: annotated.size)
         clause_store.replace_document(document_id, annotated)
         Success(annotated)
       end
@@ -220,7 +220,7 @@ module SFL
         return Success(annotated) unless embed && document_id && !annotated.empty?
 
         leaves = leaf_clauses(annotated)
-        logger.debug { "generating embeddings for #{leaves.size} clauses (document_id=#{document_id.inspect})" }
+        logger.debug("generating embeddings", document_id:, clause_count: leaves.size)
         vectors = embedder.embed_batch(leaves.map(&:text))
         embeddings_by_clause_id = leaves.zip(vectors).to_h { |ac, vector| [ac.id, vector] }
         embedding_store.replace_document(document_id, embeddings_by_clause_id)
@@ -238,19 +238,14 @@ module SFL
 
         if result.success?
           clause_count = result.value!.size
-          logger.info do
-            "pipeline completed (document_id=#{document_id.inspect}, clause_count=#{clause_count}, " \
-              "latency_ms=#{elapsed_ms})"
-          end
+          logger.info("pipeline completed", document_id:, clause_count:, latency_ms: elapsed_ms)
           # Serialize once per completed pipeline, not once per Pass 2 batch:
           # report_json walks every accumulated span, so logging it inside
           # annotate_batch made long multi-turn runs repeatedly serialize the
           # entire history and added avoidable work to the measured path.
-          logger.info do
-            "pass_two timing_breakdown=#{instrumenter.report_json}" if instrumenter.respond_to?(:report_json)
-          end
+          logger.info("pass_two timing_breakdown", timing_breakdown: instrumenter.report_json) if instrumenter.respond_to?(:report_json)
         else
-          logger.error { "pipeline failed (document_id=#{document_id.inspect}): #{result.failure.inspect}" }
+          logger.error("pipeline failed", document_id:, failure: result.failure.inspect)
         end
       end
 

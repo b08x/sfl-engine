@@ -251,9 +251,10 @@ RSpec.describe SFL::LLM::Engine do
 
         engine_with(batch_clause_annotator).annotate_batch([[clause, ideational], [clause, ideational]])
 
-        expect(logger).to have_received(:error) do |&block|
-          expect(block.call).to include("2/2 clauses (100.0%) defaulted", "unknown model")
-        end
+        expect(logger).to have_received(:error).with(
+          a_string_including("2/2 clauses (100.0%) defaulted"),
+          hash_including(missing: 2, total: 2, error_message: a_string_including("unknown model"))
+        )
       end
 
       it "counts a partial provider response — the missing indices are logged, not invisible" do
@@ -263,9 +264,9 @@ RSpec.describe SFL::LLM::Engine do
 
         engine_with(batch_clause_annotator).annotate_batch([[clause, ideational], [clause, ideational]])
 
-        expect(logger).to have_received(:warn) do |&block|
-          expect(block.call).to include("1/2 clauses (50.0%) defaulted", "missing indices: 1")
-        end
+        expect(logger).to have_received(:warn).with(
+          a_string_including("1/2 clauses (50.0%) defaulted"), hash_including(missing: 1, missing_indices: "1")
+        )
       end
 
       it "re-raises a bug in this codebase rather than laundering it into a fallback annotation" do
@@ -287,13 +288,10 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(logger).to have_received(:debug) do |&block|
-        expect(block.call).to include("pass_two started")
-      end
-      expect(logger).to have_received(:info) do |&block|
-        expect(block.call).to include("pass_two completed")
-        expect(block.call).to include("mood=declarative")
-      end
+      expect(logger).to have_received(:debug).with("pass_two started", hash_including(clause_id: clause.id))
+      expect(logger).to have_received(:info).with(
+        "pass_two completed", hash_including(clause_id: clause.id, mood: "declarative", latency_ms: a_kind_of(Numeric))
+      )
     end
 
     it "logs a warning when a value is rejected by its contract" do
@@ -304,9 +302,8 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(logger).to have_received(:warn) do |&block|
-        expect(block.call).to include("invalid interpersonal")
-      end
+      expect(logger).to have_received(:warn)
+        .with(a_string_including("invalid interpersonal"), hash_including(clause_id: clause.id))
     end
 
     it "logs a warning when the mood value is an unrecognized schema gap" do
@@ -317,9 +314,8 @@ RSpec.describe SFL::LLM::Engine do
 
       engine.annotate(clause, ideational)
 
-      expect(logger).to have_received(:warn) do |&block|
-        expect(block.call).to include("unknown mood")
-      end
+      expect(logger).to have_received(:warn)
+        .with(a_string_including("unknown mood"), hash_including(dimension: :mood, raw_value: "totally_unrelated_garbage"))
     end
   end
 end
