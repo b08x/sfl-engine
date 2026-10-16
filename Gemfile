@@ -59,7 +59,9 @@ gem "ruby_llm-template"
 # =============================================================================
 # OBSERVABILITY & TRACING
 # =============================================================================
-# Tracing continuity to Langfuse via OTel (track decision 7), replacing dspy-o11y-langfuse
+# Langfuse tracing runs through dspy-o11y-langfuse (see lib/sfl/llm/tracing.rb:
+# DSPy::Observability.configure!(adapter: :langfuse)). That gem exports through the
+# OpenTelemetry SDK and OTLP exporter below; lib/ does not call OpenTelemetry directly.
 
 gem "opentelemetry-exporter-otlp"
 gem "opentelemetry-sdk"
