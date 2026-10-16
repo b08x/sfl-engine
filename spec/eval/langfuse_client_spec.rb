@@ -91,4 +91,60 @@ RSpec.describe SFL::Eval::LangfuseClient do
 
     expect { unreachable.list_datasets }.to raise_error(described_class::Error, /unreachable/)
   end
+
+  describe "logging" do
+    let(:logger) { instance_spy(SFL::Core::Ports::JournaldLogger) }
+    let(:client) do
+      described_class.new(host: "http://lf.test:3000", public_key: "pk-secret-1", secret_key: "sk-secret-2",
+        transport:, logger:)
+    end
+
+    it "logs one debug line per request with method, path, status and latency_ms" do
+      client.upsert_dataset(name: "ds")
+
+      expect(logger).to have_received(:debug).with(
+        a_kind_of(String), method: "POST", path: "/api/public/v2/datasets", status: 200, latency_ms: a_kind_of(Numeric)
+      )
+    end
+
+    it "warns on a non-2xx response and still raises" do
+      reply(500, { "message" => "boom" })
+
+      expect { client.list_datasets }.to raise_error(described_class::Error)
+      expect(logger).to have_received(:warn).with(a_kind_of(String), hash_including(status: 500))
+    end
+
+    it "logs an error on transport failure" do
+      failing = -> (*) { raise Errno::ECONNREFUSED }
+      failing_client = described_class.new(host: "http://lf.test", public_key: "pk", secret_key: "sk",
+        transport: failing, logger:)
+
+      expect { failing_client.list_datasets }.to raise_error(described_class::Error, /unreachable/)
+      expect(logger).to have_received(:error).with(
+        a_kind_of(String), hash_including(method: "GET", error_class: Errno::ECONNREFUSED)
+      )
+    end
+
+    it "never puts headers, keys or bodies in any logged field or message" do
+      secret = "TOP-SECRET-BODY-VALUE"
+      captured = []
+      capture = Object.new
+      %i[debug info warn error fatal].each do |level|
+        capture.define_singleton_method(level) { |message = nil, **fields| captured << [message, fields] }
+      end
+      leaky = lambda do |_method, _url, _headers, _body|
+        SFL::Eval::LangfuseClient::Response.new(500, JSON.generate({ "error" => secret }))
+      end
+      subject_client = described_class.new(host: "http://lf.test", public_key: "pk-secret-1",
+        secret_key: "sk-secret-2", transport: leaky, logger: capture)
+
+      expect { subject_client.create_score(name: "n", value: 1, comment: secret) }
+        .to raise_error(described_class::Error)
+
+      rendered = captured.flatten.join(" ")
+      [secret, "pk-secret-1", "sk-secret-2", "Authorization", "Basic ", Base64.strict_encode64("pk-secret-1:sk-secret-2")]
+        .each { |forbidden| expect(rendered).not_to include(forbidden) }
+      expect(captured).not_to be_empty
+    end
+  end
 end

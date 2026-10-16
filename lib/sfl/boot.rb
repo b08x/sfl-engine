@@ -124,7 +124,7 @@ module SFL
       }.select { |_, value| value.to_s.empty? }.keys
       raise Error, "Langfuse client needs #{missing.join(', ')}" if missing.any?
 
-      Eval::LangfuseClient.new(host:, public_key:, secret_key:)
+      Eval::LangfuseClient.new(host:, public_key:, secret_key:, logger: logger(env:, load_dotenv: false))
     end
 
     LOG_TARGETS = %w[stderr journald].freeze

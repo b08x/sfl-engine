@@ -28,10 +28,13 @@ module SFL
 
       PAGE_LIMIT = 50
 
-      def initialize(host:, public_key:, secret_key:, transport: NetHttpTransport.new)
+      def initialize(host:, public_key:, secret_key:, transport: NetHttpTransport.new,
+        logger: Core::Ports::Null::Logger.new
+      )
         @host = host.to_s.chomp("/")
         @auth = "Basic #{Base64.strict_encode64("#{public_key}:#{secret_key}")}"
         @transport = transport
+        @logger = logger
       end
 
       def list_datasets
@@ -106,9 +109,13 @@ module SFL
         results
       end
 
+      # Logs method, path, status and latency only. Headers, keys and bodies
+      # (request or response) never reach the logger.
       private def request(method, path, body = nil)
         headers = { "Authorization" => @auth, "Content-Type" => "application/json" }
+        started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         response = @transport.call(method, "#{@host}#{path}", headers, body && JSON.generate(body))
+        log_response(method, path, response.status, started_at)
         unless (200..299).cover?(response.status)
           raise Error.new("Langfuse #{method.upcase} #{path} failed: #{response.status} #{response.body}",
             status: response.status)
@@ -116,7 +123,22 @@ module SFL
 
         response.body.to_s.empty? ? {} : JSON.parse(response.body)
       rescue SystemCallError, SocketError, IOError, Timeout::Error => e
+        @logger.error("langfuse request failed", method: method.to_s.upcase, path:, error_class: e.class,
+          latency_ms: elapsed_ms(started_at))
         raise Error, "Langfuse unreachable at #{@host}: #{e.class}: #{e.message}"
+      end
+
+      private def log_response(method, path, status, started_at)
+        fields = { method: method.to_s.upcase, path:, status:, latency_ms: elapsed_ms(started_at) }
+        if (200..299).cover?(status)
+          @logger.debug("langfuse request", **fields)
+        else
+          @logger.warn("langfuse request returned non-2xx", **fields)
+        end
+      end
+
+      private def elapsed_ms(started_at)
+        ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
       end
 
       private def compact(hash)
