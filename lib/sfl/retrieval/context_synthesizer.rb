@@ -114,10 +114,8 @@ module SFL
       end
 
       private def degraded_result(query, clauses, retrieved_count, error)
-        logger.warn do
-          "context_synthesis (#{query}): invalid synthesizer output: #{error.message} " \
-            "— returning evidence without an answer"
-        end
+        logger.warn("context_synthesis invalid synthesizer output, returning evidence without an answer",
+          query:, error_message: error.message)
         Core::Types::SynthesisResult.new(
           query:, answer: nil, clauses:,
           retrieved_count:, confidence: nil

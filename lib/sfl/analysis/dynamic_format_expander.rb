@@ -89,7 +89,7 @@ module SFL
       end
 
       def self.cached_result(out_path, title_slug, logger)
-        logger.info("skipping #{File.basename(out_path)} — already expanded")
+        logger.info("expansion skipped, already expanded", file: File.basename(out_path))
         [{ path: out_path, source_type: "dynamic_format", label: title_slug }]
       end
 
@@ -122,7 +122,7 @@ module SFL
         result = predictor.call(text:)
 
         spinner.success("done!")
-        logger.info("successfully expanded #{File.basename(path)}")
+        logger.info("expanded", file: File.basename(path))
         result.to_h
       end
 
@@ -240,10 +240,8 @@ module SFL
       def self.report_anomalies(anomalies, logger)
         return if anomalies[:double_escaped_turns].zero?
 
-        logger.warn(
-          "model-contract violation: #{anomalies[:double_escaped_turns]}/#{anomalies[:total_turns]} " \
-            "turns arrived double-escaped and were decoded at the parse boundary"
-        )
+        logger.warn("model-contract violation: turns arrived double-escaped and were decoded at the parse boundary",
+          double_escaped_turns: anomalies[:double_escaped_turns], total_turns: anomalies[:total_turns])
       end
 
       def self.write_raw_parsed(dest_dir, title_slug, turns, anomalies, logger)
@@ -252,13 +250,13 @@ module SFL
           anomalies:,
           turns: turns.map(&:to_h)
         ))
-        logger.debug("wrote raw parsed output to #{raw_parsed_path}")
+        logger.debug("wrote raw parsed output", path: raw_parsed_path)
       end
 
       def self.debug_turns(turns, logger)
-        logger.debug("extracted #{turns.size} turns:")
+        logger.debug("extracted turns", count: turns.size)
         turns.each_with_index do |turn, i|
-          logger.debug("  [#{i}] #{turn.name}: #{turn.mes.to_s[0..50]}...")
+          logger.debug("extracted turn", index: i, name: turn.name, preview: turn.mes.to_s[0..50])
         end
       end
 

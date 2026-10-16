@@ -509,14 +509,7 @@ module SFL
       end
 
       private def warn_topic_k_clamped(requested, applied, doc_count)
-        @logger.warn(
-          "Topic count reduced: requested #{requested} topics, using #{applied}. " \
-            "The corpus has #{doc_count} documents; LDA needs at least " \
-            "#{MIN_DOCS_PER_TOPIC} documents per topic to separate them, so #{requested} " \
-            "topics over #{doc_count} documents would produce near-duplicate, " \
-            "near-random partitions. Pass --topics 0 to let HDP infer the topic count, " \
-            "or analyze a larger corpus to get #{requested} topics."
-        )
+        @logger.warn("topic count reduced; pass --topics 0 for HDP or analyze a larger corpus", requested:, applied:, doc_count:, min_docs_per_topic: MIN_DOCS_PER_TOPIC)
       end
 
       private def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)

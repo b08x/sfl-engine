@@ -46,7 +46,7 @@ module SFL
       #
       # @return [void]
       def run(context)
-        context.logger.info("sfl-tui starting #{context.width}x#{context.height}")
+        context.logger.info("sfl-tui starting", width: context.width, height: context.height)
         Bubbletea::Runner.new(program(context), alt_screen: true).run
         context.logger.info("sfl-tui exited")
       end

@@ -59,6 +59,20 @@ RSpec.describe SFL::TUI::App do
     end
   end
 
+  describe ".run" do
+    it "logs start and exit with width and height as fields" do
+      logger = instance_spy(SFL::Core::Ports::JournaldLogger)
+      context = SFL::TUI::AppContext.new(boot: TUISpecSupport.boot_result, logger:, width: 100, height: 30)
+      runner = instance_double(Bubbletea::Runner, run: nil)
+      allow(Bubbletea::Runner).to receive(:new).and_return(runner)
+
+      described_class.run(context)
+
+      expect(logger).to have_received(:info).with("sfl-tui starting", width: 100, height: 30)
+      expect(logger).to have_received(:info).with("sfl-tui exited")
+    end
+  end
+
   describe ".program" do
     it "builds the root model closing over the context" do
       context = TUISpecSupport.context

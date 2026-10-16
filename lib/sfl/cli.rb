@@ -332,7 +332,8 @@ module SFL
           next []
         end
         lm = boot_result.lm_factory.for(:context_synthesis)
-        Analysis::DynamicFormatExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"), lm:)
+        Analysis::DynamicFormatExpander.expand(p, dest_dir: File.join(options[:output_dir], "_expanded"), lm:,
+          logger: Boot.logger)
       rescue => e
         warn "[ERROR] #{p}: dynamic expansion failed: #{e.message}"
         warn e.backtrace&.join("\n")
@@ -500,7 +501,7 @@ module SFL
       progress_bar = TurnProgressBar.new
 
       Analysis::Engine.new(
-        pipeline:, review_queue_repo:,
+        pipeline:, review_queue_repo:, logger:,
         on_progress: progress_bar.method(:advance), on_turn_start: progress_bar.method(:start),
         stop_requested: -> { stop_flag.stopped? }
       )

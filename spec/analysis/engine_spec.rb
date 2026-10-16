@@ -402,7 +402,8 @@ RSpec.describe SFL::Analysis::Engine do
       analyze_with(8, 10)
 
       expect(logger).to have_received(:warn).with(
-        a_string_matching(/requested 10 topics, using 2\b/).and(a_string_matching(/8 documents/))
+        a_string_including("topic count reduced"), requested: 10, applied: 2, doc_count: 8,
+        min_docs_per_topic: described_class::MIN_DOCS_PER_TOPIC
       )
     end
 

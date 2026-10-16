@@ -65,7 +65,9 @@ RSpec.describe SFL::Analysis::DynamicFormatExpander do
 
         described_class.normalize_parsed({ turns: }, spy_logger)
 
-        expect(spy_logger).to have_received(:warn).with(/double-escaped/)
+        expect(spy_logger).to have_received(:warn).with(
+          a_string_including("double-escaped"), double_escaped_turns: 1, total_turns: a_kind_of(Integer)
+        )
       end
     end
 

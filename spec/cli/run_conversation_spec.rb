@@ -58,6 +58,18 @@ RSpec.describe SFL::CLI do
     allow($stdout).to receive(:puts)
   end
 
+  describe ".build_conversation_engine" do
+    it "passes the Boot logger to Analysis::Engine" do
+      boot_logger = instance_double(SFL::Core::Ports::StderrLogger)
+      allow(SFL::Boot).to receive(:logger).and_return(boot_logger)
+      allow(described_class).to receive(:build_pipeline).and_return(instance_double(SFL::Core::Pipeline))
+
+      described_class.build_conversation_engine(boot_result, options, instance_double(SFL::CLI::StopFlag, stopped?: false))
+
+      expect(SFL::Analysis::Engine).to have_received(:new).with(hash_including(logger: boot_logger))
+    end
+  end
+
   describe ".run_conversation" do
     it "returns 0 when every clause carries a trusted annotation" do
       allow(engine).to receive(:analyze).and_return(result_with("llm", "llm"))

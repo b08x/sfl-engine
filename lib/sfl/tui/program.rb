@@ -86,7 +86,7 @@ module SFL
       private def switch_to(index)
         return self if index == active_index
 
-        context.logger.debug { "tui tab -> #{workspaces.fetch(index).title}" }
+        context.logger.debug("tui tab changed", tab: workspaces.fetch(index).title)
         with(active_index: index, error: nil)
       end
 

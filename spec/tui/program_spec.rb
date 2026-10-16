@@ -57,6 +57,15 @@ RSpec.describe SFL::TUI::Program do
       expect(back.active_workspace.title).to eq("Query Console")
     end
 
+    it "logs a tab switch with the tab title as a field" do
+      logger = instance_spy(SFL::Core::Ports::JournaldLogger)
+      logged = SFL::TUI::AppContext.new(boot: TUISpecSupport.boot_result, logger:, width: 120, height: 40)
+
+      described_class.new(context: logged).update(rune_key("3", alt: true))
+
+      expect(logger).to have_received(:debug).with("tui tab changed", tab: "Corpus Browser")
+    end
+
     it "leaves the receiver untouched when switching" do
       program.update(rune_key("3", alt: true))
 
