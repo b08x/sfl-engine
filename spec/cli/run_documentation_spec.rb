@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "dspy"
+require "tmpdir"
 
 RSpec.describe SFL::CLI do
   let(:boot_result) do
@@ -11,9 +12,12 @@ RSpec.describe SFL::CLI do
       pass1_command: nil, spacy_model: "en_core_web_sm"
     )
   end
+  let(:docs_dir) { Dir.mktmpdir("sfl-docs") }
   let(:engine) { instance_double(SFL::Analysis::Engine) }
   let(:source) { instance_double(SFL::Analysis::DocumentationSource) }
   let(:result) { instance_double(SFL::Core::Types::AnalysisResult, metadata: { interrupted: false }, turns: []) }
+
+  after { FileUtils.remove_entry(docs_dir) }
 
   before do
     allow(SFL::Core::PassOne::SpacySidecarParser).to receive(:new)
@@ -41,19 +45,19 @@ RSpec.describe SFL::CLI do
     end
 
     it "drives a single DocumentationSource over the whole input (no per-file batching, unlike conversation)" do
-      described_class.run_documentation("./docs", options)
+      described_class.run_documentation(docs_dir, options)
 
       expect(SFL::Analysis::DocumentationSource).to have_received(:new).with(
-        single_ref: satisfy { |arg| arg.is_a?(SFL::Core::Refs::FileRef) && arg.path_hint == "./docs" }
+        single_ref: satisfy { |arg| arg.is_a?(SFL::Core::Refs::FileRef) && arg.path_hint == docs_dir }
       )
       expect(engine).to have_received(:analyze).with(
-        source, label: "docs", store: false, resume: false, topics: nil, pass_one_only: true
+        source, label: File.basename(docs_dir, ".*"), store: false, resume: false, topics: nil, pass_one_only: true
       )
       expect(SFL::Formatters::ReportWriter).to have_received(:write).with(result, "./out")
     end
 
     it "boots with require_llm: false for --pass1-only" do
-      described_class.run_documentation("./docs", options)
+      described_class.run_documentation(docs_dir, options)
 
       expect(SFL::Boot).to have_received(:call).with(require_llm: false, require_tracing: false)
     end
