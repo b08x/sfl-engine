@@ -94,7 +94,6 @@ module SFL
       end
 
       # @raise [ContractViolation] when the model's parse cannot be trusted
-      # rubocop:disable Metrics/ParameterLists -- every argument is already derived by #expand
       # (slug and out_path are computed there so the cache check can short-circuit); recomputing
       # them here would duplicate the naming rule in two places.
       def self.expand_and_write(path, dest_dir, lm, title_slug, out_path, logger)
@@ -110,7 +109,6 @@ module SFL
 
         [{ path: out_path, source_type: "dynamic_format", label: title_slug }]
       end
-      # rubocop:enable Metrics/ParameterLists
 
       def self.describe_failure(basename, (code, detail))
         "#{basename}: LLM parse rejected (#{code}) — #{Array(detail).join('; ')}"

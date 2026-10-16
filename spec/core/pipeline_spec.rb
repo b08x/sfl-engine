@@ -49,7 +49,12 @@ RSpec.describe SFL::Core::Pipeline do
       expect(annotated.size).to eq(1)
       expect(annotated.first).to be_a(SFL::Core::Types::AnnotatedClause)
       expect(annotated.first.interpersonal.mood).to eq("declarative")
-      expect(annotated.first.syntactic).to eq(syntactic_clause)
+      # Pipeline scores readability on every clause (Analysis::ReadabilityScorer,
+      # real by default), so the syntactic clause it returns differs from the
+      # input fixture only in that one attribute.
+      expect(annotated.first.syntactic.to_h.except(:readability))
+        .to eq(syntactic_clause.to_h.except(:readability))
+      expect(annotated.first.syntactic.readability).to be_a(SFL::Core::Types::Readability)
       expect(annotated.first.ideational).to eq(ideational_payload)
     end
 

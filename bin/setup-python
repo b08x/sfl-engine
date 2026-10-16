@@ -29,7 +29,7 @@ INTERPRETER_FILE = File.join(VENDOR_DIR, "interpreter_path")
 # forcing a from-source Cython build that failed outright.
 PYTHON_VERSION = ENV["SFL_PYTHON_VERSION"] || "3.12"
 SPACY_REQUIREMENT = ENV["SFL_SPACY_REQUIREMENT"] || "spacy"
-SPACY_MODEL = ENV["SPACY_MODEL"] || "en_core_web_sm"
+SPACY_MODEL = ENV["SPACY_MODEL"] || "en_core_web_md"
 
 def run!(*cmd, env: {})
   puts "-> #{cmd.join(' ')}"

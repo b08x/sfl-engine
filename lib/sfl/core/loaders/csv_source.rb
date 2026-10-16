@@ -12,7 +12,7 @@ module SFL
       class CsvSource
         include Source
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a CSV file
         # @param text_column [String] header of the column holding unit text
         # @param file_id [String, nil]
         # @param document_id_column [String, nil] header for a per-row id;
@@ -24,7 +24,7 @@ module SFL
         # column-name mappings (a CSV file has no schema of its own to infer these from) and
         # skip_empty; matches CsvSource's Unit-mapping job one-for-one, nothing here is padding.
         def initialize(
-          path,
+          ref,
           text_column:,
           file_id: nil,
           document_id_column: nil,
@@ -32,9 +32,9 @@ module SFL
           heading_column: nil,
           skip_empty: true
         )
-          @path = path.to_s
+          @ref = ref
           @text_column = text_column
-          @file_id = file_id || File.basename(@path, ".*")
+          @file_id = file_id || ref.name
           @document_id_column = document_id_column
           @speaker_column = speaker_column
           @heading_column = heading_column
@@ -45,7 +45,9 @@ module SFL
         def each_unit
           return to_enum(:each_unit) unless block_given?
 
-          ::CSV.foreach(@path, headers: true, encoding: "bom|utf-8").with_index do |row, index|
+          content = @ref.read
+          content = content.sub("\xEF\xBB\xBF", "") # strip UTF-8 BOM if present
+          ::CSV.parse(content, headers: true).each_with_index do |row, index|
             text = row[@text_column].to_s.strip
             next if @skip_empty && text.empty?
 

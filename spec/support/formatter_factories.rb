@@ -10,7 +10,6 @@ module FormatterFactories
     SFL::Core::Types::Premise.new(type:, source:, value:, weight:)
   end
 
-  # rubocop:disable Metrics/ParameterLists -- one flat ReasoningTrace builder; every kwarg maps
   # 1:1 to a real attribute a formatter spec needs to vary independently.
   def build_reasoning_trace(
     premises: [build_premise], inference_rule: "modal_verb_strength", conclusion: { modality: 0.8 },
@@ -19,7 +18,6 @@ module FormatterFactories
     SFL::Core::Types::ReasoningTrace.new(premises:, inference_rule:, conclusion:, confidence:, derivation_hash:,
       generated_at:)
   end
-  # rubocop:enable Metrics/ParameterLists
 
   # rubocop:disable Metrics/ParameterLists -- one flat NarrativeReport builder; every kwarg maps
   # 1:1 to a real attribute a formatter spec needs to vary independently.
@@ -63,7 +61,6 @@ module FormatterFactories
   end
   # rubocop:enable Metrics/ParameterLists
 
-  # rubocop:disable Metrics/ParameterLists -- one flat KnowledgeBaseReport builder; every kwarg
   # maps 1:1 to a real attribute a kb formatter/report-writer spec needs to vary independently.
   def build_knowledge_base_report(
     metadata: {}, artifacts: [], migration_manifest: [], content_type_distribution: {},
@@ -73,7 +70,6 @@ module FormatterFactories
       metadata:, artifacts:, migration_manifest:, content_type_distribution:, quality_distribution:, staleness_flags:
     )
   end
-  # rubocop:enable Metrics/ParameterLists
 end
 
 RSpec.configure do |config|

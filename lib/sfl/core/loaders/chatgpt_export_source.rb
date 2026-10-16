@@ -25,8 +25,8 @@ module SFL
       class ChatgptExportSource
         include Source
 
-        def initialize(conversations_path)
-          @conversations_path = conversations_path.to_s
+        def initialize(ref)
+          @ref = ref
         end
 
         def each_unit
@@ -39,7 +39,7 @@ module SFL
         end
 
         private def conversations
-          Yajl::Parser.parse(File.read(@conversations_path), symbolize_keys: true)
+          Yajl::Parser.parse(@ref.read, symbolize_keys: true)
         end
 
         private def build_unit(convo, turn, index)

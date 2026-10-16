@@ -25,6 +25,16 @@ module SFL
     # perfectly ordinary Zeitwerk-autoloaded class like everything else
     # under lib/sfl/boot/.
     module LangfuseReachability
+      # Langfuse's own SDKs accept LANGFUSE_BASE_URL, but the OTel exporter
+      # reads only LANGFUSE_HOST. A .env that sets only the former would send
+      # self-hosted keys to the cloud default, and the 401 would appear on every
+      # flush. Copies the alias across unless LANGFUSE_HOST is already set.
+      # @param env [#[], #[]=] e.g. ENV
+      # @return [void]
+      module_function def normalize_host!(env)
+        env["LANGFUSE_HOST"] ||= env["LANGFUSE_BASE_URL"] if env["LANGFUSE_BASE_URL"]
+      end
+
       # @param host_url [String]
       # @param timeout [Numeric] seconds
       # @return [Boolean]

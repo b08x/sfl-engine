@@ -56,6 +56,35 @@ RSpec.describe SFL::Boot do
       expect(result.llm_config.for(:context_synthesis).provider).to eq(:openrouter)
     end
 
+    it "gives narrative_generation its own task, defaulting to context_synthesis when unconfigured" do
+      result = boot(env: base_env.merge("SFL_TASK_CONTEXT_SYNTHESIS_MODEL" => "openrouter/synth-model"))
+
+      expect(result.llm_config.for(:narrative_generation).model).to eq("openrouter/synth-model")
+    end
+
+    it "selects the narrative variant from SFL_NARRATIVE_VARIANT, defaulting to v1 (fact 9)" do
+      expect(boot(env: base_env).narrative_variant).to eq(:v1)
+      expect(boot(env: base_env.merge("SFL_NARRATIVE_VARIANT" => "v2")).narrative_variant).to eq(:v2)
+      expect(boot(env: base_env.merge("SFL_NARRATIVE_VARIANT" => "V0")).narrative_variant).to eq(:v0)
+    end
+
+    it "fails at startup on an unknown SFL_NARRATIVE_VARIANT" do
+      expect { boot(env: base_env.merge("SFL_NARRATIVE_VARIANT" => "v7")) }
+        .to raise_error(SFL::Boot::Error, /SFL_NARRATIVE_VARIANT must be one of v0, v1, v2/)
+    end
+
+    it "lets SFL_TASK_NARRATIVE_GENERATION_* override the narrator without touching context_synthesis" do
+      env = base_env.merge(
+        "SFL_TASK_CONTEXT_SYNTHESIS_MODEL" => "openrouter/synth-model",
+        "SFL_TASK_NARRATIVE_GENERATION_MODEL" => "openrouter/narrator-model"
+      )
+
+      result = boot(env:)
+
+      expect(result.llm_config.for(:narrative_generation).model).to eq("openrouter/narrator-model")
+      expect(result.llm_config.for(:context_synthesis).model).to eq("openrouter/synth-model")
+    end
+
     it "lets SFL_TASK_CONTEXT_SYNTHESIS_* override the context_synthesis default" do
       env = base_env.merge("SFL_TASK_CONTEXT_SYNTHESIS_MODEL" => "openrouter/different-model",
         "ANTHROPIC_API_KEY" => "anthropic-key")
@@ -79,6 +108,46 @@ RSpec.describe SFL::Boot do
       result = boot(env:)
 
       expect(result.llm_config.for(:pass_two_annotation).params).to eq(temperature: 0.3)
+    end
+
+    it "reads SEED, MAX_TOKENS and REASONING_EFFORT into params, as the request knobs (fact 6)" do
+      env = base_env.merge(
+        "SFL_TASK_PASS_TWO_ANNOTATION_SEED" => "42",
+        "SFL_TASK_PASS_TWO_ANNOTATION_MAX_TOKENS" => "2048",
+        "SFL_TASK_PASS_TWO_ANNOTATION_REASONING_EFFORT" => "low"
+      )
+
+      result = boot(env:)
+
+      expect(result.llm_config.for(:pass_two_annotation).params).to eq(seed: 42, max_tokens: 2048, reasoning_effort: "low")
+    end
+
+    it "fails at startup naming the ENV var when SEED is not an integer" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_SEED" => "four")
+
+      expect { boot(env:) }.to raise_error(SFL::Boot::Error, /SFL_TASK_PASS_TWO_ANNOTATION_SEED must be an integer/)
+    end
+
+    it "fails at startup naming the ENV var when MAX_TOKENS is not an integer" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_MAX_TOKENS" => "2_048x")
+
+      expect { boot(env:) }.to raise_error(SFL::Boot::Error, /SFL_TASK_PASS_TWO_ANNOTATION_MAX_TOKENS must be an integer/)
+    end
+
+    it "treats TEMPERATURE=none as omit_temperature, not as 0.0 (fact 6)" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_TEMPERATURE" => "none")
+
+      result = boot(env:)
+
+      expect(result.llm_config.for(:pass_two_annotation).params).to eq(omit_temperature: true)
+    end
+
+    it "treats REASONING_EFFORT=none as no reasoning param at all" do
+      env = base_env.merge("SFL_TASK_PASS_TWO_ANNOTATION_REASONING_EFFORT" => "none")
+
+      result = boot(env:)
+
+      expect(result.llm_config.for(:pass_two_annotation).params).to eq({})
     end
 
     it "builds a real Embedder wired to OLLAMA_BASE_URL/the resolved embedding model" do

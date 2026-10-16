@@ -108,6 +108,7 @@ module SFL
           Sequel[:clauses][:external_id].as(:clause_id),
           Sequel[:clauses][:text],
           Sequel[:clauses][:document_id],
+          Sequel[:clauses][:parent_clause_id],
           Sequel[:interpersonal_payloads][:mood],
           Sequel[:interpersonal_payloads][:tenor],
           Sequel[:interpersonal_payloads][:modality_weight],
@@ -152,7 +153,8 @@ module SFL
           process_type: row[:process_type],
           modality_weight: row[:modality_weight],
           annotation_source: row[:annotation_source],
-          untrusted: row[:untrusted] || false
+          untrusted: row[:untrusted] || false,
+          parent_clause_id: row[:parent_clause_id]
         )
       end
     end

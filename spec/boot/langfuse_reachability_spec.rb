@@ -28,6 +28,32 @@ RSpec.describe SFL::Boot::LangfuseReachability do
     end
   end
 
+  describe ".normalize_host!" do
+    it "copies LANGFUSE_BASE_URL into LANGFUSE_HOST, which is the only name dspy-o11y-langfuse reads" do
+      env = { "LANGFUSE_BASE_URL" => "http://tinybot:3000" }
+
+      described_class.normalize_host!(env)
+
+      expect(env["LANGFUSE_HOST"]).to eq("http://tinybot:3000")
+    end
+
+    it "leaves an explicit LANGFUSE_HOST alone" do
+      env = { "LANGFUSE_BASE_URL" => "http://a:3000", "LANGFUSE_HOST" => "http://b:3000" }
+
+      described_class.normalize_host!(env)
+
+      expect(env["LANGFUSE_HOST"]).to eq("http://b:3000")
+    end
+
+    it "does nothing when neither is set" do
+      env = {}
+
+      described_class.normalize_host!(env)
+
+      expect(env).not_to have_key("LANGFUSE_HOST")
+    end
+  end
+
   describe ".decide" do
     let(:env) do
       { "LANGFUSE_PUBLIC_KEY" => "pk", "LANGFUSE_SECRET_KEY" => "sk", "LANGFUSE_HOST" => "http://example.invalid" }

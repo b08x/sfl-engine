@@ -23,6 +23,7 @@ module SFL
         retriever:,
         lm: nil,
         synthesizer: nil,
+        clause_store: nil,
         breaker: Core::Ports::Null::Breaker.new,
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new
@@ -31,6 +32,7 @@ module SFL
         @synthesizer = synthesizer || (lm && LLM::Synthesizers::ContextSynthesizer.new(lm:))
         raise ArgumentError, "must provide lm: or explicit synthesizer:" unless @synthesizer
 
+        @clause_store = clause_store
         @breaker = breaker
         @instrumenter = instrumenter
         @logger = logger
@@ -47,8 +49,13 @@ module SFL
       #   what the LLM sees and from what citations can reference — a
       #   fallback 0.5 shouldn't silently ground an answer. They still
       #   appear in `clauses:` (the full retrieved set is always reported).
+      # @param expand_ancestors [Boolean] When true and a citable row is a
+      #   child chunk (parent_clause_id present), widen its evidence text
+      #   with its ancestor chain (requires clause_store: to have been
+      #   injected — a no-op otherwise). Default false: existing callers/
+      #   specs see unchanged evidence text unless they opt in.
       # @return [Core::Types::SynthesisResult]
-      def synthesize(query, filters: {}, limit: 10, include_fallback: false)
+      def synthesize(query, filters: {}, limit: 10, include_fallback: false, expand_ancestors: false)
         rows = retriever.retrieve(build_retrieval_query(query, filters, limit))
         return empty_result(query) if rows.empty?
 
@@ -56,11 +63,11 @@ module SFL
         citable, preamble = partition_citable(rows, include_fallback)
         return excluded_result(query, preamble, clauses, rows.size) if citable.empty?
 
-        synthesize_from_citable(query, citable, clauses, rows.size, preamble)
+        synthesize_from_citable(query, citable, clauses, rows.size, preamble, expand_ancestors)
       end
 
-      attr_reader :retriever, :synthesizer, :breaker, :instrumenter, :logger
-      private :retriever, :synthesizer, :breaker, :instrumenter, :logger
+      attr_reader :retriever, :synthesizer, :clause_store, :breaker, :instrumenter, :logger
+      private :retriever, :synthesizer, :clause_store, :breaker, :instrumenter, :logger
 
       private def build_retrieval_query(query, filters, limit)
         Core::Types::RetrievalQuery.new(query:, limit:, filters: Core::Types::RetrievalFilters.new(**filters))
@@ -85,8 +92,8 @@ module SFL
 
       # Unlike Pass 2, a failed synthesis call propagates — there is no
       # useful default "answer".
-      private def synthesize_from_citable(query, citable, clauses, retrieved_count, preamble)
-        output = fetch_synthesis(query, citable)
+      private def synthesize_from_citable(query, citable, clauses, retrieved_count, preamble, expand_ancestors)
+        output = fetch_synthesis(query, citable, expand_ancestors)
         cited = map_citations(output[:cited_clause_numbers], citable)
 
         Core::Types::SynthesisResult.new(
@@ -98,10 +105,10 @@ module SFL
         degraded_result(query, clauses, retrieved_count, e)
       end
 
-      private def fetch_synthesis(query, citable)
+      private def fetch_synthesis(query, citable, expand_ancestors)
         instrumenter.instrument("context_synthesis.synthesize", clause_count: citable.size) do
           breaker.call("context_synthesis.synthesize") do
-            synthesizer.call(query:, evidence: format_evidence(citable))
+            synthesizer.call(query:, evidence: format_evidence(citable, expand_ancestors))
           end
         end
       end
@@ -142,7 +149,7 @@ module SFL
         "#{preamble}\n\n#{answer}"
       end
 
-      private def format_evidence(citable)
+      private def format_evidence(citable, expand_ancestors)
         citable.each_with_index.map do |row, idx|
           annotations = [
             "mood=#{row.mood}",
@@ -151,8 +158,21 @@ module SFL
             "process=#{row.process_type}",
           ].join(", ")
 
-          "[#{idx + 1}] #{row.text}\n    (#{annotations}; source: #{row.document_id})"
+          "[#{idx + 1}] #{evidence_text(row, expand_ancestors)}\n    (#{annotations}; source: #{row.document_id})"
         end.join("\n")
+      end
+
+      # Widens a child chunk's evidence text with its ancestor chain (root
+      # first) when the caller opted in and a clause_store was injected.
+      # Falls back to the row's own text otherwise — never raises just
+      # because ancestor lookup wasn't wired up.
+      private def evidence_text(row, expand_ancestors)
+        return row.text unless expand_ancestors && clause_store && row.parent_clause_id
+
+        ancestors = clause_store.ancestor_chain(row.clause_id)
+        return row.text if ancestors.empty?
+
+        "#{ancestors.map(&:text).join(' ')} #{row.text}"
       end
     end
   end

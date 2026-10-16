@@ -80,7 +80,6 @@ module SFL
       # @param pass_one_only [Boolean] forwarded to every Pipeline#compile call — see
       #   Pipeline#compile's own doc comment for why this lives there, not here
       # @return [Core::Types::AnalysisResult]
-      # rubocop:disable Metrics/ParameterLists -- mirrors Pipeline#compile's own kwarg surface
       # (store/resume/pass_one_only) plus the two options only #analyze has (label/topics).
       def analyze(source, label:, store: false, resume: false, topics: nil, pass_one_only: false)
         units = source.units
@@ -93,14 +92,13 @@ module SFL
 
         build_result(turns, source:, label:, total:, interrupted:, topic_labels:, topic_shifts:)
       end
-      # rubocop:enable Metrics/ParameterLists
 
       # Builds the final AnalysisResult from already-compiled turns —
       # public the same way legacy's #build_result was, for a future
       # fan-in job that reconstructs `turns` out-of-band instead of
       # compiling them inline via #analyze's loop.
       # @param turns [Array<Core::Types::ConversationTurn>]
-      # rubocop:disable Metrics/ParameterLists, -- mirrors
+      # rubocop:disable Metrics/ParameterLists -- mirrors
       # legacy's own #build_result options (label/total/interrupted/topic_labels/topic_shifts)
       # plus one AnalysisResult literal assembling every cross-turn derivation this class exists
       # to compute once instead of N times; splitting the literal further would only relocate it.
@@ -190,7 +188,6 @@ module SFL
         clause.new(interpersonal: clause.interpersonal.new(annotation_source: "chunk_artifact"))
       end
 
-      # rubocop:disable Metrics/ParameterLists -- forwards #build_result's own five options
       # plus turns/source, one flat AnalysisResult#metadata literal.
       private def metadata_for(source, label, turns, total, interrupted, topic_labels)
         {
@@ -204,8 +201,6 @@ module SFL
           total:,
         }.merge(source.extra_metadata(turns))
       end
-      # rubocop:enable Metrics/ParameterLists
-
       private def fit_topics(units, topics)
         return [nil, nil, nil, []] unless topics && units.size >= 3
 
@@ -266,7 +261,6 @@ module SFL
         build_turn(unit, turn_id, clauses, pre_turn, semantic_coherence_score)
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat ConversationTurn literal, ported verbatim from legacy
       private def build_turn(unit, turn_id, clauses, pre_turn, semantic_coherence_score)
         mood_counts = clauses.map { |c| c.interpersonal.mood }.tally
 
@@ -287,8 +281,6 @@ module SFL
           semantic_coherence_score:
         )
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
-
       private def unwrap(result, document_id)
         result.value_or { |failure| raise Error, "compile failed for #{document_id.inspect}: #{failure.inspect}" }
       end

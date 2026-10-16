@@ -8,14 +8,12 @@
 # only the attributes analysis code actually reads get a meaningful
 # default, everything else is a a neutral filler value.
 module AnalysisFactories
-  # rubocop:disable Metrics/ParameterLists -- one flat SyntacticToken builder; every kwarg maps
   # 1:1 to a real SyntacticToken attribute a cohesion-analyzer spec needs to vary independently.
   def build_token(text: "word", lemma: text.downcase, pos: "NOUN", tag: "NN", dep: "ROOT", index: 0)
     SFL::Core::Types::SyntacticToken.new(
       text:, lemma:, pos:, tag:, dep:, head_index: -1, morphology: {}, index:
     )
   end
-  # rubocop:enable Metrics/ParameterLists
 
   def build_syntactic_clause(id: "syn-1", text: "text", tokens: [], document_id: "doc-1", sentence_index: 0)
     SFL::Core::Types::SyntacticClause.new(

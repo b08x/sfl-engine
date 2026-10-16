@@ -212,7 +212,6 @@ module SFL
         result.insights.map.with_index { |insight, i| "#{i + 1}. #{insight}" }.join("\n\n")
       end
 
-      # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one flat topic-list plus optional topic-evolution list, ported verbatim from legacy.
       private def topic_modeling_section
         return "" unless result.topic_labels&.any?
 
@@ -236,8 +235,6 @@ module SFL
 
         section.join("\n")
       end
-      # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
-
       private def key_moments_section
         return "" if result.key_moments.empty?
 

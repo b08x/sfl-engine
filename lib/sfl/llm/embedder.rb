@@ -67,7 +67,7 @@ module SFL
         vectors = breaker.call("embedder.embed_batch") { fetch_batch(texts) }
 
         elapsed_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at) * 1000).round(2)
-        logger.info { "embed_batch completed (size=#{texts.size}, latency_ms=#{elapsed_ms})" }
+        logger.info("embed_batch completed", size: texts.size, latency_ms: elapsed_ms)
         vectors
       rescue => e
         fail_embed("embed_batch", e)
@@ -80,12 +80,24 @@ module SFL
         response = post_json("/api/embed", { model:, input: text })
         # /api/embed returns { "embeddings": [[...]] }
         embeddings = response.fetch("embeddings")
-        embeddings.first
+        validate_vector!(embeddings.first)
       end
 
       private def fetch_batch(texts)
         response = post_json("/api/embed", { model:, input: texts })
-        response.fetch("embeddings")
+        response.fetch("embeddings").map { |vector| validate_vector!(vector) }
+      end
+
+      # Fail closed: a malformed vector (wrong type, non-numeric/NaN
+      # elements) is a signal the embedding provider itself misbehaved, not
+      # something to pass downstream as a partial/zero-vector save — raises
+      # immediately rather than letting garbage reach PgEmbeddingStore.
+      private def validate_vector!(vector)
+        unless vector.is_a?(Array) && !vector.empty? && vector.all? { |v| v.is_a?(Numeric) && v.finite? }
+          raise Error, "malformed embedding vector returned by model #{model.inspect}: #{vector.inspect}"
+        end
+
+        vector
       end
 
       private def post_json(path, payload)
@@ -106,7 +118,7 @@ module SFL
       end
 
       private def fail_embed(context, error)
-        logger.error { "embedder #{context} failed: #{error.class}: #{error.message}" }
+        logger.error("embedder #{context} failed", error_class: error.class, error_message: error.message)
         raise Error, "embedder #{context} failed: #{error.message}"
       end
     end

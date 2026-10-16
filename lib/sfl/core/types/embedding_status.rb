@@ -12,7 +12,12 @@ module SFL
       # from "no embeddings row" — every clause always has a status, so
       # "needs (re-)embedding" is a normal query (`status IN ('pending',
       # 'failed')`) instead of an absence check.
-      EmbeddingStatus = String.default("pending").enum("pending", "embedded", "failed")
+      #
+      # "not_applicable" = this clause is a parent chunk (another clause's
+      # parent_clause_id points at it) — Pipeline#embed_all only embeds
+      # leaves, so a parent can never move to "embedded" and must not sit
+      # at "pending" forever (see PgClauseStore#clause_row, EmbeddingRedriver).
+      EmbeddingStatus = String.default("pending").enum("pending", "embedded", "failed", "not_applicable")
     end
   end
 end

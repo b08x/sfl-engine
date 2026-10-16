@@ -18,36 +18,29 @@ module SFL
       # array per conversation (chat-<uuid>.json — no bundling file, no
       # tree structure, no separate title field).
       #
-      # @param path [String] a single chat-<uuid>.json file, or a
-      #   directory containing many of them (the export's actual
-      #   on-disk shape)
+      # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a
+      #   single chat-<uuid>.json file
       class MistralExportSource
         include Source
 
-        def initialize(path)
-          @path = path.to_s
+        def initialize(ref)
+          @ref = ref
         end
 
         def each_unit
           return to_enum(:each_unit) unless block_given?
 
-          chat_files.each do |file|
-            chat_id, turns = conversation_for(file)
-            next if turns.empty?
+          chat_id, turns = conversation
+          return if turns.empty?
 
-            turns.each_with_index { |turn, index| yield build_unit(chat_id, turn, index) }
-          end
+          turns.each_with_index { |turn, index| yield build_unit(chat_id, turn, index) }
         end
 
-        private def chat_files
-          File.directory?(@path) ? Dir.glob(File.join(@path, "chat-*.json")) : [@path]
-        end
-
-        private def conversation_for(file)
-          messages = Yajl::Parser.parse(File.read(file), symbolize_keys: true)
+        private def conversation
+          messages = Yajl::Parser.parse(@ref.read, symbolize_keys: true)
           return [nil, []] if messages.empty?
 
-          chat_id = messages.first[:chatId] || File.basename(file, ".json").delete_prefix("chat-")
+          chat_id = messages.first[:chatId] || @ref.name
           [chat_id, messages.filter_map { |msg| turn_for(msg) }]
         end
 

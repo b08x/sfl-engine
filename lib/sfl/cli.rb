@@ -225,7 +225,6 @@ module SFL
       warn "[ERROR] LLM provider error: #{e.message}"
       1
     end
-    # rubocop:disable Metrics/AbcSize
     # -- one flat file-dispatch/compile/report loop, ported verbatim from legacy's own
     # run_conversation; every step is already its own private method call (build_conversation_engine,
     # finish_report, write_narrative, print_interrupt_status) — the loop wiring itself is what's left.
@@ -276,7 +275,9 @@ module SFL
     # @return [String, nil] a label for the aggregated failure list when this
     #   file's report is degraded, nil when it is sound
     module_function def process_conversation_file(file, files, options, engine, boot_result)
-      source = Analysis::ConversationSource.new(file[:path], source_type: file[:source_type])
+      source = Analysis::ConversationSource.new(
+        Core::Refs::FileRefBuilder.call(file[:path]), source_type: file[:source_type]
+      )
       result = engine.analyze(source, label: file[:label], store: options[:store],
         resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
       output_dir = if files.size > 1
@@ -298,16 +299,15 @@ module SFL
     module_function def exit_status_for(failures)
       failures.empty? ? 0 : 1
     end
-    # rubocop:enable Metrics/AbcSize
-
     # @return [Array<Hash>] {path:, source_type:, label:} — native .jsonl/.srt/.vtt/.ass files
-    #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude exports,
-    #   each expanded (Analysis::ChatExportExpander) into one native JSONL file per conversation
+    #   pass through as-is (source_type: "chat_native"); .json files are ChatGPT/Claude/Mistral
+    #   exports, each expanded (Analysis::ChatExportExpander) into one native JSONL file per
+    #   conversation
     #   under `<output_dir>/_expanded`, tagged with the right source_type for the loader that
     #   actually parsed them. A raw export .json file skipped format validation entirely as a
     #   single-file argument before this method existed (only directory-glob mode filtered by
     #   extension) — live-verified gap, 2026-08-02: see ChatExportExpander's own comment.
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one
+    # rubocop:disable Metrics/AbcSize -- one
     # flat gather-native/gather-and-expand-exports/combine sequence, plus the per-export-path
     # rescue for F11 partial-failure isolation; splitting further would only relocate, not
     # reduce, this.
@@ -341,7 +341,7 @@ module SFL
 
       native + expanded + dynamic
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/AbcSize
 
     # sequence, ported verbatim from legacy's own run_documentation; every step is already its
     # own private method call.
@@ -352,7 +352,7 @@ module SFL
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
       engine = build_conversation_engine(boot_result, options, stop_flag)
 
-      source = Analysis::DocumentationSource.new(input)
+      source = Analysis::DocumentationSource.new(single_ref: Core::Refs::FileRefBuilder.call(input))
       result = engine.analyze(source, label: File.basename(input.to_s, ".*"), store: options[:store],
         resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
       finish_report(result, options[:output_dir])
@@ -361,7 +361,6 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:disable Metrics/AbcSize, -- one flat boot/compile/write-trio
     # sequence, ported verbatim from legacy's own run_knowledge_base; every step is already its
     # own private method call (build_kb_source) or a single formatter/writer call.
     module_function def run_knowledge_base(input, options)
@@ -375,7 +374,7 @@ module SFL
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
       source = build_kb_source(boot_result, options, stop_flag)
 
-      result = source.analyze(input, store: options[:store], resume: options[:resume])
+      result = source.analyze(corpus_refs(input, options), store: options[:store], resume: options[:resume])
 
       paths = Formatters::KBReportWriter.write(result, options[:output_dir])
       puts "\nGenerated:"
@@ -392,8 +391,6 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:enable Metrics/AbcSize
-
     # Always require_llm: true — the classifier (Boot.call's own :ingest_classification chat) and
     # the loader_drafter's :loader_drafting chat are both load-bearing collaborators of
     # Ingest::Orchestrator; there is no --pass1-only-equivalent skip path for this subcommand,
@@ -421,7 +418,6 @@ module SFL
     ensure
       Signal.trap("INT", "DEFAULT")
     end
-    # rubocop:disable Metrics/AbcSize, -- one flat boot/synthesize/print/
     # write-file sequence, ported verbatim from legacy's own run_context.
     module_function def run_context(query, options)
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
@@ -456,8 +452,6 @@ module SFL
       File.write(path, JSON.pretty_generate(result.to_h))
       puts "\nWritten: #{path}"
     end
-    # rubocop:enable Metrics/AbcSize
-
     # The T4 fix: every run_* method above composes its Pipeline/Engine
     # through exactly this one factory instead of four independently
     # near-identical copies. Shared collaborator construction
@@ -526,6 +520,16 @@ module SFL
     # dedicated vision task, and reusing the one general-purpose chat task
     # already registered is more defensible than inventing an unrelated
     # default.
+    # Build FileRefs via FilesystemCorpusSource (SFL-ING-17). Replaces the
+    # former kb_refs helper's directory glob with the adapter's lazy walk,
+    # which centralizes dot-dir/.gitignore/image policy in one testable place.
+    module_function def corpus_refs(input, options)
+      source = Core::Ports::Adapters::FilesystemCorpusSource.new(
+        input, include_images: options[:images]
+      )
+      source.refs
+    end
+
     module_function def build_kb_source(boot_result, options, stop_flag)
       logger, instrumenter, breaker = build_collaborators
       pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
@@ -560,8 +564,7 @@ module SFL
     end
 
     module_function def build_collaborators
-      require_relative "core/ports/stderr_logger"
-      logger = Core::Ports::StderrLogger.new(level: ::Logger::INFO)
+      logger = Boot.logger
       instrumenter = Core::Ports::TimingInstrumenter.new
       breaker = Core::Ports::Null::Breaker.new
       [logger, instrumenter, breaker]
@@ -609,13 +612,10 @@ module SFL
     # Best-effort: the analysis trio is already on disk; a narrative
     # failure downgrades to a warning rather than failing the run.
     #
-    # Narrator chat task: :context_synthesis is reused rather than
-    # inventing an unregistered task name — Boot::TASK_NAMES has no
-    # dedicated :narrative_generation entry, and :context_synthesis is
-    # the only other "general free-form LLM call" task already wired
-    # (unlike :pass_two_annotation/:pass_two_batch_annotation, which are
-    # schema-shaped specifically for clause annotation).
-    # write sequence, ported verbatim from legacy's own write_narrative.
+    # Narrator chat task: :narrative_generation (Boot defaults it to
+    # :context_synthesis). Unlike :pass_two_annotation, it is free-form, not
+    # schema-shaped. The narrative is checked against the digest, not against
+    # clause ids, which the narrator never receives.
     module_function def write_narrative(result, output_dir, boot_result)
       unless boot_result.lm_factory
         warn "[WARN] narrative generation skipped: --narrative requires an LLM (omit --pass1-only)"
@@ -623,20 +623,21 @@ module SFL
       end
 
       digest = Analysis::NarrativeGenerator::Digest.from_result(result)
-      narrator = LLM::Narrators::NarrativeGenerator.new(lm: boot_result.lm_factory.for(:context_synthesis))
+      narrator = LLM::Narrators::NarrativeGenerator.new(
+        lm: boot_result.lm_factory.for(:narrative_generation),
+        variant: boot_result.narrative_variant || LLM::Narrators::NarrativeGenerator::DEFAULT_VARIANT
+      )
       report = Analysis::NarrativeGenerator.new(narrator:).generate(digest)
-      source_clauses = result.turns.flat_map(&:clauses)
-      narrative_text = report_sections_text(report)
-      citation_check = Analysis::CitationGroundingChecker.new.check(narrative_text, source_clauses)
+      grounding = Analysis::DigestGroundingChecker.new.check(report_sections(report), digest)
       path = File.join(output_dir, "narrative_report.md")
-      Formatters::NarrativeFormatter.new(report, citation_check:).write_to(path)
+      Formatters::NarrativeFormatter.new(report, grounding:).write_to(path)
       puts "  NARRATIVE: #{path}"
     rescue Analysis::NarrativeError => e
       warn "[WARN] narrative generation failed: #{e.message}"
     end
-    module_function def report_sections_text(report)
-      %i[overview cast_and_roles interpersonal_dynamics conversational_arc data_quality takeaways]
-        .map { |k| report.public_send(k) }.join("\n\n")
+    # The six narrative sections, keyed as the grounding checker expects.
+    module_function def report_sections(report)
+      Analysis::NarrativeGenerator::SECTION_KEYS.to_h { |key| [key, report.public_send(key)] }
     end
 
     # legacy's own finish_report.

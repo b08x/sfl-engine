@@ -1089,3 +1089,7 @@ Style/WhileUntilDo:
 
 Style/YAMLFileRead:
   Enabled: true
+
+Metrics/BlockLength:
+  Exclude:
+    - "rakelib/*.rake"

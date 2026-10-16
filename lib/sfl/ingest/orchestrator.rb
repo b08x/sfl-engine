@@ -27,7 +27,6 @@ module SFL
       # a constant, tune later (design doc's Open Questions).
       CONFIDENCE_THRESHOLD = 0.6
 
-      # rubocop:disable Metrics/ParameterLists -- five independently-injectable collaborators
       # (two dispatch targets, the classifier, the drafter, the review repo) plus logger,
       # matching this codebase's existing per-class DI convention (see LLM::Engine#initialize).
       def initialize(
@@ -41,25 +40,21 @@ module SFL
         @review_repo = review_repo
         @logger = logger
       end
-      # rubocop:enable Metrics/ParameterLists
 
       # @param path [String] a single file, or a directory walked recursively
       # @return [Hash{dispatched:, review_entries:, drafted:}]
       def run(path)
         counts = { dispatched: 0, review_entries: 0, drafted: 0 }
-        files(path).each { |file| process(file, counts) }
-        logger.info { "ingest run complete: #{counts}" }
+        corpus = Core::Ports::Adapters::FilesystemCorpusSource.new(path)
+        corpus.each_ref do |ref|
+          process(ref.path_hint, counts)
+        end
+        logger.info("ingest run complete", **counts)
         counts
       end
 
       attr_reader :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
       private :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
-
-      private def files(path)
-        return [path] unless File.directory?(path)
-
-        Dir.glob(File.join(path, "**", "*")).select { |p| File.file?(p) }.sort
-      end
 
       # One file's failure must not take the rest of the run down with it — same F11
       # partial-failure-isolation principle SFL::CLI.run_conversation's own per-file rescue
@@ -74,7 +69,7 @@ module SFL
         classification = classify(file)
         dispatch_or_review(file, classification, counts)
       rescue Analysis::Error, Core::Loaders::Error, Store::Error, SystemCallError => e
-        logger.error { "ingest failed for #{file}: #{e.class}: #{e.message}" }
+        logger.error("ingest failed", file:, error_class: e.class, error_message: e.message)
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Dispatch failed: #{e.message}")
         counts[:review_entries] += 1
       end
@@ -113,22 +108,23 @@ module SFL
       end
 
       private def dispatch(file, classification)
+        ref = Core::Refs::FileRefBuilder.call(file)
         case classification[:mode]
-        when "conversation" then dispatch_conversation(file, classification)
-        when "documentation" then dispatch_documentation(file)
-        when "knowledge_base" then kb_source.analyze(file)
+        when "conversation" then dispatch_conversation(ref, classification)
+        when "documentation" then dispatch_documentation(ref)
+        when "knowledge_base" then kb_source.analyze(ref)
         end
       end
 
-      private def dispatch_conversation(file, classification)
+      private def dispatch_conversation(ref, classification)
         source = Analysis::ConversationSource.new(
-          file, source_type: classification[:source_type] || classification[:format]
+          ref, source_type: classification[:source_type] || classification[:format]
         )
-        conversation_engine.analyze(source, label: label_for(file))
+        conversation_engine.analyze(source, label: ref.name)
       end
 
-      private def dispatch_documentation(file)
-        conversation_engine.analyze(Analysis::DocumentationSource.new(file), label: label_for(file))
+      private def dispatch_documentation(ref)
+        conversation_engine.analyze(Analysis::DocumentationSource.new(single_ref: ref), label: ref.name)
       end
 
       private def label_for(file) = File.basename(file, ".*")
@@ -148,7 +144,7 @@ module SFL
         enqueue_drafted(file, classification, draft)
         counts[:drafted] += 1
       rescue LoaderDrafter::Error => e
-        logger.warn { "loader draft failed for #{file}: #{e.message}" }
+        logger.warn("loader draft failed", file:, error_message: e.message)
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Draft failed: #{e.message}")
         counts[:review_entries] += 1
       end

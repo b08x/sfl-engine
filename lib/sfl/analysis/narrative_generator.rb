@@ -6,13 +6,12 @@ module SFL
     # The Digest is the single input contract, built from an in-memory
     # Core::Types::AnalysisResult (Digest.from_result).
     #
-    # DSPy is dropped project-wide (track decision 7); legacy's default
-    # DSPy-backed SFLNarrator and its multi-model Achilles/Tortoise/Genie
-    # variant are NOT ported here. `narrator:` is a required keyword
-    # argument instead — a real ruby_llm-backed narrator is separate
-    # lib/sfl/llm/ work for a later slice. All this class needs from a
-    # narrator is the duck contract: `#call(digest_text) -> Hash` keyed by
-    # (a subset/superset of) SECTION_KEYS.
+    # This class does not depend on DSPy. Legacy's default SFLNarrator and its
+    # multi-model Achilles/Tortoise/Genie variant are not ported here.
+    # `narrator:` is a required keyword argument. The DSPy-backed narrator
+    # lives in lib/sfl/llm/narrators/narrative_generator.rb and is injected by
+    # the CLI. All this class needs from a narrator is the duck contract:
+    # `#call(digest_text) -> Hash` keyed by (a subset/superset of) SECTION_KEYS.
     class NarrativeGenerator
       SECTION_KEYS = %i[
         overview
@@ -53,13 +52,10 @@ module SFL
       # Source-agnostic, string-keyed snapshot of an analysis, plus its
       # serialization to the exact text block the LLM receives.
       #
-      # Legacy also built a Digest.from_json (report-JSON round trip via
-      # Formatters::JSONFormatter, for a `narrate` subcommand operating on
-      # a previously-written report file). Formatters don't exist in this
-      # rebuild yet — that's later, separate work — so only #from_result
-      # is ported here; from_json/canonicalize_metadata are deliberately
-      # left out rather than half-built against a module that doesn't
-      # exist.
+      # Two constructors: .from_result builds from an in-memory
+      # Core::Types::AnalysisResult; .from_json builds from a report JSON
+      # previously written by Formatters::JSONFormatter, so narration can
+      # run on a saved report without re-running the analysis.
       # rubocop:disable Metrics/ClassLength -- one snapshot builder (from_result + its private row
       # helpers) plus one serializer (#to_text + its private helpers), ported verbatim from legacy.
       class Digest
@@ -83,6 +79,61 @@ module SFL
             turns: turn_rows(result.turns),
             key_moments: deep_stringify(key_moment_rows(result.key_moments))
           )
+        end
+
+        # Turn-row keys a report JSON must carry for the digest to be built.
+        REQUIRED_TURN_KEYS = %w[
+          turn_id speaker preview avg_tenor avg_modality dominant_mood clause_count defaulted_count
+        ].freeze
+        OPTIONAL_TURN_KEYS = %w[tenor_shift semantic_coherence_score].freeze
+
+        # Builds a digest from a report JSON written by Formatters::JSONFormatter,
+        # so `narrate` can run on a saved report without re-running the analysis.
+        # Accepts both report schemes: the conversation keys (conversation_id,
+        # turn_count, speakers) and the document keys (document_id, section_count,
+        # headings). Both come back under the conversation keys this class uses.
+        #
+        # @param parsed [Hash] JSON.parse of the report
+        # @return [Digest]
+        # @raise [NarrativeError] when the report has no turns array or a turn row is incomplete
+        def self.from_json(parsed)
+          turns = parsed["turns"]
+          if turns.nil?
+            raise NarrativeError,
+              "Report JSON has no `turns` array — it predates narrative support. Re-run the analysis to regenerate it."
+          end
+
+          turns.each do |row|
+            REQUIRED_TURN_KEYS.each do |key|
+              raise NarrativeError, "Turn row missing required key: #{key}" unless row.key?(key)
+            end
+          end
+
+          raw_metadata = parsed.fetch("metadata", {})
+          new(
+            metadata: canonicalize_metadata(raw_metadata),
+            speaker_profiles: parsed.fetch(profiles_key(raw_metadata), {}),
+            correlations: parsed.fetch("correlations", {}),
+            insights: parsed.fetch("insights", []),
+            turns: turns.map { |row| row.slice(*REQUIRED_TURN_KEYS, *OPTIONAL_TURN_KEYS) },
+            key_moments: parsed["key_moments"] || []
+          )
+        end
+
+        # Renames the document-report keys back to the conversation vocabulary.
+        # Each key is substituted in place rather than deleted and re-added, so
+        # the METADATA section of #to_text keeps the same order as from_result.
+        def self.canonicalize_metadata(meta)
+          key_map = {
+            meta["id_label"] || "conversation_id" => "conversation_id",
+            "#{(meta['unit_label'] || 'turn').downcase}_count" => "turn_count",
+            (meta["actors_list_label"] || "speakers").downcase => "speakers",
+          }
+          meta.each_with_object({}) { |(key, value), renamed| renamed[key_map.fetch(key, key)] = value }
+        end
+
+        def self.profiles_key(meta)
+          "#{(meta['actor_label'] || 'speaker').downcase}_profiles"
         end
 
         # independently-meaningful piece of the digest, ported verbatim from legacy.
@@ -150,10 +201,8 @@ module SFL
           end
         end
 
-        # rubocop:disable Metrics/ParameterLists -- one flat Digest builder; every kwarg is a distinct
         # attr_reader'd field, ported verbatim from legacy's own Digest#initialize.
         def initialize(metadata:, speaker_profiles:, correlations:, insights:, turns:, key_moments: [])
-          # rubocop:enable Metrics/ParameterLists
           @metadata = metadata
           @speaker_profiles = speaker_profiles
           @correlations = correlations
@@ -167,7 +216,6 @@ module SFL
         end
 
         # The exact LLM input.
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, -- one
         # fixed-section heredoc plus an optional KEY MOMENTS append, ported verbatim from legacy.
         def to_text
           text = low_confidence_notice
@@ -197,8 +245,6 @@ module SFL
 
           text
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
-
         # Mirrors the markdown formatter's "Low Confidence" banner — a
         # small-sample analysis needs the same caveat carried into the
         # narrative's own text, not just buried as a metadata field.

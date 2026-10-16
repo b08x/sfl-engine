@@ -76,7 +76,7 @@ module SFL
       # @param context [Hash] optional :semantic_coherence_score
       # @return [SFL::Core::Types::AnnotationResult]
       def annotate(clause, ideational, context: {})
-        logger.debug { "pass_two started (clause_id=#{clause.id})" }
+        logger.debug("pass_two started", clause_id: clause.id)
         started_at = now
 
         result = annotation_result_for(clause, fetch_single(clause, ideational, context))
@@ -138,9 +138,8 @@ module SFL
           raise unless attempt < MAX_ATTEMPTS && retryable?(e)
 
           delay = BASE_BACKOFF_SECONDS * (2 ** (attempt - 1))
-          logger.warn do
-            "#{label} attempt #{attempt}/#{MAX_ATTEMPTS} failed (#{e.class}: #{e.message}) — retrying in #{delay}s"
-          end
+          logger.warn("#{label} attempt failed, retrying", attempt:, max_attempts: MAX_ATTEMPTS, delay_s: delay,
+            error_class: e.class, error_message: e.message)
           sleeper.call(delay)
           retry
         end
@@ -149,6 +148,7 @@ module SFL
       private def retryable?(error)
         return false if PROGRAMMER_ERRORS.any? { |klass| error.is_a?(klass) }
         return false if error.is_a?(Dry::Struct::Error)
+        return false if error.is_a?(LLM::MalformedResponse)
         return true if RETRYABLE_ERRORS.any? { |klass| error.is_a?(klass) }
 
         status = http_status_from(error)
@@ -207,13 +207,13 @@ module SFL
         return if missing.empty?
 
         pct = (missing.size * 100.0 / pairs.size).round(1)
-        detail = batch_error ? " — batch call failed: #{format_error(batch_error)}" : ""
-        message = "pass_two batch #{batch_id}: #{missing.size}/#{pairs.size} clauses (#{pct}%) defaulted#{detail}"
+        message = "pass_two batch #{batch_id}: #{missing.size}/#{pairs.size} clauses (#{pct}%) defaulted"
+        fields = { batch_id:, missing: missing.size, total: pairs.size, error_message: (format_error(batch_error) if batch_error) }
 
         if missing.size == pairs.size
-          logger.error { message }
+          logger.error(message, **fields)
         else
-          logger.warn { "#{message} (missing indices: #{missing.take(20).join(', ')})" }
+          logger.warn(message, **fields, missing_indices: missing.take(20).join(","))
         end
       end
       # -- six independent Hash entries built from clause/
@@ -272,7 +272,7 @@ module SFL
           reasoning_trace: safe_reasoning_trace_from(raw, conclusion, clause)
         )
       rescue Dry::Struct::Error => e
-        logger.warn { "pass_two invalid interpersonal for clause #{clause.id}: #{e.message} — defaults applied" }
+        logger.warn("pass_two invalid interpersonal, defaults applied", clause_id: clause.id, error_message: e.message)
         nil
       end
       private def conclusion_for(mood, raw)
@@ -292,9 +292,7 @@ module SFL
       private def safe_reasoning_trace_from(raw, conclusion, clause)
         reasoning_trace_from(raw, conclusion)
       rescue Dry::Struct::Error => e
-        logger.warn do
-          "pass_two invalid reasoning_trace for clause #{clause.id}: #{e.message} — reasoning_trace left nil"
-        end
+        logger.warn("pass_two invalid reasoning_trace, left nil", clause_id: clause.id, error_message: e.message)
         nil
       end
 
@@ -334,7 +332,7 @@ module SFL
           untrusted: status == :unknown
         )
       rescue Dry::Struct::Error => e
-        logger.warn { "pass_two invalid textual for clause #{clause.id}: #{e.message} — defaults applied" }
+        logger.warn("pass_two invalid textual, defaults applied", clause_id: clause.id, error_message: e.message)
         nil
       end
       private def default_result(clause, reason)
@@ -354,25 +352,19 @@ module SFL
       private def log_classification_gap(dimension, status, raw_value, resolved, clause)
         return unless %i[unknown fuzzy].include?(status)
 
-        logger.warn do
-          "pass_two #{status} #{dimension} for clause #{clause.id}: '#{raw_value}' -> '#{resolved}'" \
-            "#{' (unrecognized value, consider adding it to ClassificationRegistry)' if status == :unknown}"
-        end
+        hint = " (unrecognized value, consider adding it to ClassificationRegistry)" if status == :unknown
+        logger.warn("pass_two #{status} #{dimension}#{hint}", clause_id: clause.id, dimension:, raw_value:, resolved:)
       end
 
       private def log_completion(clause, result, started_at)
         elapsed_ms = ((now - started_at) * 1000).round(2)
-        logger.info do
-          "pass_two completed (clause_id=#{clause.id}, mood=#{result.interpersonal.mood}, " \
-            "tenor=#{result.interpersonal.tenor}, modality_weight=#{result.interpersonal.modality_weight}, " \
-            "latency_ms=#{elapsed_ms})"
-        end
+        interpersonal = result.interpersonal
+        logger.info("pass_two completed", clause_id: clause.id, mood: interpersonal.mood, tenor: interpersonal.tenor,
+          modality_weight: interpersonal.modality_weight, latency_ms: elapsed_ms)
       end
 
       private def log_failure(clause, error)
-        logger.error do
-          "pass_two failed (clause_id=#{clause.id}): #{format_error(error)}"
-        end
+        logger.error("pass_two failed", clause_id: clause.id, error_class: error.class, error_message: format_error(error))
       end
 
       private def format_error(error)

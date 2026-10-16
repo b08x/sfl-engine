@@ -19,9 +19,9 @@ module SFL
       class ClaudeExportSource
         include Source
 
-        def initialize(conversations_path, memories_path: nil)
-          @conversations_path = conversations_path.to_s
-          @memories_path = memories_path&.to_s
+        def initialize(ref, memories_ref: nil)
+          @ref = ref
+          @memories_ref = memories_ref
         end
 
         def each_unit
@@ -39,13 +39,13 @@ module SFL
         # the caller.
         # @return [Array<Hash>]
         def memories
-          return [] unless @memories_path && File.exist?(@memories_path)
+          return [] unless @memories_ref
 
-          Yajl::Parser.parse(File.read(@memories_path), symbolize_keys: true)
+          Yajl::Parser.parse(@memories_ref.read, symbolize_keys: true)
         end
 
         private def conversations
-          Yajl::Parser.parse(File.read(@conversations_path), symbolize_keys: true)
+          Yajl::Parser.parse(@ref.read, symbolize_keys: true)
         end
 
         private def build_unit(convo, turn, index)

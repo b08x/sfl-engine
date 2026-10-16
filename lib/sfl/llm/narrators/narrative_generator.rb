@@ -8,10 +8,23 @@ module SFL
       # Calls the LLM to write the six-section interpretive narrative —
       # the `narrator:` duck Analysis::NarrativeGenerator requires
       class NarrativeGenerator
+        SIGNATURES = {
+          v0: Signatures::NarrativeSignatureV0,
+          v1: Signatures::NarrativeSignatureV1,
+          v2: Signatures::NarrativeSignatureV2,
+        }.freeze
+        DEFAULT_VARIANT = :v1
+
         # @param lm [DSPy::LM] The language model configuration for this task
-        def initialize(lm:)
+        # @param variant [Symbol] :v0 (one-line baseline, Predict), :v1 (sfl-compiler's
+        #   signature, ChainOfThought) or :v2 (V1 plus grounding rules, ChainOfThought).
+        #   Selected by SFL_NARRATIVE_VARIANT; see SFL::Boot.
+        # @raise [ArgumentError] for an unknown variant
+        def initialize(lm:, variant: DEFAULT_VARIANT)
+          signature = SIGNATURES.fetch(variant) { raise ArgumentError, "unknown narrative variant #{variant.inspect}" }
+          predictor_class = (variant == :v0) ? DSPy::Predict : DSPy::ChainOfThought
           @lm = lm
-          @predictor = DSPy::Predict.new(Signatures::NarrativeSignature).tap do |p|
+          @predictor = predictor_class.new(signature).tap do |p|
             p.configure { |c| c.lm = lm }
           end
         end

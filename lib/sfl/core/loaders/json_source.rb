@@ -15,7 +15,7 @@ module SFL
 
         JSONL_EXTENSIONS = %w[.jsonl .ndjson].freeze
 
-        # @param path [String, Pathname]
+        # @param ref [SFL::Core::Refs::FileRef] a ref whose content is JSON/JSONL
         # @param text_key [Symbol] key holding unit text
         # @param file_id [String, nil]
         # @param document_id_key [Symbol, nil] key for a per-record id;
@@ -27,7 +27,7 @@ module SFL
         # key-name mappings (a JSON record has no schema of its own to infer these from) and
         # skip_empty; matches CsvSource's identical shape for the tabular-vs-record analogue.
         def initialize(
-          path,
+          ref,
           text_key:,
           file_id: nil,
           document_id_key: nil,
@@ -35,9 +35,9 @@ module SFL
           heading_key: nil,
           skip_empty: true
         )
-          @path = path.to_s
+          @ref = ref
           @text_key = text_key
-          @file_id = file_id || File.basename(@path, ".*")
+          @file_id = file_id || ref.name
           @document_id_key = document_id_key
           @speaker_key = speaker_key
           @heading_key = heading_key
@@ -57,15 +57,15 @@ module SFL
         end
 
         private def records
-          jsonl? ? jsonl_records : Yajl::Parser.parse(File.read(@path), symbolize_keys: true)
+          jsonl? ? jsonl_records : Yajl::Parser.parse(@ref.read, symbolize_keys: true)
         end
 
         private def jsonl?
-          JSONL_EXTENSIONS.include?(File.extname(@path).downcase)
+          JSONL_EXTENSIONS.include?(@ref.extension.downcase)
         end
 
         private def jsonl_records
-          File.readlines(@path).map(&:strip).reject(&:empty?).map do |line|
+          @ref.read.lines.map(&:strip).reject(&:empty?).map do |line|
             Yajl::Parser.parse(line, symbolize_keys: true)
           end
         end

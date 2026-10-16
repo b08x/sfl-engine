@@ -12,6 +12,16 @@ RSpec.shared_examples "a syntactic parser port" do
   end
 end
 
+RSpec.shared_examples "a loader" do
+  it "returns an Enumerator from #each_unit when no block is given" do
+    expect(subject.each_unit).to be_an(Enumerator)
+  end
+
+  it "returns an Array of Units from #units" do
+    expect(subject.units).to be_an(Array)
+  end
+end
+
 RSpec.shared_examples "an annotator port" do
   let(:clause) do
     SFL::Core::Types::SyntacticClause.new(
@@ -119,6 +129,20 @@ RSpec.shared_examples "a cache port" do
   end
 end
 
+RSpec.shared_examples "a corpus source" do
+  it "returns an Enumerator from #each_ref when no block is given" do
+    expect(subject.each_ref).to be_an(Enumerator)
+  end
+
+  it "returns an Array of refs from #refs" do
+    expect(subject.refs).to be_an(Array)
+  end
+
+  it "returns a Hash from #stats" do
+    expect(subject.stats).to be_a(Hash)
+  end
+end
+
 RSpec.shared_examples "a breaker port" do
   it "yields the block and returns its value from #call" do
     expect(subject.call("test") { 42 }).to eq(42)
@@ -155,5 +179,13 @@ RSpec.shared_examples "a logger port" do
     expect { subject.warn { "w" } }.not_to raise_error
     expect { subject.error { "e" } }.not_to raise_error
     expect { subject.fatal { "f" } }.not_to raise_error
+  end
+
+  it "accepts structured fields at every severity without raising" do
+    expect { subject.debug("d", document_id: "doc-1") }.not_to raise_error
+    expect { subject.info("i", count: 3) }.not_to raise_error
+    expect { subject.warn("w", reason: "retry") }.not_to raise_error
+    expect { subject.error("e", error_class: "RuntimeError") }.not_to raise_error
+    expect { subject.fatal("f", component: "sidecar") }.not_to raise_error
   end
 end

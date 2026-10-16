@@ -30,7 +30,7 @@ module SFL
     class Pipeline
       include Dry::Monads[:result]
 
-      # rubocop:disable Metrics/ParameterLists -- nine independently-injectable collaborators:
+      # rubocop:disable Metrics/ParameterLists -- ten independently-injectable collaborators:
       # the two required engines, plus every optional port this pipeline touches, each named
       # for exactly what it replaces in a test double (matches the pattern already used by
       # PassOne::Engine and LLM::Engine).
@@ -43,7 +43,8 @@ module SFL
         embedder: Ports::Null::Embedder.new,
         cache: Ports::Null::Cache.new,
         logger: Ports::Null::Logger.new,
-        instrumenter: Ports::Null::Instrumenter.new
+        instrumenter: Ports::Null::Instrumenter.new,
+        readability_scorer: Analysis::ReadabilityScorer.new
       )
         @pass_one = pass_one
         @pass_two = pass_two
@@ -54,6 +55,7 @@ module SFL
         @cache = cache
         @logger = logger
         @instrumenter = instrumenter
+        @readability_scorer = readability_scorer
       end
       # rubocop:enable Metrics/ParameterLists
 
@@ -81,7 +83,7 @@ module SFL
       def compile(text, document_id: nil, store: true, embed: true, resume: false, semantic_coherence_score: nil,
         pass_one_only: false
       )
-        logger.debug { "pipeline started (document_id=#{document_id.inspect}, text_length=#{text.length})" }
+        logger.debug("pipeline started", document_id:, text_length: text.length)
         started_at = now
 
         result = parse(text, document_id)
@@ -96,14 +98,14 @@ module SFL
       # rubocop:enable Metrics/ParameterLists
 
       attr_reader :pass_one, :pass_two, :ideational_extractor, :clause_store, :embedding_store,
-        :embedder, :cache, :logger, :instrumenter
+        :embedder, :cache, :logger, :instrumenter, :readability_scorer
       private :pass_one, :pass_two, :ideational_extractor, :clause_store, :embedding_store,
-        :embedder, :cache, :logger, :instrumenter
+        :embedder, :cache, :logger, :instrumenter, :readability_scorer
 
       private def parse(text, document_id)
         Success(pass_one.process(text, document_id:))
       rescue PassOne::Error => e
-        logger.error { "pipeline pass_one failed (document_id=#{document_id.inspect}): #{e.message}" }
+        logger.error("pipeline pass_one failed", document_id:, error_class: e.class, error_message: e.message)
         Failure([:pass_one_failed, e.message])
       end
 
@@ -154,7 +156,7 @@ module SFL
 
         fresh_by_key = fresh_annotations(keyed, miss_keys, semantic_coherence_score)
 
-        logger.info { "pipeline cache (document_id=#{document_id}): #{hits.size} hits, #{miss_keys.size} misses" }
+        logger.info("pipeline cache", document_id:, hits: hits.size, misses: miss_keys.size)
         keyed.map { |key, _clause, _ideational| hits[key] || fresh_by_key.fetch(key) }
       end
 
@@ -182,6 +184,7 @@ module SFL
       private def build_annotated_clause(clause, ideational, annotation_result)
         interpersonal = annotation_result.interpersonal
         interpersonal = Types::InterpersonalPayload.new(interpersonal.to_h.merge(untrusted: true)) if annotation_result.textual&.untrusted
+        clause = Types::SyntacticClause.new(clause.to_h.merge(readability: readability_scorer.score(clause.text)))
 
         Types::AnnotatedClause.new(
           id: SecureRandom.uuid,
@@ -199,7 +202,7 @@ module SFL
       private def persist(annotated, document_id, store)
         return Success(annotated) unless store && document_id
 
-        logger.debug { "persisting #{annotated.size} clauses to database (document_id=#{document_id.inspect})" }
+        logger.debug("persisting clauses to database", document_id:, clause_count: annotated.size)
         clause_store.replace_document(document_id, annotated)
         Success(annotated)
       end
@@ -208,15 +211,26 @@ module SFL
       # ClauseStore — an embed run with no document_id has nothing to
       # replace idempotently on a re-run, so it's skipped rather than
       # writing embeddings nothing can look back up.
+      #
+      # Embeds leaves only — clauses no other clause's parent_clause_id
+      # points at — so vectors live at chunk granularity, not duplicated up
+      # every ancestor. Until a future chunk-splitting pass populates
+      # parent_clause_id, every clause is a leaf, so this is a no-op today.
       private def embed_all(annotated, document_id, embed)
         return Success(annotated) unless embed && document_id && !annotated.empty?
 
-        logger.debug { "generating embeddings for #{annotated.size} clauses (document_id=#{document_id.inspect})" }
-        vectors = embedder.embed_batch(annotated.map(&:text))
-        embeddings_by_clause_id = annotated.zip(vectors).to_h { |ac, vector| [ac.id, vector] }
+        leaves = leaf_clauses(annotated)
+        logger.debug("generating embeddings", document_id:, clause_count: leaves.size)
+        vectors = embedder.embed_batch(leaves.map(&:text))
+        embeddings_by_clause_id = leaves.zip(vectors).to_h { |ac, vector| [ac.id, vector] }
         embedding_store.replace_document(document_id, embeddings_by_clause_id)
 
         Success(annotated)
+      end
+
+      private def leaf_clauses(annotated)
+        parent_ids = annotated.filter_map { |c| c.syntactic.parent_clause_id }.to_set
+        annotated.reject { |c| parent_ids.include?(c.id) }
       end
 
       private def log_completion(document_id, result, started_at)
@@ -224,19 +238,14 @@ module SFL
 
         if result.success?
           clause_count = result.value!.size
-          logger.info do
-            "pipeline completed (document_id=#{document_id.inspect}, clause_count=#{clause_count}, " \
-              "latency_ms=#{elapsed_ms})"
-          end
+          logger.info("pipeline completed", document_id:, clause_count:, latency_ms: elapsed_ms)
           # Serialize once per completed pipeline, not once per Pass 2 batch:
           # report_json walks every accumulated span, so logging it inside
           # annotate_batch made long multi-turn runs repeatedly serialize the
           # entire history and added avoidable work to the measured path.
-          logger.info do
-            "pass_two timing_breakdown=#{instrumenter.report_json}" if instrumenter.respond_to?(:report_json)
-          end
+          logger.info("pass_two timing_breakdown", timing_breakdown: instrumenter.report_json) if instrumenter.respond_to?(:report_json)
         else
-          logger.error { "pipeline failed (document_id=#{document_id.inspect}): #{result.failure.inspect}" }
+          logger.error("pipeline failed", document_id:, failure: result.failure.inspect)
         end
       end
 

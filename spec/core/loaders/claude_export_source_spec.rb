@@ -3,7 +3,7 @@
 require "spec_helper"
 
 RSpec.describe SFL::Core::Loaders::ClaudeExportSource do
-  subject(:source) { described_class.new(path) }
+  subject(:source) { described_class.new(file_ref(path)) }
 
   let(:path) { "spec/fixtures/loaders/claude_conversations.json" }
 

@@ -33,7 +33,6 @@ module SFL
 
       # Find significant tenor shifts (above threshold).
       # @return [Array<Hash>] Shift metadata
-      # rubocop:disable Metrics/CyclomaticComplexity, -- ported verbatim from legacy
       def detect_significant_shifts
         current = (turns.any? { |t| t.tenor_shift.nil? && t.turn_id > 1 }) ? calculate_shifts : turns
 
@@ -50,7 +49,6 @@ module SFL
           }
         end
       end
-      # rubocop:enable Metrics/CyclomaticComplexity
     end
   end
 end

@@ -1,3 +1,8 @@
+goals/
+notebooks/
+.hermes/
+.pi/
+.vibe/
 .graphifyignore
 .agents/skills/trackboi
 .mcp.json
@@ -35,3 +40,4 @@ tui-implementation-plan.md
 .trackboi/
 drafts/
 session-ses_*
+.specs/scratchpad/

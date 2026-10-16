@@ -83,6 +83,27 @@ module SFL
         reconstruct(row)
       end
 
+      # One WITH RECURSIVE round trip walking `parent_clause_id` up from
+      # `external_id`. Returns strict ancestors (excludes the given clause),
+      # root first.
+      #
+      # @param external_id [String] AnnotatedClause#id
+      # @return [Array<Core::Types::AnnotatedClause>]
+      def ancestor_chain(external_id)
+        rows = @db.fetch(<<~SQL, external_id, external_id).all
+          WITH RECURSIVE ancestors AS (
+            SELECT * FROM clauses WHERE external_id = ?
+            UNION ALL
+            SELECT c.* FROM clauses c JOIN ancestors a ON c.external_id = a.parent_clause_id
+          )
+          SELECT * FROM ancestors WHERE external_id <> ?
+        SQL
+        return [] if rows.empty?
+
+        # Recursive member appends parents in leaf-to-root order; reverse for root-first.
+        rows.reverse.map { |row| reconstruct(row) }
+      end
+
       # Corpus-Browser-style filtered, paginated listing across the full
       # clauses/ideational_payloads/interpersonal_payloads join — the API's
       # GET /clauses (v1's ClauseRepository#find_all). `document_id` and
@@ -125,12 +146,21 @@ module SFL
       private def insert_all(clauses)
         return if clauses.empty?
 
-        @db[:clauses].multi_insert(clauses.map { |c| clause_row(c) })
+        # Parents (clauses another clause's parent_clause_id points at)
+        # never get their own vector — see #embed_all leaf-only embedding —
+        # so they're inserted with embedding_status "not_applicable" rather
+        # than the DB default "pending", which would otherwise make
+        # EmbeddingRedriver chase them forever (they can never move to
+        # "embedded").
+        parent_ids = clauses.filter_map { |c| c.syntactic.parent_clause_id }.to_set
+
+        @db[:clauses].multi_insert(clauses.map { |c| clause_row(c, leaf: !parent_ids.include?(c.id)) })
         @db[:ideational_payloads].multi_insert(clauses.map { |c| ideational_row(c) })
         @db[:interpersonal_payloads].multi_insert(clauses.map { |c| interpersonal_row(c) })
       end
 
-      private def clause_row(clause)
+      private def clause_row(clause, leaf: true)
+        readability = clause.syntactic.readability
         {
           external_id: clause.id,
           text: clause.text,
@@ -139,6 +169,12 @@ module SFL
           root_index: clause.syntactic.root_index,
           tokens: Sequel.pg_jsonb(clause.syntactic.tokens.map(&:to_h)),
           groups: Sequel.pg_jsonb(clause.syntactic.groups.map(&:to_h)),
+          parent_clause_id: clause.syntactic.parent_clause_id,
+          embedding_status: leaf ? "pending" : "not_applicable",
+          readability_flesch: readability&.flesch,
+          readability_kincaid: readability&.kincaid,
+          readability_fog: readability&.fog,
+          word_count: readability&.word_count,
           created_at: clause.compiled_at,
         }
       end
@@ -229,7 +265,24 @@ module SFL
           groups: Array(row[:groups]).map { |g| reconstruct_group(g) },
           root_index: row[:root_index],
           sentence_index: row[:sentence_index],
-          document_id: row[:document_id]
+          document_id: row[:document_id],
+          parent_clause_id: row[:parent_clause_id],
+          readability: reconstruct_readability(row)
+        )
+      end
+
+      # Pre-migration rows (or a fresh insert that skipped scoring) have all
+      # four columns nil — surface that as `readability: nil`, not a struct
+      # of nils.
+      private def reconstruct_readability(row)
+        return nil if row[:readability_flesch].nil? && row[:readability_kincaid].nil? &&
+          row[:readability_fog].nil? && row[:word_count].nil?
+
+        Core::Types::Readability.new(
+          flesch: row[:readability_flesch],
+          kincaid: row[:readability_kincaid],
+          fog: row[:readability_fog],
+          word_count: row[:word_count]
         )
       end
 

@@ -38,7 +38,10 @@ module SFL
     # - `api_cors_origins`: resolved SFL_API_CORS_ORIGINS (issue #35), split on
     #   commas — the Origin allowlist API::Server accepts. Defaults to an
     #   empty allowlist when unset.
+    # - `narrative_variant`: resolved SFL_NARRATIVE_VARIANT (:v0, :v1 or :v2),
+    #   which Narrators::NarrativeGenerator uses to pick its signature. Defaults
+    #   to :v1, the sfl-compiler signature.
     Result = Struct.new(:db, :llm_config, :lm_factory, :embedder, :classifier, :pass1_command, :pass1_env,
-      :spacy_model, :api_debug_errors, :api_cors_origins, keyword_init: true)
+      :spacy_model, :api_debug_errors, :api_cors_origins, :narrative_variant, keyword_init: true)
   end
 end

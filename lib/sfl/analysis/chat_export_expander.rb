@@ -6,7 +6,8 @@ require "fileutils"
 module SFL
   module Analysis
     # Expands a raw multi-conversation chat export (ChatGPT or Claude.ai
-    # conversations.json) into one native {name:, mes:, send_date:} JSONL
+    # conversations.json, or a single-conversation Mistral Le Chat
+    # chat-<uuid>.json) into one native {name:, mes:, send_date:} JSONL
     # file per conversation, materialized under `dest_dir` — the format
     # Analysis::ConversationSource already knows how to drive.
     #
@@ -30,7 +31,7 @@ module SFL
     # moments" at conversation boundaries.
     module ChatExportExpander
       # @param path [String] raw export .json path
-      # @return [Symbol, nil] :chatgpt, :claude, or nil if neither shape matches
+      # @return [Symbol, nil] :chatgpt, :claude, :mistral, or nil if no shape matches
       # @raise [Core::Loaders::Error] the file is not valid JSON — with path context, since a
       #   bare JSON::ParserError gives no indication which file in a batch failed (live-verified
       #   gap, 2026-08-02: this used to propagate unwrapped past every rescue clause in the CLI).
@@ -42,6 +43,9 @@ module SFL
 
         return :chatgpt if first.key?("mapping")
         return :claude if first.key?("chat_messages")
+        # Mistral Le Chat exports no bundling file and no tree: one flat JSON
+        # array of messages per conversation (chat-<uuid>.json).
+        return :mistral if first.key?("role") && first.key?("content") && first.key?("chatId")
 
         nil
       end
@@ -54,14 +58,14 @@ module SFL
 
       # @param path [String] raw export .json path
       # @param dest_dir [String] directory to write one .jsonl file per conversation into
-      # @param format [Symbol, nil] :chatgpt/:claude, or nil to auto-detect
+      # @param format [Symbol, nil] :chatgpt/:claude/:mistral, or nil to auto-detect
       # @return [Array<Hash>] {path:, source_type:, label:} per conversation, export order
-      # @raise [Core::Loaders::Error] neither format's shape matches
+      # @raise [Core::Loaders::Error] no format's shape matches
       module_function def expand(path, dest_dir:, format: nil)
         format ||= detect_format(path)
         unless format
-          raise Core::Loaders::Error, "#{path}: not a recognized ChatGPT/Claude export (no top-level " \
-            "\"mapping\" or \"chat_messages\" key found)"
+          raise Core::Loaders::Error, "#{path}: not a recognized ChatGPT/Claude/Mistral export (no top-level " \
+            "\"mapping\" or \"chat_messages\" key found, and no flat \"role\"/\"content\"/\"chatId\" message array)"
         end
 
         loader, source_type = loader_for(format, path)
@@ -70,9 +74,11 @@ module SFL
       end
 
       module_function def loader_for(format, path)
+        ref = Core::Refs::FileRefBuilder.call(path)
         case format
-        when :chatgpt then [Core::Loaders::ChatgptExportSource.new(path), "chat_chatgpt"]
-        when :claude then [Core::Loaders::ClaudeExportSource.new(path), "chat_claude"]
+        when :chatgpt then [Core::Loaders::ChatgptExportSource.new(ref), "chat_chatgpt"]
+        when :claude then [Core::Loaders::ClaudeExportSource.new(ref), "chat_claude"]
+        when :mistral then [Core::Loaders::MistralExportSource.new(ref), "chat_mistral"]
         else raise ArgumentError, "unknown format #{format.inspect}"
         end
       end

@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe SFL::Core::Loaders::JsonSource do
   shared_examples "a record source" do |path|
     subject(:source) do
-      described_class.new(path, text_key: :text, speaker_key: :speaker, document_id_key: :id)
+      described_class.new(file_ref(path), text_key: :text, speaker_key: :speaker, document_id_key: :id)
     end
 
     it "is a Loaders::Source" do
@@ -20,7 +20,7 @@ RSpec.describe SFL::Core::Loaders::JsonSource do
     end
 
     it "falls back to a file_id/row-index document_id when document_id_key is absent" do
-      units = described_class.new(path, text_key: :text, file_id: "sample").units
+      units = described_class.new(file_ref(path), text_key: :text, file_id: "sample").units
 
       expect(units.first.document_id).to eq("sample#row-0")
     end

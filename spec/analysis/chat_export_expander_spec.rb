@@ -14,6 +14,10 @@ RSpec.describe SFL::Analysis::ChatExportExpander do
       expect(described_class.detect_format("spec/fixtures/loaders/claude_conversations.json")).to eq(:claude)
     end
 
+    it "detects a Mistral Le Chat export by its flat top-level array of \"role\"/\"content\"/\"chatId\" messages" do
+      expect(described_class.detect_format("spec/fixtures/loaders/mistral/chat-aca44f91-trimmed.json")).to eq(:mistral)
+    end
+
     it "returns nil for a file matching neither shape" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "not_an_export.json")
@@ -100,6 +104,25 @@ RSpec.describe SFL::Analysis::ChatExportExpander do
         expect(entries.map { |e| e[:source_type] }).to eq(%w[chat_claude chat_claude])
         first_lines = File.readlines(entries.first[:path]).map { |l| JSON.parse(l, symbolize_names: true) }
         expect(first_lines.first[:mes]).to eq("Why does this test fail intermittently?")
+      end
+    end
+
+    it "writes one JSONL file per Mistral chat, tagged source_type: chat_mistral, preserving " \
+      "the User/Mistral speaker split and send dates from the export" do
+      Dir.mktmpdir do |dir|
+        entries = described_class.expand("spec/fixtures/loaders/mistral/chat-aca44f91-trimmed.json", dest_dir: dir)
+
+        expect(entries.size).to eq(1)
+        entry = entries.first
+        expect(entry[:source_type]).to eq("chat_mistral")
+
+        lines = File.readlines(entry[:path]).map { |l| JSON.parse(l, symbolize_names: true) }
+        expect(lines.map { |l| l[:name] }).to eq(%w[User Mistral User])
+        expect(lines.map { |l| l[:is_user] }).to eq([true, false, true])
+        expect(lines.first[:mes]).to start_with("How would the connection be made")
+        expect(lines.map { |l| l[:send_date] }).to eq(
+          %w[2026-09-15T11:13:31Z 2026-09-15T11:16:18Z 2026-09-15T11:29:38Z]
+        )
       end
     end
 

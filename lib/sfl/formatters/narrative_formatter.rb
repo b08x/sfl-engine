@@ -5,8 +5,8 @@ module SFL
     # Renders a Core::Types::NarrativeReport as markdown. Deterministic
     # assembly: the LLM wrote the prose, this class owns the skeleton.
     #
-    # Pass `citation_check:` (result of CitationGroundingChecker#check) to
-    # append a Hallucination Report section and coverage footer.
+    # Pass `grounding:` (a DigestGroundingChecker::Result) to append a Grounding
+    # Check section and a weighted-precision footer.
     class NarrativeFormatter < BaseFormatter
       SECTIONS = [
         ["Overview", :overview],
@@ -17,9 +17,9 @@ module SFL
         ["Takeaways", :takeaways],
       ].freeze
 
-      def initialize(result, citation_check: nil)
+      def initialize(result, grounding: nil)
         super(result)
-        @citation_check = citation_check
+        @grounding = grounding
       end
 
       def render
@@ -35,31 +35,29 @@ module SFL
           #{body}
         MARKDOWN
 
-        md + hallucination_section + coverage_footer
+        md + grounding_section + grounding_footer
       end
 
-      private def hallucination_section
-        return "" unless @citation_check
+      private def grounding_section
+        return "" unless @grounding
 
-        ungrounded = @citation_check[:ungrounded]
-        return "" if ungrounded.empty?
+        return "\n## Grounding Check\n\nNo checkable claim failed against the digest.\n" if @grounding.findings.empty?
 
-        lines = ungrounded.each_with_index.map do |item, i|
-          "#{i + 1}. **UNGROUNDED**: \"#{item[:sentence]}\" — #{item[:reason]}"
+        lines = @grounding.findings.each_with_index.map do |finding, i|
+          band = finding.band || "unmarked"
+          "#{i + 1}. **#{finding.check}** (#{band}, weight #{finding.weight}): \"#{finding.sentence}\" — #{finding.detail}"
         end
 
-        "\n## Hallucination Report\n\nThe following claims could not be grounded in source clauses:\n\n" \
-          "#{lines.join("\n")}\n"
+        "\n## Grounding Check\n\nClaims the digest does not support:\n\n#{lines.join("\n")}\n"
       end
 
-      private def coverage_footer
-        return "" unless @citation_check
+      private def grounding_footer
+        return "" unless @grounding
 
-        check  = @citation_check
-        total  = check[:grounded].size + check[:ungrounded].size
-        n      = check[:grounded].size
-        pct    = total.zero? ? 0.0 : (n.to_f / total * 100).round(1)
-        "\n---\n\n*Citation coverage: #{n}/#{total} claims grounded (#{pct}%)*\n"
+        precision = (@grounding.weighted_precision * 100).round(1)
+        flagged = @grounding.findings.size
+        "\n---\n\n*Weighted grounding precision: #{precision}% (#{@grounding.claim_count} claims checked, " \
+          "#{flagged} flagged)*\n"
       end
     end
   end
