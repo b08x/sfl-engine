@@ -11,7 +11,8 @@ module SFL
       class StderrLogger
         include Ports::Logger
 
-        def initialize(level: ::Logger::INFO)
+        def initialize(level: ::Logger::INFO, run_id: nil)
+          @run_id = run_id
           @logger = ::Logger.new($stderr)
           @logger.level = level
           @logger.formatter = proc do |severity, _datetime, _progname, msg|
@@ -43,6 +44,7 @@ module SFL
         private def log(severity, message, fields, &block)
           @logger.public_send(severity) do
             text = message || block&.call
+            fields = fields.merge(run_id: @run_id) if @run_id && !fields.key?(:run_id)
             fields.empty? ? text : [text, *fields.map { |key, value| "#{key}=#{value}" }].join(" ")
           end
         end

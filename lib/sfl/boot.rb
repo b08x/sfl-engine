@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "dotenv"
+require "securerandom"
 require "dspy"
 
 module SFL
@@ -130,23 +131,56 @@ module SFL
     LOG_LEVELS = { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4 }.freeze
     JOURNALD_LEVELS = { "debug" => 7, "info" => 6, "warn" => 4, "error" => 3, "fatal" => 2 }.freeze
 
-    # Logger for the CLI and API. SFL_LOG_TARGET picks stderr (default) or
-    # journald; SFL_LOG_LEVEL picks the minimum severity (default info).
+    JOURNALD_SOCKET = "/run/systemd/journal/socket"
+
+    # Logger for the CLI and API. SFL_LOG_TARGET is a comma list of stderr
+    # (default) and journald; each log call goes to every listed target.
+    # SFL_LOG_LEVEL picks the minimum severity (default info). Every line is
+    # tagged with {.run_id}.
     # @param env [#[]] environment source, injectable for tests
     # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @param journald_socket [String] socket path that must exist for journald
     # @return [Core::Ports::Logger]
-    # @raise [Error] on an unknown target or level
-    module_function def logger(env: ENV, load_dotenv: true)
+    # @raise [Error] on an unknown target or level, or a missing journald socket
+    module_function def logger(env: ENV, load_dotenv: true, journald_socket: JOURNALD_SOCKET)
       Dotenv.load if load_dotenv
-      target = env["SFL_LOG_TARGET"].to_s.empty? ? "stderr" : env["SFL_LOG_TARGET"]
+      targets = resolve_log_targets(env)
       level = env["SFL_LOG_LEVEL"].to_s.empty? ? "info" : env["SFL_LOG_LEVEL"].downcase
-      raise Error, "SFL_LOG_TARGET must be one of #{LOG_TARGETS.join(', ')} (got #{target.inspect})" unless LOG_TARGETS.include?(target)
       raise Error, "SFL_LOG_LEVEL must be one of #{LOG_LEVELS.keys.join(', ')} (got #{level.inspect})" unless LOG_LEVELS.key?(level)
 
+      id = run_id(env:, load_dotenv: false)
+      loggers = targets.map { |target| build_log_target(target, level, id, journald_socket) }
+      loggers.one? ? loggers.first : Core::Ports::MultiLogger.new(loggers)
+    end
+
+    # Run id stamped on every log line: SFL_RUN_ID when set, else a fresh UUID.
+    # Generated once per process and memoized only when generated, so a set
+    # SFL_RUN_ID is always honoured at call time.
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [String]
+    module_function def run_id(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      presence(env["SFL_RUN_ID"]) || (@generated_run_id ||= SecureRandom.uuid)
+    end
+
+    module_function def resolve_log_targets(env)
+      raw = env["SFL_LOG_TARGET"].to_s
+      targets = raw.split(",").map(&:strip).reject(&:empty?).uniq
+      targets = ["stderr"] if targets.empty?
+      unknown = targets - LOG_TARGETS
+      return targets if unknown.empty?
+
+      raise Error, "SFL_LOG_TARGET must be a comma list of #{LOG_TARGETS.join(', ')} (got #{raw.inspect})"
+    end
+
+    module_function def build_log_target(target, level, id, journald_socket)
       if target == "journald"
-        Core::Ports::JournaldLogger.new(level: JOURNALD_LEVELS.fetch(level))
+        raise Error, "SFL_LOG_TARGET lists journald but its socket is missing: #{journald_socket}" unless File.socket?(journald_socket)
+
+        Core::Ports::JournaldLogger.new(level: JOURNALD_LEVELS.fetch(level), tags: { sfl_run_id: id })
       else
-        Core::Ports::StderrLogger.new(level: LOG_LEVELS.fetch(level))
+        Core::Ports::StderrLogger.new(level: LOG_LEVELS.fetch(level), run_id: id)
       end
     end
 
