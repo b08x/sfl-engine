@@ -52,6 +52,16 @@ namespace :eval do
       14 => pick.call("mistral", "aca44f91"),
     }
 
+    process_runner = lambda do |env, args, &block|
+      status = nil
+      Open3.popen2e(env, *args) do |_stdin, out, wait|
+        block.call(out.each_line)
+        status = wait.value
+      end
+      status
+    end
+    runner = SFL::Eval::UnseenRunner.new(logger: SFL::Boot.logger, process_runner:)
+
     # The Pass 2 model comes from SFL_TASK_PASS_TWO_ANNOTATION_* in .env (read by
     # SFL::Boot); this task sets no model of its own.
     inputs.each do |number, path|
@@ -61,24 +71,17 @@ namespace :eval do
         puts "nd-#{number}: report exists, skipping"
         next
       end
-      puts "nd-#{number}: Pass 2 on #{File.basename(path)}"
-      FileUtils.mkdir_p(out_dir)
-      log_path = File.join(out_dir, "run.log")
-      File.write(log_path, "")
-      turns = 0
-      status = nil
-      Open3.popen2e("bundle", "exec", File.expand_path("../exe/sfl-analyze", __dir__),
-        "conversation", path, "--output-dir", out_dir) do |_stdin, out, wait|
-        out.each_line do |line|
-          File.write(log_path, line, mode: "a")
-          turns += 1 if line.include?("pass_one completed")
-          puts "  nd-#{number}: #{turns} turns processed" if line.include?("pass_one completed") && (turns % 10).zero?
-          puts "  #{line}" if line.match?(/WARN|ERROR|fallback/)
-        end
-        status = wait.value
-      end
-      puts "nd-#{number}: finished, #{turns} turns, exit #{status.exitstatus}"
-      abort("nd-#{number} failed; see #{log_path}") unless status.success?
+      result = runner.run_item(number:, input: path, out_dir:,
+        command: [
+          "bundle",
+          "exec",
+          File.expand_path("../exe/sfl-analyze", __dir__),
+          "conversation",
+          path,
+          "--output-dir",
+          out_dir,
+])
+      abort("nd-#{number} failed; see #{result[:log_path]}") unless result[:success]
     end
   end
 end

@@ -451,6 +451,38 @@ RSpec.describe SFL::Analysis::Engine do
     end
   end
 
+  describe "#analyze -> progress line" do
+    it "writes one `progress turn=N total=M` line per finished turn, in order, via the injected writer" do
+      allow(pipeline).to receive(:compile).and_return(Success([]))
+      lines = []
+      engine = described_class.new(pipeline:, progress_writer: -> (line) { lines << line })
+      source = FakeAnalysisSource.new([build_unit("d1"), build_unit("d2")])
+
+      engine.analyze(source, label: "x")
+
+      expect(lines).to eq(["progress turn=1 total=2", "progress turn=2 total=2"])
+    end
+
+    it "writes after the turn's compile finishes, not before" do
+      events = []
+      allow(pipeline).to receive(:compile) { events << :compiled; Success([]) }
+      engine = described_class.new(pipeline:, progress_writer: -> (_line) { events << :progress })
+
+      engine.analyze(FakeAnalysisSource.new([build_unit("d1")]), label: "x")
+
+      expect(events).to eq(%i[compiled progress])
+    end
+
+    it "defaults to stderr and never touches the injected logger" do
+      allow(pipeline).to receive(:compile).and_return(Success([]))
+      logger = instance_double(SFL::Core::Ports::StderrLogger)
+      engine = described_class.new(pipeline:, logger:)
+
+      expect { engine.analyze(FakeAnalysisSource.new([build_unit("d1")]), label: "x") }
+        .to output("progress turn=1 total=1\n").to_stderr
+    end
+  end
+
   describe "#analyze -> stop_requested mid-loop interruption" do
     it "breaks compile_turns early and reports interrupted: true in metadata" do
       allow(pipeline).to receive(:compile).and_return(Success([]))

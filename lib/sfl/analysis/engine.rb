@@ -50,6 +50,9 @@ module SFL
       #   bug (see LLM::Engine's fallback) that makes a degraded run
       #   indistinguishable from a good one. Callers that must not write to
       #   stderr (the TUI) inject their own adapter.
+      # @param progress_writer [#call] receives the `progress turn=N total=M` line after each
+      #   finished turn. Always on and separate from +logger+ so the rake task can count turns
+      #   whatever SFL_LOG_TARGET is.
       # rubocop:disable Metrics/ParameterLists -- seven independently-injectable collaborators,
       # matching Pipeline#initialize's own house style (see its class comment).
       def initialize(
@@ -59,10 +62,12 @@ module SFL
         on_progress: nil,
         on_turn_start: nil,
         stop_requested: nil,
-        logger: Core::Ports::StderrLogger.new
+        logger: Core::Ports::StderrLogger.new,
+        progress_writer: -> (line) { $stderr.write("#{line}\n") }
       )
         # rubocop:enable Metrics/ParameterLists
         @logger = logger
+        @progress_writer = progress_writer
         @pipeline = pipeline
         @review_queue_repo = review_queue_repo
         @topic_modeler_factory = topic_modeler_factory
@@ -245,6 +250,7 @@ module SFL
           turn = compile_turn(source, unit, turn_id, compile_opts, pre_turn)
 
           report_progress(turn, total, now - started)
+          @progress_writer.call("progress turn=#{turn_id} total=#{total}")
           turns << turn
         end
         turns
