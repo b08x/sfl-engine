@@ -105,6 +105,27 @@ module SFL
     end
     # rubocop:enable Metrics/ParameterLists
 
+    # Langfuse REST client for the evaluation harness (datasets, scores, queues).
+    # Separate from {.call} because eval tasks need no database or LLM wiring.
+    # @param env [#[], #fetch] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [Eval::LangfuseClient]
+    # @raise [Error] when the host or either key is missing
+    module_function def langfuse_client(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      host = env["LANGFUSE_HOST"] || env["LANGFUSE_BASE_URL"]
+      public_key = env["LANGFUSE_PUBLIC_KEY"]
+      secret_key = env["LANGFUSE_SECRET_KEY"]
+      missing = {
+        "LANGFUSE_HOST" => host,
+        "LANGFUSE_PUBLIC_KEY" => public_key,
+        "LANGFUSE_SECRET_KEY" => secret_key,
+      }.select { |_, value| value.to_s.empty? }.keys
+      raise Error, "Langfuse client needs #{missing.join(', ')}" if missing.any?
+
+      Eval::LangfuseClient.new(host:, public_key:, secret_key:)
+    end
+
     LOG_TARGETS = %w[stderr journald].freeze
     LOG_LEVELS = { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "fatal" => 4 }.freeze
     JOURNALD_LEVELS = { "debug" => 7, "info" => 6, "warn" => 4, "error" => 3, "fatal" => 2 }.freeze
@@ -126,6 +147,35 @@ module SFL
         Core::Ports::JournaldLogger.new(level: JOURNALD_LEVELS.fetch(level))
       else
         Core::Ports::StderrLogger.new(level: LOG_LEVELS.fetch(level))
+      end
+    end
+
+    # Paths of the four raw exports that `rake eval:run_unseen` expands into
+    # unseen conversations. Each can be overridden with an SFL_EVAL_* variable;
+    # the ChatGPT value may be a glob because its export directory is dated.
+    # @param workspace [String] directory holding the Datasets/ folder
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [Hash{Symbol => String}] :claude, :chatgpt, :mistral, :notebooklm
+    module_function def eval_sources(workspace:, env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      defaults = {
+        claude: ["SFL_EVAL_CLAUDE_EXPORT", "#{workspace}/Datasets/ClaudeExports/2026-09-27/conversations-000/conversations.json"],
+        chatgpt: ["SFL_EVAL_CHATGPT_EXPORT", "#{workspace}/Datasets/ChatGPTexport/*/conversations-003.json"],
+        mistral: [
+          "SFL_EVAL_MISTRAL_EXPORT",
+          "#{workspace}/Datasets/MistralLeChatExports/2026-10-01/chat-export-1790856293990/" \
+            "chat-aca44f91-4a8f-4233-a1e9-ab72c3b6b95f.json",
+],
+        notebooklm: [
+          "SFL_EVAL_NOTEBOOKLM_FILE",
+          File.expand_path("~/NotebookLM/The Disruption of Existential Anchors_assets/" \
+            "artifacts/The_Real_AI_Threat_Is_Human_Paranoia_nlp.jsonl"),
+],
+      }
+      defaults.transform_values do |(name, default)|
+        value = env[name]
+        value.to_s.empty? ? default : value
       end
     end
 

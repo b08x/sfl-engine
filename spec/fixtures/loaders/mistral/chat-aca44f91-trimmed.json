@@ -1,0 +1,76 @@
+[
+  {
+    "id": "e7ad14ee-27b3-4e29-ab15-4512ee9ae75e",
+    "version": 0,
+    "chatId": "aca44f91-4a8f-4233-a1e9-ab72c3b6b95f",
+    "content": "How would the connection be made between apparent salience and AI psychosis?",
+    "contentChunks": null,
+    "role": "user",
+    "createdAt": "2026-09-15T11:13:31.585Z",
+    "reaction": "neutral",
+    "reactionDetail": null,
+    "reactionComment": null,
+    "preference": null,
+    "preferenceOver": null,
+    "context": {
+      "openCanvaId": null,
+      "initiatedFromUrlQuery": false
+    },
+    "canvas": [],
+    "files": []
+  },
+  {
+    "id": "8140fccb-f32e-433a-b63f-fa2495f6e3bc",
+    "version": 0,
+    "chatId": "aca44f91-4a8f-4233-a1e9-ab72c3b6b95f",
+    "content": "Ah, *apparent salience*—or, as the clinically inclined might call it, **aberrant salience*…",
+    "contentChunks": null,
+    "role": "assistant",
+    "createdAt": "2026-09-15T11:16:18.786Z",
+    "reaction": "neutral",
+    "reactionDetail": null,
+    "reactionComment": null,
+    "preference": null,
+    "preferenceOver": null,
+    "context": {
+      "openCanvaId": null,
+      "completionTiming": {
+        "startedAtMs": 1789470978800,
+        "completedAtMs": 1789470997027,
+        "firstTokenAtMs": 1789470984411,
+        "generationStats": {
+          "outputTokens": 1730,
+          "completionCount": 1,
+          "generationDurationMs": 12557,
+          "outputTokensPerSecond": 137.77176077088475
+        },
+        "timeToFirstTokenMs": 5611,
+        "completionDurationMs": 18227,
+        "userMessageCreatedToCompletionMs": 19365
+      },
+      "assistantAnswerSignals": {
+        "toolNames": [],
+        "integrationNames": []
+      }
+    },
+    "canvas": [],
+    "files": []
+  },
+  {
+    "id": "ee8e5d47-b0c8-4403-b29a-1e6a12a8db25",
+    "version": 0,
+    "chatId": "aca44f91-4a8f-4233-a1e9-ab72c3b6b95f",
+    "content": "Well, first of all, to clarify, you're the AI, I'm the human. And second of all, just to b…",
+    "contentChunks": null,
+    "role": "user",
+    "createdAt": "2026-09-15T11:29:38.562Z",
+    "reaction": "neutral",
+    "reactionDetail": null,
+    "reactionComment": null,
+    "preference": null,
+    "preferenceOver": null,
+    "context": null,
+    "canvas": [],
+    "files": []
+  }
+]

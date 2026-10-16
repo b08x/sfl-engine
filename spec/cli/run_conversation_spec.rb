@@ -110,6 +110,35 @@ RSpec.describe SFL::CLI do
     end
   end
 
+  # Narrative generation is best-effort: the analysis trio is already on disk,
+  # so a narrator provider failure downgrades to a warning. The guarantee rests
+  # on NarrativeGenerator#generate converting ANY StandardError into
+  # NarrativeError; narrowing that rescue would turn a provider outage into a
+  # failed batch with no other test noticing.
+  describe ".run_conversation with --narrative" do
+    let(:digest) { instance_double(SFL::Analysis::NarrativeGenerator::Digest, to_text: "digest", source: "a") }
+
+    before do
+      allow(engine).to receive(:analyze).and_return(result_with("llm", "llm"))
+      allow(SFL::Analysis::NarrativeGenerator::Digest).to receive(:from_result).and_return(digest)
+      allow(boot_result.lm_factory).to receive(:for).with(:narrative_generation).and_return(:lm)
+    end
+
+    it "warns instead of failing the run when the narrator raises a provider error" do
+      narrator = -> (_digest_text) { raise IOError, "provider unreachable" }
+      allow(SFL::LLM::Narrators::NarrativeGenerator).to receive(:new).and_return(narrator)
+      allow(SFL::Formatters::NarrativeFormatter).to receive(:new)
+
+      status = nil
+      expect { status = described_class.run_conversation("spec/fixtures/inputs/sample.jsonl", options.merge(narrative: true)) }
+        .to output(/\[WARN\] narrative generation failed: Narrative generation failed: provider unreachable/).to_stderr
+
+      expect(status).to eq(0)
+      expect(SFL::Formatters::ReportWriter).to have_received(:write).with(anything, "./out")
+      expect(SFL::Formatters::NarrativeFormatter).not_to have_received(:new)
+    end
+  end
+
   describe ".run" do
     it "propagates run_conversation's non-zero status as the process exit code" do
       allow(described_class).to receive(:run_conversation).and_return(1)

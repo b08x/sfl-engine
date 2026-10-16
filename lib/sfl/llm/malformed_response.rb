@@ -13,14 +13,18 @@ module SFL
     # error.rb autoloads only LLM::Error.
     class MalformedResponse < Error
       DSPY_PREDICT_PATH = "/dspy/predict.rb"
+      SORBET_RUNTIME_PATH = "/sorbet-runtime-"
 
-      # Only a TypeError whose top frame is inside DSPy's predictor is a
-      # malformed response. A TypeError from our own code is a bug and must
-      # keep propagating.
+      # Only a TypeError raised by DSPy's predictor is a malformed response.
+      # Sorbet reports the failed signature check from its own frames, so the
+      # top frames are sorbet-runtime and the predictor frame sits beneath
+      # them; skip those and judge the first frame that is not Sorbet's. A
+      # TypeError from our own code is a bug and must keep propagating.
       # @param error [TypeError]
       # @return [Boolean]
       def self.from_predictor?(error)
-        error.backtrace&.first.to_s.include?(DSPY_PREDICT_PATH)
+        frame = error.backtrace&.find { |line| !line.include?(SORBET_RUNTIME_PATH) }
+        frame.to_s.include?(DSPY_PREDICT_PATH)
       end
     end
   end
