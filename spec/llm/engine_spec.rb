@@ -221,6 +221,36 @@ RSpec.describe SFL::LLM::Engine do
         expect(logger).not_to have_received(:error)
       end
 
+      it "warns on each retry with attempt, max_attempts and delay_s" do
+        batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
+        allow(batch_clause_annotator).to receive(:call).and_raise(Timeout::Error, "slow")
+
+        engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]])
+
+        expect(logger).to have_received(:warn).with(
+          a_string_including("pass_two.annotate_batch attempt failed"),
+          hash_including(attempt: 1, max_attempts: SFL::LLM::Engine::MAX_ATTEMPTS, delay_s: 0.5)
+        )
+        expect(logger).to have_received(:warn).with(
+          a_string_including("retrying"), hash_including(attempt: 2, delay_s: 1.0)
+        )
+      end
+
+      it "logs batch start and finish at info with batch_id, size and latency_ms" do
+        batch_clause_annotator = instance_double(
+          SFL::LLM::Annotators::BatchClauseAnnotator, call: [valid_raw.merge(index: 0)]
+        )
+
+        engine_with(batch_clause_annotator).annotate_batch([[clause, ideational]])
+
+        expect(logger).to have_received(:info).with(
+          "pass_two batch started", batch_id: a_kind_of(String), size: 1
+        )
+        expect(logger).to have_received(:info).with(
+          "pass_two batch finished", batch_id: a_kind_of(String), size: 1, latency_ms: a_kind_of(Numeric)
+        )
+      end
+
       it "retries a timeout up to MAX_ATTEMPTS, then defaults with the cause named in each clause's provenance" do
         batch_clause_annotator = instance_double(SFL::LLM::Annotators::BatchClauseAnnotator)
         allow(batch_clause_annotator).to receive(:call).and_raise(Timeout::Error, "annotate_batch exceeded 60s")
@@ -291,6 +321,18 @@ RSpec.describe SFL::LLM::Engine do
       expect(logger).to have_received(:debug).with("pass_two started", hash_including(clause_id: clause.id))
       expect(logger).to have_received(:info).with(
         "pass_two completed", hash_including(clause_id: clause.id, mood: "declarative", latency_ms: a_kind_of(Numeric))
+      )
+    end
+
+    it "includes provider and model on the completion line" do
+      clause_annotator = instance_double(SFL::LLM::Annotators::ClauseAnnotator, call: valid_raw)
+      engine = described_class.new(clause_annotator:, batch_clause_annotator: double, logger:,
+        provider: :ollama, model: "qwen3")
+
+      engine.annotate(clause, ideational)
+
+      expect(logger).to have_received(:info).with(
+        "pass_two completed", hash_including(provider: :ollama, model: "qwen3")
       )
     end
 

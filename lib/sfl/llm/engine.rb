@@ -57,7 +57,9 @@ module SFL
         breaker: Core::Ports::Null::Breaker.new,
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new,
-        sleeper: Kernel.method(:sleep)
+        sleeper: Kernel.method(:sleep),
+        provider: nil,
+        model: nil
       )
         @clause_annotator = clause_annotator || (chat && Annotators::ClauseAnnotator.new(lm: chat, instrumenter:))
         @batch_clause_annotator = batch_clause_annotator || (chat && Annotators::BatchClauseAnnotator.new(lm: chat, instrumenter:))
@@ -68,6 +70,8 @@ module SFL
         @instrumenter = instrumenter
         @logger = logger
         @sleeper = sleeper
+        @provider = provider
+        @model = model
       end
       # rubocop:enable Metrics/ParameterLists
 
@@ -96,6 +100,8 @@ module SFL
         return [] if pairs.empty?
 
         batch_id = SecureRandom.uuid
+        started_at = now
+        logger.info("pass_two batch started", batch_id:, size: pairs.size)
         raw_by_index, batch_error = instrumenter.instrument("pass_two.batch", clause_count: pairs.size, batch_id:) do
           fetch_batch(pairs, context)
         end
@@ -111,12 +117,13 @@ module SFL
           end
         end
 
+        logger.info("pass_two batch finished", batch_id:, size: pairs.size, latency_ms: ((now - started_at) * 1000).round(2))
         log_batch_coverage(pairs, missing, batch_error, batch_id)
         results
       end
 
-      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper
-      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper
+      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model
+      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model
 
       private def fetch_single(clause, ideational, context)
         with_retries("pass_two.annotate") do
@@ -360,7 +367,7 @@ module SFL
         elapsed_ms = ((now - started_at) * 1000).round(2)
         interpersonal = result.interpersonal
         logger.info("pass_two completed", clause_id: clause.id, mood: interpersonal.mood, tenor: interpersonal.tenor,
-          modality_weight: interpersonal.modality_weight, latency_ms: elapsed_ms)
+          modality_weight: interpersonal.modality_weight, latency_ms: elapsed_ms, provider:, model:)
       end
 
       private def log_failure(clause, error)

@@ -13,6 +13,7 @@ module SFL
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new
       )
+        annotation_config = config.for(:pass_two_annotation)
         Engine.new(
           clause_annotator: Annotators::ClauseAnnotator.new(
             lm: lm_factory.for(:pass_two_annotation), instrumenter:
@@ -22,7 +23,9 @@ module SFL
           ),
           breaker:,
           instrumenter:,
-          logger:
+          logger:,
+          provider: annotation_config.provider,
+          model: annotation_config.model
         )
       end
     end
