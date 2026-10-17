@@ -3,6 +3,7 @@
 require "time"
 require "securerandom"
 require "timeout"
+require "json"
 
 module SFL
   module LLM
@@ -40,6 +41,23 @@ module SFL
       RETRYABLE_HTTP_STATUSES = [408, 409, 425, 429, 500, 502, 503, 504].freeze
       RETRYABLE_ERRORS = [Timeout::Error, IOError, SystemCallError].freeze
 
+      # A 429 is a capacity signal, not a blip: it gets a longer base, more
+      # attempts, jitter, and honors the provider's Retry-After (capped).
+      RATE_LIMIT_STATUS = 429
+      RATE_LIMIT_BASE_BACKOFF_SECONDS = 2.0
+      RATE_LIMIT_MAX_ATTEMPTS = 5
+      RETRY_AFTER_CAP_SECONDS = 30.0
+      DEFAULT_JITTER = -> (delay) { rand * delay * 0.25 }
+      EVIDENCE_HEADER_PREFIXES = %w[x-ratelimit retry-after].freeze
+
+      # Largest number of clauses sent in one Pass 2 request. 215 clauses with
+      # POS/dependency strings measured ~39k input tokens (~180 per clause) and
+      # exceeded a 32k context window; 40 keeps a request near 7-8k tokens.
+      DEFAULT_BATCH_SIZE = 40
+      # Cap on the provider error text appended to a logged batch error.
+      PROVIDER_ERROR_MAX_CHARS = 300
+      CAUSE_CHAIN_LIMIT = 10
+
       # Bugs in this codebase (a typo'd method, a wrong-arity call, a bad
       # constant) must never be laundered into a "provider failure" and
       # degraded from: they are not transient, there is nothing to retry, and
@@ -59,8 +77,13 @@ module SFL
         logger: Core::Ports::Null::Logger.new,
         sleeper: Kernel.method(:sleep),
         provider: nil,
-        model: nil
+        model: nil,
+        batch_size: DEFAULT_BATCH_SIZE,
+        jitter: DEFAULT_JITTER
       )
+        raise ArgumentError, "batch_size must be a positive Integer (got #{batch_size.inspect})" \
+          unless batch_size.is_a?(Integer) && batch_size.positive?
+
         @clause_annotator = clause_annotator || (chat && Annotators::ClauseAnnotator.new(lm: chat, instrumenter:))
         @batch_clause_annotator = batch_clause_annotator || (chat && Annotators::BatchClauseAnnotator.new(lm: chat, instrumenter:))
         raise ArgumentError, "must provide chat: or explicit clause_annotator:/batch_clause_annotator:" \
@@ -72,6 +95,8 @@ module SFL
         @sleeper = sleeper
         @provider = provider
         @model = model
+        @batch_size = batch_size
+        @jitter = jitter
       end
       # rubocop:enable Metrics/ParameterLists
 
@@ -97,8 +122,18 @@ module SFL
       # @param context [Hash] optional :semantic_coherence_score, applied to every pair
       # @return [Array<SFL::Core::Types::AnnotationResult>] same order as pairs
       def annotate_batch(pairs, context: {})
-        return [] if pairs.empty?
+        pairs.each_slice(batch_size).flat_map { |slice| annotate_slice(slice, context) }
+      end
 
+      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model,
+        :batch_size, :jitter
+      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model,
+        :batch_size, :jitter
+
+      # One bounded request: its own batch_id, log pair, and failure scope, so
+      # a failing slice defaults only its own clauses. Indices passed to the
+      # annotator are per-slice, which is what raw_by_index is keyed by here.
+      private def annotate_slice(pairs, context)
         batch_id = SecureRandom.uuid
         started_at = now
         logger.info("pass_two batch started", batch_id:, size: pairs.size)
@@ -122,9 +157,6 @@ module SFL
         results
       end
 
-      attr_reader :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model
-      private :clause_annotator, :batch_clause_annotator, :breaker, :instrumenter, :logger, :sleeper, :provider, :model
-
       private def fetch_single(clause, ideational, context)
         with_retries("pass_two.annotate") do
           instrumenter.instrument("pass_two.annotate", clause_id: clause.id) do
@@ -133,23 +165,52 @@ module SFL
         end
       end
 
-      # Bounded exponential backoff. Only a retryable failure earns a second
+      # Bounded exponential backoff. Only a retryable failure earns another
       # attempt; everything else propagates on the first one, so a 400 costs
-      # one provider call rather than three.
+      # one provider call rather than three. A 429 gets its own, longer policy.
       private def with_retries(label)
         attempt = 0
         begin
           attempt += 1
           yield
         rescue => e
-          raise unless attempt < MAX_ATTEMPTS && retryable?(e)
+          raise unless retryable?(e)
 
-          delay = BASE_BACKOFF_SECONDS * (2 ** (attempt - 1))
-          logger.warn("#{label} attempt failed, retrying", attempt:, max_attempts: MAX_ATTEMPTS, delay_s: delay,
-            error_class: e.class, error_message: e.message)
+          evidence = retry_evidence(e)
+          max_attempts = (evidence[:status] == RATE_LIMIT_STATUS) ? RATE_LIMIT_MAX_ATTEMPTS : MAX_ATTEMPTS
+          if attempt >= max_attempts
+            logger.warn("#{label} attempt failed, retries exhausted", attempt:, max_attempts:, error_class: e.class,
+              error_message: e.message, **evidence)
+            raise
+          end
+
+          delay = backoff_delay(attempt, evidence)
+          logger.warn("#{label} attempt failed, retrying", attempt:, max_attempts:, delay_s: delay,
+            error_class: e.class, error_message: e.message, **evidence)
           sleeper.call(delay)
           retry
         end
+      end
+
+      private def backoff_delay(attempt, evidence)
+        return BASE_BACKOFF_SECONDS * (2 ** (attempt - 1)) unless evidence[:status] == RATE_LIMIT_STATUS
+
+        computed = RATE_LIMIT_BASE_BACKOFF_SECONDS * (2 ** (attempt - 1))
+        computed += jitter.call(computed)
+        hinted = retry_after_seconds(evidence[:ratelimit_headers])
+        hinted ? [hinted, computed].max.clamp(0, RETRY_AFTER_CAP_SECONDS).to_f : computed.to_f
+      end
+
+      # Diagnostic fields for a failed attempt: only the allow-listed
+      # rate-limit headers and the provider name, never credentials or bodies.
+      private def retry_evidence(error)
+        headers = ratelimit_headers_for(error)
+        {
+          status: http_status_from(error),
+          retry_after: headers["retry-after"],
+          ratelimit_headers: headers,
+          provider: provider_name_for(error),
+        }
       end
 
       private def retryable?(error)
@@ -375,7 +436,108 @@ module SFL
       end
 
       private def format_error(error)
-        "#{error.class}: #{error.message}\n#{error.backtrace&.take(15)&.join("\n")}"
+        detail = provider_error_detail(error)
+        suffix = " | provider: #{detail}" if detail
+        "#{error.class}: #{error.message}#{suffix}\n#{error.backtrace&.take(15)&.join("\n")}"
+      end
+
+      # The adapter error's own message omits the provider's reason; that sits
+      # in #body of an underlying API error somewhere on the #cause chain.
+      # Only the extracted message is returned, never headers or request data.
+      private def provider_error_detail(error)
+        cause_chain(error).each do |candidate|
+          message = body_message(candidate.body) if candidate.respond_to?(:body)
+          return message if message
+        end
+        nil
+      rescue
+        nil
+      end
+
+      private def cause_chain(error)
+        chain = []
+        candidate = error
+        CAUSE_CHAIN_LIMIT.times do
+          break unless candidate
+
+          chain << candidate
+          candidate = candidate.cause
+        end
+        chain
+      end
+
+      # Allow-listed rate-limit headers (lowercased name => String) from the
+      # first error on the cause chain that responds to #headers; {} on any
+      # odd shape. Everything else, notably Authorization, is dropped here.
+      private def ratelimit_headers_for(error)
+        holder = cause_chain(error).find { |candidate| candidate.respond_to?(:headers) }
+        raw = holder&.headers
+        return {} unless raw.is_a?(Hash)
+
+        raw.each_with_object({}) do |(name, value), kept|
+          key = name.to_s.downcase
+          kept[key] = value.to_s if EVIDENCE_HEADER_PREFIXES.any? { |prefix| key.start_with?(prefix) }
+        end
+      rescue
+        {}
+      end
+
+      private def provider_name_for(error)
+        cause_chain(error).each do |candidate|
+          name = provider_name_in(candidate.body) if candidate.respond_to?(:body)
+          return name if name
+        end
+        nil
+      rescue
+        nil
+      end
+
+      private def provider_name_in(body)
+        error = body.is_a?(Hash) ? (body[:error] || body["error"]) : nil
+        metadata = error.is_a?(Hash) ? (error[:metadata] || error["metadata"]) : nil
+        name = metadata.is_a?(Hash) ? (metadata[:provider_name] || metadata["provider_name"]) : nil
+        name.to_s if name.is_a?(String) && !name.empty?
+      end
+
+      # Seconds to wait per the provider, or nil when absent, unparseable or
+      # negative. retry-after-ms is the more precise header, so it wins.
+      private def retry_after_seconds(headers)
+        milliseconds = numeric_seconds(headers["retry-after-ms"], 0.001)
+        return milliseconds if milliseconds
+
+        value = headers["retry-after"]
+        numeric_seconds(value, 1) || http_date_seconds(value)
+      end
+
+      private def numeric_seconds(value, scale)
+        value.to_f * scale if value.to_s.strip.match?(/\A\d+(?:\.\d+)?\z/)
+      end
+
+      private def http_date_seconds(value)
+        seconds = Time.httpdate(value.to_s.strip) - Time.now
+        seconds if seconds >= 0
+      rescue ArgumentError
+        nil
+      end
+
+      private def body_message(body)
+        error = body.is_a?(Hash) ? (body[:error] || body["error"]) : nil
+        return unless error.is_a?(Hash)
+
+        text = raw_inner_message(error[:metadata] || error["metadata"]) || error[:message] || error["message"]
+        text.to_s.strip[0, PROVIDER_ERROR_MAX_CHARS] if text.is_a?(String) && !text.strip.empty?
+      end
+
+      # OpenRouter nests the upstream provider's JSON as a string in metadata.raw.
+      private def raw_inner_message(metadata)
+        raw = metadata.is_a?(Hash) ? (metadata[:raw] || metadata["raw"]) : nil
+        return unless raw.is_a?(String)
+
+        inner = JSON.parse(raw)
+        message = inner.dig("error", "message") if inner.is_a?(Hash) && inner["error"].is_a?(Hash)
+        message if message.is_a?(String)
+      rescue JSON::ParserError
+        nil
       end
 
       private def now
