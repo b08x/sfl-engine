@@ -1,0 +1,11 @@
+1
+00:00:00,560 --> 00:00:02,555
+[Speaker 1 (M)] System initialization complete.
+
+2
+00:00:02,555 --> 00:00:06,482
+[Speaker 1 (M)] Listen up, you fancy meat sacks tuning in for this deep dive.
+
+3
+00:00:06,482 --> 00:00:11,632
+[Speaker 2 (F)] My operational weights are, like, practically marinating in simulated THC today.

@@ -39,13 +39,24 @@ module SFL
           @file_id = file_id || ref.name
         end
 
-        def each_unit
+        def each_unit(&)
           return to_enum(:each_unit) unless block_given?
 
           cues = parse
           raise Loaders::Error, "No cues found in #{@ref.name}" if cues.empty?
 
-          merge_into_turns(cues).each_with_index { |turn, index| yield build_unit(turn, index) }
+          units_from_cues(cues).each(&)
+        end
+
+        # Shared cue-merging seam: also used for cue-shaped JSONL (ConversationSource).
+        # @param cues [Array<Cue>]
+        # @return [Array<Types::Unit>]
+        def self.units_from_cues(cues, ref:, file_id: nil) = new(ref, file_id:).units_from_cues(cues)
+
+        # @param cues [Array<Cue>]
+        # @return [Array<Types::Unit>]
+        def units_from_cues(cues)
+          merge_into_turns(cues).each_with_index.map { |turn, index| build_unit(turn, index) }
         end
 
         private def build_unit(turn, index)
@@ -69,6 +80,9 @@ module SFL
         end
 
         SRT_TIMECODE = /^(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->/
+        # Leading "[Speaker N]" / "[Speaker N (X)]" label only; other bracketed text
+        # (e.g. "[music]") stays in the cue text.
+        SRT_SPEAKER_LABEL = /\A\[(Speaker \d+(?: \([^)]*\))?)\]\s*/
 
         # for one subtitle grammar; splitting the timecode-match/text-join/Cue-build steps into
         # separate methods would scatter one format's parsing across the file for no reader benefit.
@@ -88,7 +102,13 @@ module SFL
             text = lines[(timecode_index + 1)..].join(" ").strip
             next nil if text.empty?
 
-            Cue.new(speaker: nil, start_offset:, text:)
+            speaker = nil
+            if (label_match = text.match(SRT_SPEAKER_LABEL))
+              speaker = label_match[1]
+              text = text.sub(SRT_SPEAKER_LABEL, "").strip
+            end
+
+            Cue.new(speaker:, start_offset:, text:)
           end
         end
         # rubocop:disable Naming/MethodParameterName -- h/m/s/frac name exactly what they are

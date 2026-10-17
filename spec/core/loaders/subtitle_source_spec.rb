@@ -18,6 +18,62 @@ RSpec.describe SFL::Core::Loaders::SubtitleSource do
       expect(units.map(&:speaker).uniq).to eq(["Speaker"])
     end
 
+    def srt_units(*cue_texts)
+      body = cue_texts.each_with_index.map do |text, i|
+        "#{i + 1}\n00:00:#{format('%02d', i)},000 --> 00:00:#{format('%02d', i + 1)},000\n#{text}\n"
+      end.join("\n")
+      Tempfile.create(["labels", ".srt"]) do |f|
+        f.write(body)
+        f.flush
+        return described_class.new(file_ref(f.path)).units
+      end
+    end
+
+    it "extracts the speaker label from a leading [Speaker N (X)] prefix and strips it from the text" do
+      units = described_class.new(file_ref("#{fixtures}/speaker_labels.srt")).units
+
+      expect(units.map(&:speaker)).to eq(["Speaker 1 (M)", "Speaker 2 (F)"])
+      expect(units.first.text).to start_with("System initialization complete. Listen up")
+      expect(units.first.text).not_to include("[Speaker")
+    end
+
+    it "accepts a label without a parenthesized group" do
+      units = srt_units("[Speaker 3] Hello there.")
+
+      expect(units.map(&:speaker)).to eq(["Speaker 3"])
+      expect(units.first.text).to eq("Hello there.")
+    end
+
+    it "matches the label against the multi-line joined cue text" do
+      units = srt_units("[Speaker 1 (M)]\nHello there.")
+
+      expect(units.map(&:speaker)).to eq(["Speaker 1 (M)"])
+      expect(units.first.text).to eq("Hello there.")
+    end
+
+    it "leaves other bracketed text such as [music] in the cue text with no speaker" do
+      units = srt_units("[music] Intro theme.", "[applause]")
+
+      expect(units.map(&:speaker)).to eq(["Speaker"])
+      expect(units.first.text).to eq("[music] Intro theme. [applause]")
+    end
+
+    it "only treats a leading label as a speaker" do
+      units = srt_units("He said [Speaker 1] aloud.")
+
+      expect(units.map(&:speaker)).to eq(["Speaker"])
+      expect(units.first.text).to eq("He said [Speaker 1] aloud.")
+    end
+
+    it "merges consecutive same-speaker cues and splits turns when speakers alternate" do
+      units = srt_units(
+        "[Speaker 1 (M)] One.", "[Speaker 1 (M)] Two.", "[Speaker 2 (F)] Three.", "[Speaker 1 (M)] Four."
+      )
+
+      expect(units.map(&:speaker)).to eq(["Speaker 1 (M)", "Speaker 2 (F)", "Speaker 1 (M)"])
+      expect(units.map(&:text)).to eq(["One. Two.", "Three.", "Four."])
+    end
+
     it "raises Loaders::Error when the file has no parseable cues" do
       expect { described_class.new(file_ref("#{fixtures}/empty.srt")).units }.to raise_error(SFL::Core::Loaders::Error)
     end

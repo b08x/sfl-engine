@@ -30,17 +30,26 @@ module SFL
         @ref = ref
         @source_type = source_type
         @conversation_id = ref.name
-        @audio_modality = %w[.srt .vtt .ass].include?(ref.extension.downcase)
       end
 
-      attr_reader :conversation_id, :audio_modality
+      attr_reader :conversation_id
+
+      # True for .srt/.vtt/.ass files and for cue-shaped JSONL (detected from
+      # file content, memoized on first use).
+      def audio_modality
+        return @audio_modality if defined?(@audio_modality)
+
+        @audio_modality = subtitle_extension? || cue_records?
+      end
       alias audio_modality? audio_modality
 
       def each_unit(&)
         return to_enum(:each_unit) unless block_given?
 
-        if @audio_modality
+        if subtitle_extension?
           Core::Loaders::SubtitleSource.new(@ref, file_id: @conversation_id).each_unit(&)
+        elsif cue_records?
+          cue_units.each(&)
         else
           raw_turns.each_with_index { |turn_data, idx| yield build_unit(turn_data, idx) }
         end
@@ -57,7 +66,7 @@ module SFL
       #   DocumentationSource for a policy that inspects clauses)
       # @return [Hash, nil]
       def review_entry(unit:, clauses:) # rubocop:disable Lint/UnusedMethodArgument -- shared Source#review_entry contract
-        return nil unless @audio_modality
+        return nil unless audio_modality
 
         { modality: "audio", reason: "audio_transcript", generated_text: unit.text, source_type: @source_type }
       end
@@ -68,26 +77,82 @@ module SFL
       def extra_metadata(_turns) = {}
 
       private def raw_turns
-        raise Core::Loaders::Error, "Unsupported conversation input format: #{@ref.extension}" unless
-          @ref.extension.casecmp(".jsonl").zero?
+        raise Core::Loaders::Error, "Unsupported conversation input format: #{@ref.extension}" unless jsonl?
 
-        load_jsonl
+        turns = records.select { |record| record.is_a?(Hash) && record[:mes] }
+        raise Core::Loaders::Error, no_turns_message if turns.empty?
+
+        turns
       end
 
+      private def subtitle_extension? = %w[.srt .vtt .ass].include?(@ref.extension.downcase)
+
+      private def jsonl? = @ref.extension.casecmp(".jsonl").zero?
+
+      # Parsed JSONL records (nil-free), memoized with the line counts used by the error message.
       # Skips lines that parse as valid JSON but aren't turn-shaped — e.g.
       # SillyTavern group-chat exports prepend a {chat_metadata:, ...}
       # header record before the actual {name:, mes:, send_date:, ...}
       # turns, which JSON::ParserError can't catch (syntactically valid).
-      private def load_jsonl
-        turns = @ref.read.lines.filter_map do |line|
-          turn = JSON.parse(line.strip, symbolize_names: true)
-          turn if turn.is_a?(Hash) && turn[:mes]
-        rescue JSON::ParserError
-          nil
+      private def records
+        @records ||= begin
+          @line_count = 0
+          @unparseable = 0
+          @ref.read.lines.map(&:strip).reject(&:empty?).filter_map do |line|
+            @line_count += 1
+            JSON.parse(line, symbolize_names: true)
+          rescue JSON::ParserError
+            @unparseable += 1
+            nil
+          end
         end
-        raise Core::Loaders::Error, "No turns found in #{@ref.name}" if turns.empty?
+      end
 
-        turns
+      # Cue-shaped: some record has String text and speaker, and no record is native (:mes).
+      private def cue_records?
+        return false unless jsonl?
+
+        @cue_records = compute_cue_records? unless defined?(@cue_records)
+        @cue_records
+      end
+
+      private def compute_cue_records?
+        hashes = records.grep(Hash)
+        return false if hashes.any? { |record| record[:mes] }
+
+        hashes.any? { |record| cue_record?(record) }
+      end
+
+      private def cue_record?(record) = record[:text].is_a?(String) && record[:speaker].is_a?(String)
+
+      private def cue_units
+        cues = records.grep(Hash).select { |record| cue_record?(record) }.filter_map do |record|
+          text = record[:text].strip
+          next if text.empty?
+
+          Core::Loaders::SubtitleSource::Cue.new(
+            speaker: record[:speaker], start_offset: start_offset_seconds(record[:start_ms]), text:
+          )
+        end
+        raise Core::Loaders::Error, no_turns_message if cues.empty?
+
+        Core::Loaders::SubtitleSource.units_from_cues(cues, ref: @ref, file_id: @conversation_id)
+      end
+
+      # Integer, Float or a fully numeric String of milliseconds; anything else is 0.0.
+      private def start_offset_seconds(start_ms)
+        number = start_ms.is_a?(String) ? Float(start_ms.strip, exception: false) : start_ms
+        (number.is_a?(Numeric) && number.to_f.finite?) ? number / 1000.0 : 0.0
+      end
+
+      private def no_turns_message
+        first = records.find { |record| record.is_a?(Hash) } || {}
+        keys = first.keys.map(&:to_s).sort
+        shown = keys.first(12)
+        shown_text = (keys.size > 12) ? "#{shown.inspect[0..-2]}, ...]" : shown.inspect
+        "No turns found in #{@ref.name}: read #{@line_count} line(s), #{@unparseable} unparseable; " \
+          "first record keys: #{shown_text}; expected {name, mes, send_date} chat turns " \
+          "or {speaker, text, start_ms} subtitle cues"
       end
 
       private def build_unit(turn_data, idx)
