@@ -50,13 +50,13 @@ RSpec.describe SFL::Core::Ports::KittyHost do
 
   # Fact 69 (checked by hand inside kitty as well).
   it "opens a new tab running the command in the working directory, held open after it exits" do
-    opened = host.launch_tab(cmd: ["/repo/exe/sfl-analyze", "ingest", "--collection", "papers", "/data/papers"],
+    opened = host.launch_tab(cmd: ["/repo/exe/sfl-analyze", "ingest", "/data/papers", "--collection", "papers"],
       cwd: "/repo", title: "sfl ingest papers", env: { "SFL_RUN_ID" => "run-1" })
 
     expect(opened).to be(true)
     expect(runs.map(&:shelljoin)).to eq([
       "kitten @ --to unix:/tmp/kitty-test launch --type\\=tab --tab-title sfl\\ ingest\\ papers --cwd /repo --hold " \
-        "--env SFL_RUN_ID\\=run-1 -- /repo/exe/sfl-analyze ingest --collection papers /data/papers",
+        "--env SFL_RUN_ID\\=run-1 -- /repo/exe/sfl-analyze ingest /data/papers --collection papers",
     ])
   end
 

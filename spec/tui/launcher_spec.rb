@@ -30,16 +30,34 @@ RSpec.describe SFL::TUI::Launcher do
     expect(press(state, "down").field).to eq(1)
   end
 
-  it "starts `sfl-analyze ingest --collection NAME [flags] PATH` on Enter and closes" do
+  it "starts `sfl-analyze ingest PATH --collection NAME [flags]` on Enter and closes" do
     filled = type(press(press(type(state, "/data/papers"), "tab"), "down"), "")
     filled = type(press(filled, "tab"), "--output-dir out --disable-tracing")
     closed, request = described_class.update(filled, "enter")
 
     expect(closed).to be_nil
     expect(request.argv).to eq(
-      [described_class::EXE, "ingest", "--collection", "papers", "--output-dir", "out", "--disable-tracing", "/data/papers"]
+      [described_class::EXE, "ingest", "/data/papers", "--collection", "papers", "--output-dir", "out", "--disable-tracing"]
     )
     expect(described_class::EXE).to end_with("exe/sfl-analyze")
+  end
+
+  describe "Request#argv contract with SFL::CLI.parse" do
+    def parsed(flags) = SFL::CLI.parse(described_class::Request.new(path: "/data/papers", collection: "papers", flags:).argv.drop(1))
+
+    it "parses as an ingest of the path into the collection, with the flags" do
+      result = parsed(["--output-dir", "x", "--disable-tracing"])
+
+      expect(result).to include(command: :ingest, input: "/data/papers")
+      expect(result[:options]).to include(collection: "papers", output_dir: "x", disable_tracing: true)
+    end
+
+    it "parses with no extra flags" do
+      result = parsed([])
+
+      expect(result).to include(command: :ingest, input: "/data/papers")
+      expect(result[:options]).to include(collection: "papers", output_dir: SFL::CLI::DEFAULT_OUTPUT_DIR)
+    end
   end
 
   it "defaults the collection to the path's base name, as the CLI does" do

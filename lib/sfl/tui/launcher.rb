@@ -7,7 +7,7 @@ module SFL
     # The ingest launcher: an overlay Program opens over any tab with `i`.
     # It takes a path, a collection (an existing one, picked with ↑/↓, or a
     # new name typed in) and the ingest flags, and starts
-    # `sfl-analyze ingest --collection NAME [flags] PATH` through
+    # `sfl-analyze ingest PATH --collection NAME [flags]` through
     # Launcher::Commands. Pure: update returns the next state and, on
     # Enter, the request to start; it never does I/O.
     module Launcher
@@ -38,10 +38,11 @@ module SFL
         def existing? = collections.any? { |name| name.casecmp?(collection.strip) }
       end
 
-      # What Enter starts. `path` is absolute; `flags` is an argv fragment.
+      # What Enter starts. `path` is absolute; `flags` is an argv fragment. The
+      # path comes first, as CLI.parse takes the input before the options.
       Request = Data.define(:path, :collection, :flags) do
         # @return [Array<String>] the ingest command
-        def argv = [EXE, "ingest", "--collection", collection, *flags, path]
+        def argv = [EXE, "ingest", path, "--collection", collection, *flags]
       end
 
       extend self

@@ -15,13 +15,13 @@ RSpec.describe SFL::TUI::Launcher::DetachedChild do
       mkdir: -> (dir) { made << dir }
     )
 
-    log = child.call(["/repo/exe/sfl-analyze", "ingest", "/data"], env: { "SFL_RUN_ID" => "run-1" }, name: "ingest-run-1")
+    log = child.call(["/repo/exe/sfl-analyze", "ingest", "/data", "--collection", "papers"], env: { "SFL_RUN_ID" => "run-1" }, name: "ingest-run-1")
 
     expect(log).to eq("/logs/ingest-run-1.log")
     expect(made).to eq(["/logs"])
     expect(spawned.first).to eq(
       [
-        [{ "SFL_RUN_ID" => "run-1" }, "/repo/exe/sfl-analyze", "ingest", "/data"],
+        [{ "SFL_RUN_ID" => "run-1" }, "/repo/exe/sfl-analyze", "ingest", "/data", "--collection", "papers"],
         { chdir: "/repo", in: File::NULL, out: ["/logs/ingest-run-1.log", "a"], err: %i[child out], pgroup: true },
       ]
     )
