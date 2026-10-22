@@ -34,6 +34,6 @@ RSpec.describe SFL::Core::Loaders::CanvasSource do
     units = described_class.new(ref, skip_empty: false).units
 
     expect(units.map(&:parent_section_id).uniq).to eq([nil])
-    expect(units.map(&:document_key).uniq).to eq([path])
+    expect(units.map(&:document_key).uniq).to eq([File.expand_path(path)])
   end
 end

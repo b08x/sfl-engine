@@ -33,6 +33,6 @@ RSpec.describe SFL::Core::Loaders::ChatgptExportSource do
   end
 
   it "keys each conversation's turns by the conversation id and the export file (fact 15)" do
-    expect(source.units.map { |u| [u.document_key, u.source_path] }.uniq).to eq([["convo-1", path]])
+    expect(source.units.map { |u| [u.document_key, u.source_path] }.uniq).to eq([["convo-1", File.expand_path(path)]])
   end
 end

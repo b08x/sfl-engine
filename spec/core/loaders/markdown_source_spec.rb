@@ -63,7 +63,7 @@ RSpec.describe SFL::Core::Loaders::MarkdownSource do
     it "uses the file path as document_key and source_path" do
       unit = described_class.new(ref).units.first
 
-      expect(unit).to have_attributes(document_key: path, source_path: path)
+      expect(unit).to have_attributes(document_key: File.expand_path(path), source_path: File.expand_path(path))
     end
   end
 end

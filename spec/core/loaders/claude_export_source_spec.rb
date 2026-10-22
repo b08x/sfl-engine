@@ -41,6 +41,6 @@ RSpec.describe SFL::Core::Loaders::ClaudeExportSource do
     units = described_class.new(file_ref("spec/fixtures/loaders/claude_conversations.json")).units
 
     expect(units.map(&:document_key).uniq).to eq(%w[convo-1 convo-2])
-    expect(units.map(&:source_path).uniq).to eq(["spec/fixtures/loaders/claude_conversations.json"])
+    expect(units.map(&:source_path).uniq).to eq([File.expand_path("spec/fixtures/loaders/claude_conversations.json")])
   end
 end

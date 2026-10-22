@@ -111,7 +111,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       source.analyze(sample_ref)
 
       expect(progress_calls.size).to eq(3)
-      expect(progress_calls.first).to include(artifact_id: 1, total: 3, source_file: sample_path)
+      expect(progress_calls.first).to include(artifact_id: 1, total: 3, source_file: File.expand_path(sample_path))
     end
 
     it "halts early and returns a partial report when stop_requested becomes truthy" do
@@ -142,7 +142,7 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       expect(report.artifacts.size).to eq(2)
       expect(report.metadata[:skipped_count]).to eq(1)
       expect(report.metadata[:skipped].size).to eq(1)
-      expect(report.metadata[:skipped].first).to include(artifact_id: 2, source_file: sample_path)
+      expect(report.metadata[:skipped].first).to include(artifact_id: 2, source_file: File.expand_path(sample_path))
       expect(report.metadata[:skipped].first[:error]).to include("compile failed")
     end
 

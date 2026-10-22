@@ -8,11 +8,13 @@ module SFL
       # orchestrator, the CLI) until the CorpusSource adapter (SFL-ING-17)
       # takes over enumeration entirely.
       module FileRefBuilder
-        # @param path [String, Pathname] a real filesystem path
+        # @param path [String, Pathname] a real filesystem path, relative or absolute;
+        #   path_hint is always the expanded absolute path, so every spelling of one
+        #   file keys the same document
         # @param source_id [String] the source this ref belongs to
         # @return [FileRef]
         module_function def call(path, source_id: path.to_s)
-          full = path.to_s
+          full = File.expand_path(path.to_s)
           stat = File.stat(full)
           basename = File.basename(full, ".*")
           ext = File.extname(full).downcase

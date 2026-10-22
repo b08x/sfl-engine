@@ -24,7 +24,7 @@ RSpec.describe SFL::Core::Loaders::ImageSource do
   it "passes the image path to the chat as an attachment" do
     described_class.new(ref, chat:).units
 
-    expect(chat).to have_received(:ask).with(described_class::VISION_PROMPT, with: { image: path })
+    expect(chat).to have_received(:ask).with(described_class::VISION_PROMPT, with: { image: File.expand_path(path) })
   end
 
   it "labels metadata annotation_source truthfully as not vision_failed on success" do

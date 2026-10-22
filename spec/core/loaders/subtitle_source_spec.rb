@@ -117,6 +117,6 @@ RSpec.describe SFL::Core::Loaders::SubtitleSource do
     units = described_class.new(file_ref("spec/fixtures/loaders/subtitles/speaker_labels.srt")).units
 
     expect(units.map(&:parent_section_id).uniq).to eq([nil])
-    expect(units.map(&:document_key).uniq).to eq(["spec/fixtures/loaders/subtitles/speaker_labels.srt"])
+    expect(units.map(&:document_key).uniq).to eq([File.expand_path("spec/fixtures/loaders/subtitles/speaker_labels.srt")])
   end
 end
