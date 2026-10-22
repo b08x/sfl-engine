@@ -9,6 +9,16 @@ The file sample appears to be a transcription of a conversation or monologue. Ea
 
 ## Status
 
-**Not registered.** Review `transcription_loader.rb`, then wire it in:
-add a `require` and a matching entry in `SFL::Ingest::DeterministicRules` before this
-loader runs against real data.
+**Superseded — consolidated into `SFL::Core::Loaders::TranscriptionSource`** at
+`lib/sfl/core/loaders/transcription_source.rb`. The draft file `transcription_loader.rb`
+this doc accompanied was removed, together with the other two transcription drafts
+(`transcription_chat_source.rb`, `transcription_text_loader.rb`), and replaced by that one
+production loader. Resolved field mapping: one turn per non-blank line, `speaker "User"`
+with `is_user: true`, `sent_at` from the file's mtime (load time when the ref has no mtime).
+
+Registered: files whose basename matches `transcription_*.txt` route deterministically via
+`SFL::Ingest::DeterministicRules` to source_type `transcription`, which the ingest orchestrator
+resolves to the `:transcription` factory in `Core::Loaders::Catalog`. Ordinary `.txt` files are
+unaffected — they still fall through to the classifier.
+
+Behavior is proven by `spec/core/loaders/transcription_source_spec.rb`.

@@ -15,12 +15,21 @@ module SFL
     # partial-failure isolation: one file's issue never halts the rest of
     # the run, same principle SFL::CLI.run_conversation's own per-file
     # rescue already applies).
+    # rubocop:disable Metrics/ClassLength -- one flat per-file coordination flow
+    # (classify -> dispatch -> review-queue fallback) whose length the todo budget
+    # already tracked at 101; the two registered loader source_types add one small
+    # resolution seam (constant + dispatch_catalog_loader), not a new responsibility,
+    # same trade-off SubtitleSource documents for its three format grammars.
     class Orchestrator
       # First N bytes read from each file for classifier/loader-drafter
       # sampling — keeps the LLM call cheap regardless of file size (see
       # the design doc's Data Flow section). Start as a constant, tune
       # later against real large-file corpora.
       SAMPLE_BYTES = 4096
+
+      # Registered deterministic source_types (features/registration.feature)
+      # resolved straight to their Core::Loaders::Catalog factory name.
+      CATALOG_LOADER_SOURCE_TYPES = { "transcription" => :transcription, "vault_image_meta" => :image_meta }.freeze
 
       # Below this, a classifier verdict is treated the same as "no
       # confident match" even when format/mode are both present. Start as
@@ -37,7 +46,7 @@ module SFL
       # SectionRegistry.
       def initialize(
         conversation_engine:, kb_source:, classifier:, loader_drafter:, review_repo:,
-        logger: Core::Ports::Null::Logger.new, store: false
+        logger: Core::Ports::Null::Logger.new, store: false, loaders: nil
       )
         # rubocop:enable Metrics/ParameterLists
         @conversation_engine = conversation_engine
@@ -47,6 +56,9 @@ module SFL
         @review_repo = review_repo
         @logger = logger
         @store = store
+        # nil builds the default catalog registry — the two registered
+        # source_types' factories (SFL-ING-02's "resolved by name at boot").
+        @loaders = loaders || Core::Registry.new.tap { |r| Core::Loaders::Catalog.register_into(r) }
       end
 
       # The path is expanded to an absolute path here, once, because each file's path_hint is
@@ -65,13 +77,13 @@ module SFL
         counts
       end
 
-      attr_reader :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
-      private :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger
+      attr_reader :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger, :loaders
+      private :conversation_engine, :kb_source, :classifier, :loader_drafter, :review_repo, :logger, :loaders
 
       # One file's failure must not take the rest of the run down with it — same F11
       # partial-failure-isolation principle SFL::CLI.run_conversation's own per-file rescue
-      # already applies (lib/sfl/cli.rb:225-233). SystemCallError covers the raw File.read calls
-      # in #classify/#draft_or_record_failure (a file vanishing or losing permissions mid-walk,
+      # already applies (lib/sfl/cli.rb:225-233). SystemCallError covers the raw File.read call
+      # in #classify (a file vanishing or losing permissions mid-walk,
       # e.g. a live filesystem being ingested concurrently with other writers) — without it, one
       # such file crashes the entire run instead of being isolated like every other failure mode
       # here (found by SIFT audit of the CLI wiring that first exercises a real directory walk).
@@ -121,11 +133,23 @@ module SFL
 
       private def dispatch(file, classification)
         ref = Core::Refs::FileRefBuilder.call(file)
+        source_type = classification[:source_type]
+        return dispatch_catalog_loader(ref, source_type) if CATALOG_LOADER_SOURCE_TYPES.key?(source_type)
+
         case classification[:mode]
         when "conversation" then dispatch_conversation(ref, classification)
         when "documentation" then dispatch_documentation(ref)
         when "knowledge_base" then kb_source.analyze(ref, store: @store)
         end
+      end
+
+      # The registered source_types resolve to their catalog loader factory; the
+      # loader — an ordinary #each_unit source — is driven by the conversation
+      # engine. Loaders::Error for content that does not match its classified
+      # name is isolated per file by #process, like every other dispatch.
+      private def dispatch_catalog_loader(ref, source_type)
+        loader = loaders.resolve!(CATALOG_LOADER_SOURCE_TYPES.fetch(source_type), ref:)
+        conversation_engine.analyze(loader, label: ref.name, store: @store)
       end
 
       private def dispatch_conversation(ref, classification)
@@ -139,8 +163,6 @@ module SFL
         conversation_engine.analyze(Analysis::DocumentationSource.new(single_ref: ref), label: ref.name, store: @store)
       end
 
-      private def label_for(file) = File.basename(file, ".*")
-
       private def enqueue_low_confidence(file, classification)
         review_repo.enqueue(
           path: file, status: "low_confidence_mode", format: classification[:format], mode: classification[:mode],
@@ -149,9 +171,10 @@ module SFL
       end
 
       private def draft_or_record_failure(file, classification, counts)
-        # Reuses the sample #classify already read (this branch is only reachable via the
-        # classifier fallback) instead of re-reading the same bytes; fallback guards the invariant.
-        sample = classification[:sample] || File.read(file, SAMPLE_BYTES)
+        # Reuses the sample #classify already read instead of re-reading the same bytes:
+        # this branch is only reachable via #classify_via_llm, whose merge(sample:)
+        # sets :sample unconditionally, so no re-read guard is needed.
+        sample = classification[:sample]
         draft = loader_drafter.draft(sample, file)
         enqueue_drafted(file, classification, draft)
         counts[:drafted] += 1
@@ -168,6 +191,7 @@ module SFL
           loader_path: draft[:loader_path], doc_path: draft[:doc_path]
         )
       end
+      # rubocop:enable Metrics/ClassLength
     end
   end
 end

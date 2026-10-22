@@ -1,0 +1,12 @@
+Hello, this is a test of the dictation pipeline.
+
+```ruby
+puts "this line is data, not code"
+```
+# this line looks like a markdown heading
+
+[Speaker 1] hello there
+
+Visit https://example.com/docs for more.
+
+   wrapped in leading and trailing whitespace   

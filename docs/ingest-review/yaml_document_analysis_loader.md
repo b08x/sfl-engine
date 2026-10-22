@@ -9,6 +9,18 @@ The YAML file contains fields such as 'description', 'model_used', 'evaluation',
 
 ## Status
 
-**Not registered.** Review `yaml_document_analysis_loader.rb`, then wire it in:
-add a `require` and a matching entry in `SFL::Ingest::DeterministicRules` before this
-loader runs against real data.
+**Superseded by `SFL::Core::Loaders::ImageMetaSource`** at
+`lib/sfl/core/loaders/image_meta_source.rb`. The draft file
+`yaml_document_analysis_loader.rb` this doc accompanied was removed and replaced by that
+production loader. Corrected field mapping (one unit per file): `text` from `description`,
+`sent_at` from `timestamp` (nil with a single warning when missing or unparseable), and
+attribution in metadata (`model_used` / `evaluation`) instead of a fabricated "System" speaker;
+`speaker` is nil. The YAML is parsed with the safe parser only, so `!ruby/object` tags are
+rejected without instantiating anything.
+
+Registered: files whose basename matches `image-*.meta.yaml` route deterministically via
+`SFL::Ingest::DeterministicRules` to source_type `vault_image_meta`, which the ingest
+orchestrator resolves to the `:image_meta` factory in `Core::Loaders::Catalog`. Ordinary
+`.yaml`/`.meta.yaml` files are unaffected — they still fall through to the classifier.
+
+Behavior is proven by `spec/core/loaders/image_meta_source_spec.rb`.

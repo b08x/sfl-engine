@@ -107,5 +107,45 @@ RSpec.describe SFL::Ingest::DeterministicRules do
         expect(described_class.classify(path)).to be_nil
       end
     end
+
+    it "matches a transcription_*.txt basename as conversation-shaped" do
+      Dir.mktmpdir do |dir|
+        path = write(dir, "transcription_2025-04-25_19-45-27.txt", "one\ntwo\n")
+
+        result = described_class.classify(path)
+
+        expect(result).to eq(format: "transcription", mode: "conversation", source_type: "transcription")
+      end
+    end
+
+    it "still returns nil for ordinary .txt files, so the classifier decides" do
+      Dir.mktmpdir do |dir|
+        %w[notes.txt todo.txt README.txt].each do |name|
+          path = write(dir, name, "just a note")
+
+          expect(described_class.classify(path)).to be_nil
+        end
+      end
+    end
+
+    it "matches an image-*.meta.yaml basename as knowledge_base-shaped" do
+      Dir.mktmpdir do |dir|
+        path = write(dir, "image-1381-1026.png.meta.yaml", "description: A diagram\n")
+
+        result = described_class.classify(path)
+
+        expect(result).to eq(format: "image_meta", mode: "knowledge_base", source_type: "vault_image_meta")
+      end
+    end
+
+    it "still returns nil for other YAML names, so no existing YAML consumer changes behavior" do
+      Dir.mktmpdir do |dir|
+        %w[config.yaml note.meta.yaml docker-compose.yml].each do |name|
+          path = write(dir, name, "key: value")
+
+          expect(described_class.classify(path)).to be_nil
+        end
+      end
+    end
   end
 end

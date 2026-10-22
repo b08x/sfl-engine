@@ -22,6 +22,8 @@ module SFL
           registry.register(:pdf) { |ref:, **o| PdfSource.new(ref, **o) }
           registry.register(:canvas) { |ref:, **o| CanvasSource.new(ref, **o) }
           registry.register(:subtitle) { |ref:, **o| SubtitleSource.new(ref, **o) }
+          registry.register(:transcription) { |ref:, **o| TranscriptionSource.new(ref, **o) }
+          registry.register(:image_meta) { |ref:, **o| ImageMetaSource.new(ref, **o) }
           registry.register(:chatgpt_export) { |ref:, **o| ChatgptExportSource.new(ref, **o) }
           registry.register(:claude_export) { |ref:, **o| ClaudeExportSource.new(ref, **o) }
           registry.register(:mistral_export) { |ref:, **o| MistralExportSource.new(ref, **o) }
