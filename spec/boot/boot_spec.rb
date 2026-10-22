@@ -413,10 +413,49 @@ RSpec.describe SFL::Boot do
       expect(result.model_resolver.resolve[:loader_drafting].source).to eq(:default)
     end
 
+    it "checks the schema after connecting only when require_schema: true" do
+      env = base_env.merge("DATABASE_URL" => SFL::Store::StoreTestDb::TEST_DATABASE_URL)
+      allow(described_class).to receive(:ensure_schema_current!).and_raise(SFL::Boot::Error, "behind")
+
+      expect do
+        described_class.call(env:, load_dotenv: false, require_db: true, require_llm: false, require_tracing: false, require_schema: true)
+      end.to raise_error(SFL::Boot::Error, "behind")
+      described_class.call(env:, load_dotenv: false, require_db: true, require_llm: false, require_tracing: false).db.disconnect
+      boot(env: base_env, require_schema: true)
+      expect(described_class).to have_received(:ensure_schema_current!).once
+    end
+
     it "returns a nil db when require_db: false" do
       result = boot(env: base_env)
 
       expect(result.db).to be_nil
+    end
+  end
+
+  describe ".ensure_schema_current!, against a real Postgres" do
+    let(:latest) { Dir[File.join(described_class::MIGRATIONS_DIR, "*.rb")].map { |path| File.basename(path).to_i }.max }
+
+    it "passes on the migrated test database" do
+      expect { described_class.ensure_schema_current!(SFL::Store::StoreTestDb.db) }.not_to raise_error
+    end
+
+    it "names the database, its version and the latest version when the schema is behind" do
+      schema = "sfl_unmigrated_#{Process.pid}"
+      SFL::Store::StoreTestDb.db.run("CREATE SCHEMA #{schema}")
+      db = SFL::Store::Database.connect(SFL::Store::StoreTestDb::TEST_DATABASE_URL.then { |url| "#{url}?search_path=#{schema}" })
+      message = "database #{db.opts[:database]} is at schema version 0, latest is #{latest}; run `bundle exec rake db:migrate`"
+
+      expect { described_class.ensure_schema_current!(db) }.to raise_error(SFL::Boot::SchemaError, message)
+    ensure
+      db&.disconnect
+      SFL::Store::StoreTestDb.db.run("DROP SCHEMA IF EXISTS #{schema} CASCADE")
+    end
+
+    it "wraps a database failure in Boot::SchemaError" do
+      db = SFL::Store::StoreTestDb.db
+      allow(Sequel::Migrator).to receive(:is_current?).and_raise(Sequel::DatabaseError, "gone")
+
+      expect { described_class.ensure_schema_current!(db) }.to raise_error(SFL::Boot::SchemaError, /schema check failed for database .*: gone/)
     end
   end
 

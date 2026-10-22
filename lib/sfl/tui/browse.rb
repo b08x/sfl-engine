@@ -15,7 +15,9 @@ module SFL
         "e export · A approve · R reject · E edit · o open image · r reload"
       OVERLAY_HELP = "j JSONL · m Markdown · Esc cancel"
 
-      HANDLED = [Messages::BrowseLoaded, Messages::ClausesLoaded, Messages::Reviewed].freeze
+      # Program passes every Messages::Failed here too; Update keeps only a
+      # failed load (see Commands::LOAD_SOURCE).
+      HANDLED = [Messages::BrowseLoaded, Messages::ClausesLoaded, Messages::Reviewed, Messages::Failed].freeze
 
       # @return [String] the Tree node id of a section
       extend self

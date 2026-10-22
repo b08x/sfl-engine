@@ -30,8 +30,8 @@ module SFL
       # @param logger [Core::Ports::Logger, nil]
       # @param settings [Boot::TerminalSettings, nil]
       # @return [AppContext]
-      # @raise [SFL::Boot::Error] when the database is unreachable; exe/sfl-tui
-      #   prints it before any terminal setup
+      # @raise [SFL::Boot::Error] when the database is unreachable or its schema
+      #   is behind; exe/sfl-tui prints it before any terminal setup
       def build(boot: nil, logger: nil, settings: nil, suspend: TERMINAL_SUSPEND)
         logger ||= Core::Ports::JournaldLogger.new(progname: "sfl.tui")
         settings ||= Boot.terminal_settings
@@ -116,12 +116,16 @@ module SFL
       end
 
       # Review and Search work without the LLM settings, so a missing API key
-      # downgrades recompile instead of refusing to start.
+      # downgrades recompile instead of refusing to start. A schema that is
+      # behind (Boot::SchemaError) is re-raised without the fallback, so it
+      # stops sfl-tui and logs no LLM-settings warning.
       private def boot_with_fallback(logger)
-        Boot.call(require_db: true, require_llm: true, require_tracing: false)
+        Boot.call(require_db: true, require_llm: true, require_tracing: false, require_schema: true)
+      rescue Boot::SchemaError
+        raise
       rescue Boot::Error => e
         logger.warn("sfl-tui starting without LLM settings", error: e.message)
-        Boot.call(require_db: true, require_llm: false, require_tracing: false)
+        Boot.call(require_db: true, require_llm: false, require_tracing: false, require_schema: true)
       end
     end
   end

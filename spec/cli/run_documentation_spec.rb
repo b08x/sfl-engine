@@ -59,7 +59,14 @@ RSpec.describe SFL::CLI do
     it "boots with require_llm: false for --pass1-only" do
       described_class.run_documentation(docs_dir, options)
 
-      expect(SFL::Boot).to have_received(:call).with(require_llm: false, require_tracing: false)
+      expect(SFL::Boot).to have_received(:call).with(require_llm: false, require_tracing: false, require_schema: false)
+    end
+
+    it "checks the schema only when storing" do
+      allow(SFL::Boot).to receive(:call).and_raise(SFL::Boot::Error, "behind")
+
+      expect { described_class.run_documentation(docs_dir, options.merge(store: true)) }.to raise_error(SFL::Boot::Error)
+      expect(SFL::Boot).to have_received(:call).with(hash_including(require_schema: true))
     end
   end
 end

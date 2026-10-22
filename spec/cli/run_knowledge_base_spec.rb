@@ -38,7 +38,7 @@ RSpec.describe SFL::CLI do
     it "boots with require_llm: true and honors --disable-tracing" do
       described_class.run_knowledge_base("./kb", options)
 
-      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: false)
+      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: false, require_schema: false)
     end
 
     it "analyzes the corpus refs and writes the report" do

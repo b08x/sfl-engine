@@ -53,6 +53,35 @@ RSpec.describe SFL::TUI::Program do
     expect(notice).to have_attributes(status: "loaded", error: false)
   end
 
+  it "keeps the first failure and counts the later ones until a notice clears them" do
+    failures = [%i[runs one], %i[browse two], %i[models three]].map { |source, detail| SFL::TUI::Messages::Failed.new(source, detail.to_s) }
+    failed = failures.reduce(state) { |acc, message| described_class.update(acc, message, services).first }
+    cleared, = described_class.update(failed, SFL::TUI::Messages::Status.new("loaded"), services)
+    once, = described_class.update(cleared, failures.first, services)
+
+    expect(described_class.status_line(failed)).to end_with("| runs: one (+2 more errors)")
+    expect(failed.error).to be(true)
+    expect(cleared).to have_attributes(status: "loaded", error: false, more_errors: 0)
+    expect(described_class.status_line(described_class.update(once, failures.last, services).first)).to end_with("(+1 more error)")
+  end
+
+  it "passes a failed collections load to Browse" do
+    failed, = described_class.update(state, SFL::TUI::Messages::Failed.new(:collections, "PG::UndefinedTable: no collections"), services)
+
+    expect(failed.tabs.first.load_error).to eq("PG::UndefinedTable: no collections")
+  end
+
+  it "cuts a status line wider than the terminal with an ellipsis" do
+    failed, = described_class.update(state, SFL::TUI::Messages::Failed.new(:runs, "x" * 200), services)
+    lines = TUISpecSupport.render(width: 60, height: 12) { |frame, tui| described_class.render(failed, frame, tui) }
+
+    expect(lines[-3]).to start_with("selected: 0 sections, 0 clauses | runs: xxx")
+    expect(lines[-3].rstrip).to end_with("x…")
+    expect(lines[-3].rstrip.length).to eq(60)
+    expect(described_class.fit("short", 60)).to eq("short")
+    expect(described_class.fit("abc", 0)).to eq("")
+  end
+
   # Fact 37 (checked by hand as well): the help line lists the active tab's keys and the global ones.
   it "lists the active tab's keys and the global keys in the help line" do
     help = described_class.help(state)

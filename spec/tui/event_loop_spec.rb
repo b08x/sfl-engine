@@ -31,7 +31,8 @@ RSpec.describe SFL::TUI::EventLoop do
 
     final = run_with(["q"], services: SFL::TUI::Services.null(source: broken))
 
-    expect(final.status).to eq("browse: SFL::Error: db down")
+    expect(final.status).to eq("collections: SFL::Error: db down")
     expect(final.error).to be(true)
+    expect(final.tabs.first.load_error).to eq("SFL::Error: db down")
   end
 end

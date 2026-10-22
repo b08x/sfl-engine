@@ -18,6 +18,13 @@ RSpec.describe SFL::TUI::Browse::View do
     expect(second).to match(/papers.*Method one\..*Method/)
   end
 
+  it "draws a failed load's reason, not the empty-corpus text" do
+    text = draw(SFL::TUI::Browse::State.initial.with(load_error: "PG::UndefinedTable")).join("\n")
+
+    expect(text).to include("Could not load collections:")
+    expect(text).not_to include("Nothing to show")
+  end
+
   it "draws the export format choice over the panes" do
     lines = draw(state.with(overlay: :export)).join("\n")
 

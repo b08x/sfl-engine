@@ -263,7 +263,8 @@ module SFL
       stop_flag = StopFlag.new
       install_interrupt_trap(stop_flag)
 
-      boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
+      boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing],
+        require_schema: options[:store] == true)
 
       files = gather_conversation_files(input, options, boot_result)
       raise UsageError, "No valid files found in #{input}" if files.empty?
@@ -387,7 +388,8 @@ module SFL
       stop_flag = StopFlag.new
       install_interrupt_trap(stop_flag)
 
-      boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
+      boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing],
+        require_schema: options[:store] == true)
       options = with_dashboard(boot_result, options, stop_flag, kind: "annotate", documents: 1)
       sink = build_run_sink(boot_result, options, kind: "annotate")
       engine = build_conversation_engine(boot_result, options, stop_flag, sink:)
@@ -415,7 +417,8 @@ module SFL
       # this subcommand has no --pass1-only option (see
       # parse_knowledge_base_options), matching legacy's own
       # KnowledgeBaseAnalyzer, which never skipped Pass 2 either.
-      boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
+      boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing],
+        require_schema: options[:store] == true)
       options = with_dashboard(boot_result, options, stop_flag, kind: "annotate", documents: 1)
       sink = build_run_sink(boot_result, options, kind: "annotate")
       source = build_kb_source(boot_result, options, stop_flag, sink:)
@@ -455,7 +458,7 @@ module SFL
       stop_flag = StopFlag.new
       install_interrupt_trap(stop_flag)
 
-      boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
+      boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing], require_schema: true)
       options = options.merge(store: true)
       options = with_dashboard(boot_result, options, stop_flag, kind: "ingest", documents: ingest_document_count(input))
       sink = build_run_sink(boot_result, options, kind: "ingest")

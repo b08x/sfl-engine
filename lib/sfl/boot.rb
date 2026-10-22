@@ -60,6 +60,7 @@ module SFL
     APP_ROOT = File.expand_path("../..", __dir__)
     INTERPRETER_PATH_FILE = File.join(APP_ROOT, ".sfl-python", "interpreter_path")
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
+    MIGRATIONS_DIR = File.join(APP_ROOT, "db", "migrations")
 
     # rubocop:disable Metrics/ParameterLists -- each flag controls a distinct
     # startup concern, plus DI seams (env, tty, input, ruby_llm) for testability
@@ -70,12 +71,14 @@ module SFL
     #   provider API keys (false for a pass1-only run)
     # @param require_tracing [Boolean] run the Langfuse reachability preflight + configure
     #   tracing when LANGFUSE_* is present in env
+    # @param require_schema [Boolean] check the schema is at the latest migration
+    #   (see {.ensure_schema_current!}); only with require_db
     # @param tty [Boolean] whether stdin is interactive, for the Langfuse reachability prompt
     # @param input [#gets] injectable stdin for the Langfuse reachability prompt
     # @param ruby_llm [Module] injectable seam so specs never touch the real ::RubyLLM
     # @return [Boot::Result]
     # @raise [Boot::Error] a required provider API key is missing, DATABASE_URL is unset, the
-    #   database connection fails, the task_models table cannot be read, or Langfuse tracing is unreachable and the operator declined
+    #   database connection fails, the schema is behind (require_schema), the task_models table cannot be read, or Langfuse tracing is unreachable and the operator declined
     #   to continue without it
     module_function def call(
       env: ENV,
@@ -83,12 +86,13 @@ module SFL
       require_db: true,
       require_llm: true,
       require_tracing: true,
+      require_schema: false,
       tty: $stdin.tty?,
       input: $stdin
     )
       Dotenv.load if load_dotenv
 
-      db = require_db ? connect_db(env) : nil
+      db = connect_db_step(env, require_db:, require_schema:)
       model_resolver = build_model_resolver(env, db)
 
       llm_config, lm_factory, embedder, classifier = build_llm_collaborators(env, model_resolver) if require_llm
@@ -105,6 +109,16 @@ module SFL
 
       Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
         api_debug_errors:, api_cors_origins:, narrative_variant:, model_resolver:, embedding_model:)
+    end
+
+    # Connects only when require_db; checks the schema after connecting only
+    # when require_schema (see {.ensure_schema_current!}).
+    module_function def connect_db_step(env, require_db:, require_schema:)
+      return nil unless require_db
+
+      db = connect_db(env)
+      ensure_schema_current!(db) if db && require_schema
+      db
     end
 
     # The task_models rows are read only when Boot connected to the database.
@@ -482,6 +496,24 @@ module SFL
       db
     rescue Sequel::Error => e
       raise Error, "Database connection failed for #{url}: #{e.message}"
+    end
+
+    # Fails when the database is not at the latest migration in db/migrations
+    # (resolved from the project root, not the cwd). The migrator creates an
+    # empty schema_info table when there is none, as `rake db:migrate` would.
+    # @param db [Sequel::Database]
+    # @param directory [String] the integer migrations directory
+    # @return [void]
+    # @raise [SchemaError] naming the database, its version and the latest version
+    module_function def ensure_schema_current!(db, directory: MIGRATIONS_DIR)
+      Sequel.extension :migration
+      return if Sequel::Migrator.is_current?(db, directory)
+
+      migrator = Sequel::IntegerMigrator.new(db, directory)
+      raise SchemaError, "database #{db.opts[:database]} is at schema version #{migrator.current}, " \
+        "latest is #{migrator.target}; run `bundle exec rake db:migrate`"
+    rescue Sequel::Error => e
+      raise SchemaError, "schema check failed for database #{db.opts[:database]}: #{e.message}"
     end
 
     # Resolve the Pass 1 (spaCy sidecar) command. Returns nil if the vendored

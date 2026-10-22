@@ -9,11 +9,13 @@ module SFL
       # - `focus`: :tree or :clauses, the pane the cursor keys move in
       # - `expanded`: node ids whose children are shown in the tree
       # - `overlay`: nil, or :export while the format choice is open
-      State = Data.define(:tree, :reviews, :selection, :expanded, :cursor, :clause_cursor, :focus, :filter, :overlay) do
+      # - `load_error`: why the last load failed, nil once one succeeds
+      State = Data.define(:tree, :reviews, :selection, :expanded, :cursor, :clause_cursor, :focus, :filter, :overlay,
+        :load_error) do
         # @return [State] an empty Browse with nothing loaded
         def self.initial
           new(tree: Tree.new, reviews: Reviews.new, selection: Selection.new, expanded: Set.new, cursor: 0,
-            clause_cursor: 0, focus: :tree, filter: "all", overlay: nil)
+            clause_cursor: 0, focus: :tree, filter: "all", overlay: nil, load_error: nil)
         end
 
         # @return [Array<Tree::Node>] collections, documents and sections shown in the tree pane

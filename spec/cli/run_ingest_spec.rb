@@ -44,16 +44,16 @@ RSpec.describe SFL::CLI do
   describe ".run_ingest" do
     let(:options) { { output_dir: "./out", disable_tracing: false, collection: "inbox" } }
 
-    it "boots with require_llm: true" do
+    it "boots with require_llm: true and checks the schema" do
       described_class.run_ingest("./inbox", options)
 
-      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: true)
+      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: true, require_schema: true)
     end
 
     it "honors --disable-tracing" do
       described_class.run_ingest("./inbox", options.merge(disable_tracing: true))
 
-      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: false)
+      expect(SFL::Boot).to have_received(:call).with(require_llm: true, require_tracing: false, require_schema: true)
     end
 
     it "builds the Orchestrator with the classifier, loader_drafter, review_repo, and dispatch targets" do

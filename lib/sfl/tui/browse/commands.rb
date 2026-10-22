@@ -11,10 +11,12 @@ module SFL
         extend self
 
         NO_REVIEWER = "SFL_REVIEWER_NAME is not set; review decisions need a reviewer name"
+        # The Messages::Failed source of a failed load, which Browse records.
+        LOAD_SOURCE = :collections
 
         # @return [Proc] -> Messages::BrowseLoaded
         def load(services)
-          wrap(services) do
+          SafeCommand.wrap(source: LOAD_SOURCE, logger: services.logger) do
             source = services.source
             reviews = Reviews.new(content: source.content_reviews, annotations: source.annotation_reviews)
             Messages::BrowseLoaded.new(tree: Tree.load(source), reviews:)

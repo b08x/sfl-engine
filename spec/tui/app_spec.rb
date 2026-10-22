@@ -47,11 +47,21 @@ RSpec.describe SFL::TUI::App do
     end
 
     it "boots without the LLM settings when they are missing" do
-      allow(SFL::Boot).to receive(:call).with(require_db: true, require_llm: true, require_tracing: false)
+      allow(SFL::Boot).to receive(:call).with(require_db: true, require_llm: true, require_tracing: false, require_schema: true)
         .and_raise(SFL::Boot::Error, "OPENROUTER_API_KEY missing")
-      allow(SFL::Boot).to receive(:call).with(require_db: true, require_llm: false, require_tracing: false).and_return(boot)
+      allow(SFL::Boot).to receive(:call).with(require_db: true, require_llm: false, require_tracing: false, require_schema: true)
+        .and_return(boot)
 
       expect(described_class.build(logger:, settings:).boot).to be(boot)
+    end
+
+    it "re-raises a schema failure without retrying or logging the LLM-settings warning" do
+      allow(logger).to receive(:warn)
+      allow(SFL::Boot).to receive(:call).and_raise(SFL::Boot::SchemaError, "database sfl is at schema version 1")
+
+      expect { described_class.build(logger:, settings:) }.to raise_error(SFL::Boot::SchemaError, /schema version 1/)
+      expect(SFL::Boot).to have_received(:call).once
+      expect(logger).not_to have_received(:warn)
     end
   end
 

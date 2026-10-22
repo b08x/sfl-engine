@@ -32,6 +32,7 @@ module SFL
           when Messages::BrowseLoaded then loaded(state, message, services)
           when Messages::ClausesLoaded then clauses_loaded(state, message)
           when Messages::Reviewed then [state, Commands.load(services)]
+          when Messages::Failed then [load_failed(state, message), nil]
           else [state, nil]
           end
         end
@@ -107,10 +108,12 @@ module SFL
         private def loaded(state, message, services)
           expanded = state.expanded.empty? ? Set.new(message.tree.roots) : state.expanded
           ids = state.selection.ids.select { |id| message.tree.node(id) }
-          next_state = state.with(tree: message.tree, reviews: message.reviews, expanded:, selection: Selection.new(ids))
+          next_state = state.with(tree: message.tree, reviews: message.reviews, expanded:, selection: Selection.new(ids), load_error: nil)
           next_state = next_state.with(cursor: clamp(next_state.cursor, next_state.rows.size))
           [next_state, clauses_command(next_state, services)]
         end
+
+        private def load_failed(state, message) = (message.source == Commands::LOAD_SOURCE) ? state.with(load_error: message.detail) : state
 
         private def clauses_loaded(state, message)
           section_id = Browse.section_node(message.section_id)

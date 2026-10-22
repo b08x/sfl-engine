@@ -29,6 +29,12 @@ RSpec.describe SFL::TUI::Browse::Detail do
     expect(described_class.lines(SFL::TUI::Browse::State.initial).first).to include("Nothing to show")
   end
 
+  it "shows why the collections could not be loaded instead of the empty-corpus text" do
+    lines = described_class.lines(SFL::TUI::Browse::State.initial.with(load_error: "PG::UndefinedTable: no collections"))
+
+    expect(lines).to eq(["Could not load collections: PG::UndefinedTable: no collections"])
+  end
+
   it "shows n/a for an annotation review without a confidence" do
     lines = described_class.lines(at("s:talk.srt#turn-2").with(focus: :clauses))
 

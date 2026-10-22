@@ -12,6 +12,7 @@ RSpec.describe SFL::TUI::Browse do
 
   it "handles its own result messages only" do
     expect(described_class.handles?(SFL::TUI::Messages::Reviewed.new("x"))).to be(true)
+    expect(described_class.handles?(SFL::TUI::Messages::Failed.new(:collections, "x"))).to be(true)
     expect(described_class.handles?(SFL::TUI::Messages::SearchResults.new(query: "q", rows: []))).to be(false)
   end
 

@@ -77,7 +77,7 @@ Search (`/` to type, `Enter` to run) uses the stored-clause retrieval and shows 
 
 1. Start Postgres and Redis with `docker compose up -d`.
 2. Copy `.env.example` to `.env` and set the values you need.
-3. Apply migrations with `bundle exec rake db:migrate`.
+3. Apply migrations with `bundle exec rake db:migrate`. `sfl-tui`, `sfl-analyze ingest` and `--store` runs exit with the current and latest schema versions when this step is missing.
 
 `SFL::Boot` loads `.env`. With `SFL_AUTO_START_DOCKER=1` in the shell environment, the `exe/` scripts start the Docker services when they are not running.
 

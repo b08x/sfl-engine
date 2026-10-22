@@ -336,6 +336,17 @@ RSpec.describe SFL::TUI::Browse::Update do
       expect(kept.expanded).to eq(Set["c:2"])
     end
 
+    it "records a failed collections load, ignores other failures and clears it on the next load" do
+      failed, none = described_class.call(SFL::TUI::Browse::State.initial,
+        SFL::TUI::Messages::Failed.new(:collections, "PG::UndefinedTable"), services)
+      other, = described_class.call(failed, SFL::TUI::Messages::Failed.new(:browse, "export failed"), services)
+      reloaded, = described_class.call(failed, loaded_message, services)
+
+      expect([failed.load_error, none]).to eq(["PG::UndefinedTable", nil])
+      expect(other.load_error).to eq("PG::UndefinedTable")
+      expect(reloaded.load_error).to be_nil
+    end
+
     it "replaces the tree and reviews, drops vanished selections and clamps the cursor on load" do
       message = loaded_message
       before = SFL::TUI::Browse::State.initial.with(cursor: 9, selection: SFL::TUI::Browse::Selection.new(%w[d:20 k:gone]))

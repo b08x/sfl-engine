@@ -14,10 +14,16 @@ module SFL
           return clause_lines(state, clause) if clause
 
           node = state.focused_row
-          return ["Nothing to show. Ingest a collection with sfl-analyze ingest."] unless node
+          return [empty_line(state)] unless node
           return section_lines(state, node) if node.kind == :section
 
           [node.label, "#{node.kind}: #{node.data.except(:id).compact.map { |key, value| "#{key}=#{value}" }.join(' ')}"]
+        end
+
+        private def empty_line(state)
+          return "Could not load collections: #{state.load_error}" if state.load_error
+
+          "Nothing to show. Ingest a collection with sfl-analyze ingest."
         end
 
         private def clause_lines(state, node)
