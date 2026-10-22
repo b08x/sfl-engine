@@ -193,6 +193,12 @@ group :development, :test do
   gem "rake"
   gem "rspec"
 
+  # Gherkin acceptance runner for features/*.feature (29 scenarios): the
+  # implementer/verifier gates run `bundle exec cucumber`; before this pin the
+  # gem was only installed globally, so the gates reported "not run: not in
+  # the Gemfile bundle".
+  gem "cucumber", "~> 12.0"
+
   # Code quality
   gem "rubocop"
   gem "rubocop-performance"
@@ -213,6 +219,17 @@ end
 
 group :quality do
   gem "simplecov", require: false
+
+  # Mutation-testing gate: the hardener runs `bundle exec mutant run --use rspec`;
+  # before this pin the gem was only invocable through a temporary
+  # BUNDLE_GEMFILE overlay in tmp/ because it was missing from the bundle.
+  # mutant-rspec pins mutant itself exactly (= 0.17.0).
+  gem "mutant-rspec", "~> 0.17.0", require: false
+
+  # Gemfile.lock vulnerability scan (hardener gate): ran via the same tmp/
+  # BUNDLE_GEMFILE overlay until now; `bundle exec bundler-audit check` should
+  # work natively inside the bundle.
+  gem "bundler-audit", "~> 0.9.3", require: false
 end
 
 # =============================================================================
