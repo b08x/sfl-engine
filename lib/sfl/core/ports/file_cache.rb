@@ -16,7 +16,7 @@ module SFL
       # (storage/pipeline_cache.rb): this port's contract is already
       # simpler (opaque String keys, computed by Pipeline itself via
       # #cache_key_for — see Pipeline's class comment) rather than
-      # document_id/clause-object-keyed, and Core::Wire already owns
+      # section_id/clause-object-keyed, and Core::Wire already owns
       # struct<->JSON serialization, so there is no reconstruct_syntactic/
       # reconstruct_ideational/etc. to hand-write here — #write/#read are a
       # thin wrapper around Wire.dump/Wire.load_annotated_clause.

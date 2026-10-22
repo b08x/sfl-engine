@@ -18,7 +18,7 @@ module SFL
       #   3. Dropping fenced code blocks (non-prose; corrupt POS/dep parses)
       #   4. Normalising via PragmaticTokenizer — URL removal, hashtag/mention
       #      stripping, token-level cleanup
-      #   5. Emitting Units with document_id encoded as
+      #   5. Emitting Units with section_id encoded as
       #      "#{file_id}##{section_slug}" for section-granular retrieval
       class MarkdownSource
         include Source
@@ -57,20 +57,21 @@ module SFL
         def initialize(ref, file_id: nil, skip_empty: true, min_length: 40)
           @ref = ref
           @source = ref.read
-          @file_id = file_id || ref.name
+          @file_id = file_id || FileId.call(ref)
           @skip_empty = skip_empty
           @min_length = min_length
         end
 
-        def each_unit
+        def each_unit(&)
           return to_enum(:each_unit) unless block_given?
 
-          units_from_source.each do |unit|
-            next if @skip_empty && unit.text.strip.empty?
-            next if unit.text.strip.length < @min_length
+          emitted = units_from_source.select { |unit| emit?(unit) }
+          HeadingTree.nest(emitted).each(&)
+        end
 
-            yield unit
-          end
+        private def emit?(unit)
+          text = unit.text.strip
+          !(@skip_empty && text.empty?) && text.length >= @min_length
         end
 
         private def units_from_source
@@ -92,9 +93,11 @@ module SFL
           preamble = chunk[:heading].nil?
 
           Types::Unit.new(
-            document_id: "#{@file_id}##{preamble ? 'preamble' : chunk[:id]}",
+            section_id: "#{@file_id}##{preamble ? 'preamble' : chunk[:id]}",
             text: clean_text(chunk[:content]),
             heading: chunk[:heading],
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: {
               "file_id" => @file_id,
               "heading_level" => preamble ? nil : chunk[:level],

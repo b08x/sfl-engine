@@ -55,7 +55,8 @@ module SFL
                                       file, and dispatch it into the
                                       conversation/documentation/knowledge-base
                                       pipelines — or queue low-confidence/
-                                      unrecognized files for review
+                                      unrecognized files for review. Stores
+                                      clauses, documents and sections.
         context "<query>"            Query stored clauses, synthesize an answer
 
       Common options:
@@ -68,6 +69,8 @@ module SFL
         --topics N                   Number of topics for LDA; 0 = HDP (auto-discover)
         --resume                     Reuse cached Pass 2 results from previous runs
         --store                      Persist clauses + embeddings for `context`
+        --collection NAME            Collection for stored documents
+                                      [basename of <input>]
         --allow-fallback             Exit 0 even when Pass 2 fell back to
                                       placeholder values for some clauses.
                                       OFF by default: a report whose tenor/
@@ -75,6 +78,10 @@ module SFL
                                       failed run, not a successful one, and
                                       must not be mistaken for one by a
                                       script reading the exit code.
+
+      ingest:
+        --collection NAME            Collection to add documents to; created
+                                      if missing [basename of <path>]
 
       knowledge-base:
         --store                      Persist clauses + embeddings for `context`
@@ -94,6 +101,16 @@ module SFL
 
     DEFAULT_OUTPUT_DIR = "./output/latest"
 
+    # Failures convert_files records against one conversation file instead of ending the batch.
+    FILE_ERRORS = [
+      Analysis::Error,
+      Core::Loaders::Error,
+      Core::Ports::SectionRegistry::ConflictError,
+      Store::Error,
+      Timeout::Error,
+      LLM::Error,
+    ].freeze
+
     # @param argv [Array<String>]
     # @return [Hash] {command:, input:, options:}
     module_function def parse(argv)
@@ -107,7 +124,18 @@ module SFL
       raise UsageError, "#{command} requires an input argument\n\n#{USAGE}" if input.nil? || input.start_with?("--")
 
       options = __send__(:"parse_#{command}_options", argv)
-      { command:, input:, options: }
+      { command:, input:, options: resolve_collection(options, input) }
+    end
+
+    # `--collection` defaults to the basename of the input path and must not be
+    # empty; subcommands without the option are returned unchanged.
+    module_function def resolve_collection(options, input)
+      return options unless options.key?(:collection)
+
+      name = options[:collection] || Core::CollectionName.default_for(input)
+      options.merge(collection: Core::CollectionName.normalize(name))
+    rescue Core::CollectionName::Error => e
+      raise UsageError, "--collection: #{e.message}"
     end
 
     # Shared across every parse_*_options method so `--disable-tracing`
@@ -128,9 +156,11 @@ module SFL
         narrative: false,
         topics: nil,
         allow_fallback: false,
+        collection: nil,
       }
       OptionParser.new do |opt|
         opt.on("--output-dir DIR") { |v| options[:output_dir] = v }
+        opt.on("--collection NAME") { |v| options[:collection] = v }
         opt.on("--pass1-only") { options[:pass1_only] = true }
         opt.on("--resume") { options[:resume] = true }
         opt.on("--store") { options[:store] = true }
@@ -171,9 +201,10 @@ module SFL
     # is argv parsing + wiring only, so there's nothing beyond the two options every other
     # subcommand already exposes.
     module_function def parse_ingest_options(argv)
-      options = { output_dir: DEFAULT_OUTPUT_DIR }
+      options = { output_dir: DEFAULT_OUTPUT_DIR, collection: nil }
       OptionParser.new do |opt|
         opt.on("--output-dir DIR") { |v| options[:output_dir] = v }
+        opt.on("--collection NAME") { |v| options[:collection] = v }
         add_tracing_option(opt, options)
       end.parse!(argv)
       options
@@ -216,7 +247,7 @@ module SFL
     rescue UsageError => e
       warn e.message
       1
-    rescue Boot::Error, Analysis::Error, Store::Error, Timeout::Error => e
+    rescue Boot::Error, Analysis::Error, Core::Ports::SectionRegistry::ConflictError, Store::Error, Timeout::Error => e
       warn "[ERROR] #{e.message}"
       1
     rescue LLM::Error => e
@@ -237,29 +268,35 @@ module SFL
       files = gather_conversation_files(input, options, boot_result)
       raise UsageError, "No valid files found in #{input}" if files.empty?
 
-      engine = build_conversation_engine(boot_result, options, stop_flag)
+      options = with_dashboard(boot_result, options, stop_flag, kind: "annotate", documents: files.size)
+      sink = build_run_sink(boot_result, options, kind: "annotate")
+      engine = build_conversation_engine(boot_result, options, stop_flag, sink:)
 
+      show(options) { with_run(sink, stop_flag) { convert_files(files, options, engine, boot_result, stop_flag) } }
+    ensure
+      Signal.trap("INT", "DEFAULT")
+    end
+
+    module_function def convert_files(files, options, engine, boot_result, stop_flag)
       failures = []
       files.each do |file|
         break if stop_flag.stopped?
 
         puts "=== #{file[:label]} ===" if files.size > 1
         failures.concat(Array(process_conversation_file(file, files, options, engine, boot_result)))
-      rescue Analysis::Error, Core::Loaders::Error, Store::Error, Timeout::Error, LLM::Error => e
+      rescue *FILE_ERRORS => e
         warn "[ERROR] #{file[:label]}: #{e.message}"
         failures << file[:label]
       end
       warn "[WARN] #{failures.size}/#{files.size} conversations failed: #{failures.join(', ')}" if failures.any?
       exit_status_for(failures)
-    ensure
-      Signal.trap("INT", "DEFAULT")
     end
 
     # A single file's failure (embedding-model/schema mismatch, a malformed
     # export, a provider timeout...) must not take the rest of a batch down
     # with it — same F11 partial-failure-isolation principle this codebase
-    # already applies at the clause level (PgEmbeddingStore#replace_document:
-    # one clause's failed embed doesn't abort the document). Before this,
+    # already applies at the clause level (PgEmbeddingStore#replace_section:
+    # one clause's failed embed doesn't abort the section). Before this,
     # `files.each` had no per-file rescue, so a 900-conversation export
     # that hit one bad conversation early produced 1-2 reports instead of
     # 900 (live-verified gap, 2026-08-02).
@@ -351,11 +388,17 @@ module SFL
       install_interrupt_trap(stop_flag)
 
       boot_result = Boot.call(require_llm: !options[:pass1_only], require_tracing: !options[:disable_tracing])
-      engine = build_conversation_engine(boot_result, options, stop_flag)
+      options = with_dashboard(boot_result, options, stop_flag, kind: "annotate", documents: 1)
+      sink = build_run_sink(boot_result, options, kind: "annotate")
+      engine = build_conversation_engine(boot_result, options, stop_flag, sink:)
 
       source = Analysis::DocumentationSource.new(single_ref: Core::Refs::FileRefBuilder.call(input))
-      result = engine.analyze(source, label: File.basename(input.to_s, ".*"), store: options[:store],
-        resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
+      result = show(options) do
+        with_run(sink, stop_flag) do
+          engine.analyze(source, label: File.basename(input.to_s, ".*"), store: options[:store],
+            resume: options[:resume], topics: options[:topics], pass_one_only: options[:pass1_only])
+        end
+      end
       finish_report(result, options[:output_dir])
       write_narrative(result, options[:output_dir], boot_result) if options[:narrative]
       print_interrupt_status(result, input, :documentation) if result.metadata[:interrupted]
@@ -373,9 +416,14 @@ module SFL
       # parse_knowledge_base_options), matching legacy's own
       # KnowledgeBaseAnalyzer, which never skipped Pass 2 either.
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
-      source = build_kb_source(boot_result, options, stop_flag)
+      options = with_dashboard(boot_result, options, stop_flag, kind: "annotate", documents: 1)
+      sink = build_run_sink(boot_result, options, kind: "annotate")
+      source = build_kb_source(boot_result, options, stop_flag, sink:)
 
-      result = source.analyze(corpus_refs(input, options), store: options[:store], resume: options[:resume])
+      refs = corpus_refs(input, options)
+      result = show(options) do
+        with_run(sink, stop_flag) { source.analyze(refs, store: options[:store], resume: options[:resume]) }
+      end
 
       paths = Formatters::KBReportWriter.write(result, options[:output_dir])
       puts "\nGenerated:"
@@ -408,9 +456,12 @@ module SFL
       install_interrupt_trap(stop_flag)
 
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
-      orchestrator = build_ingest_orchestrator(boot_result, options, stop_flag)
+      options = options.merge(store: true)
+      options = with_dashboard(boot_result, options, stop_flag, kind: "ingest", documents: ingest_document_count(input))
+      sink = build_run_sink(boot_result, options, kind: "ingest")
+      orchestrator = build_ingest_orchestrator(boot_result, options, stop_flag, sink:)
 
-      counts = orchestrator.run(input)
+      counts = show(options) { with_run(sink, stop_flag) { orchestrator.run(input) } }
 
       puts "\nIngest complete:"
       puts "  Dispatched: #{counts[:dispatched]}"
@@ -474,7 +525,10 @@ module SFL
     # the API-key-validation/ChatFactory cost.
     # of Pipeline's nine kwargs assembled by exactly one line; the card's own fix for what was 4x
     # duplicated elsewhere, not something to fragment further within this one method.
-    module_function def build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
+    module_function def build_pipeline(
+      boot_result, options, breaker:, instrumenter:, logger:,
+      section_registry: build_section_registry(boot_result, options, logger)
+    )
       parser = Core::PassOne::SpacySidecarParser.new(model: boot_result.spacy_model,
         command: boot_result.pass1_command, env: boot_result.pass1_env || {}, logger:)
       pass_one = Core::PassOne::Engine.new(parser:, instrumenter:, logger:)
@@ -487,23 +541,102 @@ module SFL
       end
 
       clause_store = Store::PgClauseStore.new(boot_result.db)
-      embedding_store = options[:store] ? Store::PgEmbeddingStore.new(boot_result.db) : Core::Ports::Null::EmbeddingStore.new
+      embedding_store = options[:store] ? embedding_store(boot_result) : Core::Ports::Null::EmbeddingStore.new
       embedder = options[:store] ? boot_result.embedder : Core::Ports::Null::Embedder.new
       cache = options[:resume] ? Core::Ports::FileCache.new : Core::Ports::Null::Cache.new
 
       Core::Pipeline.new(pass_one:, pass_two:, clause_store:, embedding_store:, embedder:, cache:, logger:,
-        instrumenter:)
+        instrumenter:, section_registry:)
     end
-    module_function def build_conversation_engine(boot_result, options, stop_flag)
-      logger, instrumenter, breaker = build_collaborators
-      pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
+
+    # A stored run records its documents and sections in the run's collection.
+    module_function def build_section_registry(boot_result, options, logger)
+      return Core::Ports::Null::SectionRegistry.new unless options[:store] && options[:collection]
+
+      Store::PgSectionRegistry.new(boot_result.db, collection: options[:collection], logger:)
+    end
+
+    # A stored run writes its progress to the `runs` table under SFL_RUN_ID;
+    # any other run gets the same sink over a Null::RunLog.
+    # With the dashboard drawn, the sink is also recorded on its Board.
+    module_function def build_run_sink(boot_result, options, kind:)
+      sink = build_pg_run_sink(boot_result, options, kind:)
+      options[:dashboard] ? options[:dashboard].sink(sink) : sink
+    end
+
+    module_function def build_pg_run_sink(boot_result, options, kind:)
+      run_id = Boot.run_id(load_dotenv: false)
+      unless options[:store]
+        return PgRunProgressSink.new(run_log: Core::Ports::Null::RunLog.new, run_id:, kind:, heartbeat_every: nil)
+      end
+
+      PgRunProgressSink.new(run_log: Store::PgRunRepository.new(boot_result.db), run_id:, kind:,
+        collection: options[:collection], models: boot_result.llm_config&.header)
+    end
+
+    # The full-screen dashboard is drawn only when both stdout and stderr are
+    # terminals; otherwise the run writes the plain `progress turn=N total=M`
+    # lines. A drawn dashboard rides along in options[:dashboard].
+    # @param documents [Integer, nil] documents the run expects
+    # @return [Hash] options, with :dashboard when one is drawn
+    module_function def with_dashboard(boot_result, options, stop_flag, kind:, documents:)
+      return options unless terminal?
+
+      state = Dashboard::State.initial(run_id: Boot.run_id(load_dotenv: false), kind:, collection: options[:collection],
+        models: task_models(boot_result.llm_config), documents:, now: Time.now)
+      options.merge(dashboard: Dashboard::Session.new(board: Dashboard::Board.new(state), stop_flag:))
+    end
+
+    module_function def terminal? = $stdout.tty? && $stderr.tty?
+
+    # @param config [LLM::Config, nil]
+    # @return [Array<String>] "task provider/model" per configured task
+    module_function def task_models(config)
+      return [] unless config
+
+      config.tasks.map { |task, task_config| "#{task} #{task_config.provider}/#{task_config.model}" }
+    end
+
+    # Runs the block under the dashboard when one is drawn.
+    module_function def show(options, &)
+      options[:dashboard] ? options[:dashboard].run(&) : yield
+    end
+
+    # Files the ingest walk will visit, for the dashboard's document total.
+    module_function def ingest_document_count(input)
+      Core::Ports::Adapters::FilesystemCorpusSource.new(input).refs.size
+    end
+
+    # Opens the run row, yields, and closes it as finished, interrupted
+    # (Ctrl+C) or failed (an exception escaped).
+    module_function def with_run(sink, stop_flag)
+      sink.start(0)
+      status = "failed"
+      result = yield
+      status = stop_flag.stopped? ? "interrupted" : "finished"
+      result
+    ensure
+      sink.finish(status:)
+    end
+
+    # The dashboard shows turn progress itself, so the `progress turn=N
+    # total=M` line is written only when no dashboard is drawn.
+    # +section_registry+ is passed when the run already holds one (an ingest
+    # shares one registry between its two dispatch targets).
+    module_function def build_conversation_engine(
+      boot_result, options, stop_flag, sink: Core::Ports::Null::ProgressSink.new, section_registry: nil
+    )
+      logger, instrumenter, breaker = build_collaborators(options)
+      section_registry ||= build_section_registry(boot_result, options, logger)
+      pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:, section_registry:)
       review_queue_repo = options[:store] ? Store::PgReviewQueueRepository.new(boot_result.db) : nil
-      progress_bar = TurnProgressBar.new
+      progress = CompositeProgress.new(sink:)
+      writer = options[:dashboard] ? { progress_writer: -> (_line) {} } : {}
 
       Analysis::Engine.new(
         pipeline:, review_queue_repo:, logger:,
-        on_progress: progress_bar.method(:advance), on_turn_start: progress_bar.method(:start),
-        stop_requested: -> { stop_flag.stopped? }
+        on_progress: progress.method(:advance), on_turn_start: progress.method(:start),
+        stop_requested: -> { stop_flag.stopped? }, **writer
       )
     end
 
@@ -531,41 +664,52 @@ module SFL
       source.refs
     end
 
-    module_function def build_kb_source(boot_result, options, stop_flag)
-      logger, instrumenter, breaker = build_collaborators
-      pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:)
+    module_function def build_kb_source(
+      boot_result, options, stop_flag, sink: Core::Ports::Null::ProgressSink.new, section_registry: nil
+    )
+      logger, instrumenter, breaker = build_collaborators(options)
+      section_registry ||= build_section_registry(boot_result, options, logger)
+      pipeline = build_pipeline(boot_result, options, breaker:, instrumenter:, logger:, section_registry:)
       review_queue_repo = options[:store] ? Store::PgReviewQueueRepository.new(boot_result.db) : nil
       chat = boot_result.lm_factory.for(:context_synthesis) if options[:images]
-      progress_bar = ArtifactProgressBar.new
+      progress = CompositeProgress.new(sink:)
 
       Analysis::KnowledgeBaseSource.new(
         pipeline:, review_queue_repo:,
-        on_progress: progress_bar.method(:advance), stop_requested: -> { stop_flag.stopped? },
+        on_progress: progress.method(:artifact), on_artifact_done: progress.method(:artifact_done),
+        stop_requested: -> { stop_flag.stopped? },
         analyze_images: options[:images], chat:
       )
     end
 
     # Reuses build_conversation_engine/build_kb_source verbatim for the two dispatch targets
     # Ingest::Orchestrator needs — issue #52's own scope note: this is wiring only, the dispatch
-    # engines themselves are unmodified. `options` here is parse_ingest_options' minimal Hash
-    # (output_dir:/disable_tracing: only), which both factories tolerate fine — neither reads a
-    # key parse_ingest_options doesn't set (build_pipeline only reads options[:pass1_only]/
-    # [:store]/[:resume], all nil/falsy here, which is the correct default: an ingest run always
-    # wants a real Pass 2 engine and never needs --resume's file cache).
-    module_function def build_ingest_orchestrator(boot_result, options, stop_flag)
-      logger, = build_collaborators
-      conversation_engine = build_conversation_engine(boot_result, options, stop_flag)
-      kb_source = build_kb_source(boot_result, options, stop_flag)
+    # engines themselves are unmodified. `options` here is parse_ingest_options' Hash plus
+    # store: true (set by run_ingest): an ingest stores clauses, embeddings, documents and
+    # sections in options[:collection]. options[:pass1_only]/[:resume] stay unset: an ingest run
+    # always wants a real Pass 2 engine and never needs --resume's file cache.
+    module_function def build_ingest_orchestrator(boot_result, options, stop_flag, sink: Core::Ports::Null::ProgressSink.new)
+      logger, = build_collaborators(options)
+      section_registry = build_section_registry(boot_result, options, logger)
+      conversation_engine = build_conversation_engine(boot_result, options, stop_flag, sink:, section_registry:)
+      kb_source = build_kb_source(boot_result, options, stop_flag, sink:, section_registry:)
       loader_drafter = Ingest::LoaderDrafter.new(lm: boot_result.lm_factory.for(:loader_drafting))
       review_repo = Store::PgIngestReviewRepository.new(boot_result.db)
 
       Ingest::Orchestrator.new(
-        conversation_engine:, kb_source:, classifier: boot_result.classifier, loader_drafter:, review_repo:, logger:
+        conversation_engine:, kb_source:, classifier: boot_result.classifier, loader_drafter:, review_repo:, logger:,
+        store: options[:store]
       )
     end
 
-    module_function def build_collaborators
-      logger = Boot.logger
+    module_function def embedding_store(boot_result)
+      Store::PgEmbeddingStore.new(boot_result.db, model: boot_result.embedding_model || Store::PgEmbeddingStore::DEFAULT_MODEL)
+    end
+
+    # With the dashboard drawn, the log goes to its log panel instead of stderr.
+    module_function def build_collaborators(options = {})
+      dashboard = options[:dashboard]
+      logger = Boot.logger(screen: dashboard && -> (level) { dashboard.logger(level:) })
       instrumenter = Core::Ports::TimingInstrumenter.new
       breaker = Core::Ports::Null::Breaker.new
       [logger, instrumenter, breaker]
@@ -574,7 +718,7 @@ module SFL
     module_function def print_evidence(result)
       result.clauses.each_with_index do |clause, idx|
         marker = result.cited_clause_ids.include?(clause[:clause_id]) ? "*" : " "
-        puts "#{marker} [#{idx + 1}] #{clause[:text]} (#{clause[:document_id]})"
+        puts "#{marker} [#{idx + 1}] #{clause[:text]} (#{clause[:section_id]})"
       end
     end
 

@@ -15,7 +15,7 @@ RSpec.describe SFL::Core::Ports::Null::Annotator do
 
   it "labels its output annotation_source as stub, not llm" do
     clause = SFL::Core::Types::SyntacticClause.new(
-      id: "c-1", text: "x", tokens: [], root_index: 0, sentence_index: 0, document_id: nil
+      id: "c-1", text: "x", tokens: [], root_index: 0, sentence_index: 0, section_id: nil
     )
     ideational = SFL::Core::Types::IdeationalPayload.new(
       clause_id: "c-1", process_type: "material",
@@ -60,9 +60,9 @@ RSpec.describe SFL::Core::Ports::Null::ClauseStore do
 
   it_behaves_like "a clause store port"
 
-  it "always returns an empty Array from #find_by_document" do
-    subject.replace_document("doc-1", [:not_actually_stored])
-    expect(subject.find_by_document("doc-1")).to eq([])
+  it "always returns an empty Array from #find_by_section" do
+    subject.replace_section("doc-1", [:not_actually_stored])
+    expect(subject.find_by_section("doc-1")).to eq([])
   end
 end
 

@@ -5,6 +5,7 @@ require "spec_helper"
 RSpec.describe SFL::Core::Loaders::ImageSource do
   let(:path) { "spec/fixtures/loaders/sample.png" }
   let(:ref) { file_ref(path) }
+  let(:prefix) { SFL::Core::Loaders::FileId.call(ref) }
   let(:chat) { double("chat", ask: response) } # rubocop:disable RSpec/VerifiedDoubles -- ImageSource#chat is a duck (#ask), not tied to a real RubyLLM class
   let(:response) { double("response", content: "A diagram showing a three-stage pipeline.") } # rubocop:disable RSpec/VerifiedDoubles
 
@@ -17,7 +18,7 @@ RSpec.describe SFL::Core::Loaders::ImageSource do
 
     expect(units.size).to eq(1)
     expect(units.first.text).to eq("A diagram showing a three-stage pipeline.")
-    expect(units.first.document_id).to eq("sample#image")
+    expect(units.first.section_id).to eq("#{prefix}#image")
   end
 
   it "passes the image path to the chat as an attachment" do

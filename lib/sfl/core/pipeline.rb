@@ -10,7 +10,7 @@ module SFL
     # (an Annotator) into the end-to-end compile use case, plus optional
     # storage and embedding. Nothing else in this codebase wires these
     # pieces together — Pipeline is the composition point for "compile a
-    # document," not the whole app's composition root (that's Boot, still
+    # section," not the whole app's composition root (that's Boot, still
     # Phase 4 work).
     #
     # No GC.start: the legacy Pipeline swept dead PyCall wrappers by hand
@@ -44,7 +44,8 @@ module SFL
         cache: Ports::Null::Cache.new,
         logger: Ports::Null::Logger.new,
         instrumenter: Ports::Null::Instrumenter.new,
-        readability_scorer: Analysis::ReadabilityScorer.new
+        readability_scorer: Analysis::ReadabilityScorer.new,
+        section_registry: Ports::Null::SectionRegistry.new
       )
         @pass_one = pass_one
         @pass_two = pass_two
@@ -56,14 +57,18 @@ module SFL
         @logger = logger
         @instrumenter = instrumenter
         @readability_scorer = readability_scorer
+        @section_registry = section_registry
       end
       # rubocop:enable Metrics/ParameterLists
 
       # @param text [String]
-      # @param document_id [String, nil]
+      # @param section_id [String, nil]
+      # @param unit [Types::Unit, nil] the loader unit being compiled; when given with
+      #   store: true, the SectionRegistry records its document and section in the same
+      #   transaction as the clause replacement
       # @param store [Boolean] persist annotated clauses via ClauseStore
-      # @param embed [Boolean] compute and persist embeddings (requires document_id)
-      # @param resume [Boolean] serve Pass 2 results from Cache where available (requires document_id)
+      # @param embed [Boolean] compute and persist embeddings (requires section_id)
+      # @param resume [Boolean] serve Pass 2 results from Cache where available (requires section_id)
       # @param semantic_coherence_score [Float, nil] forwarded to Pass 2 as extra context
       # @param pass_one_only [Boolean] skip Pass 2 entirely and stub every clause's
       #   interpersonal/textual payloads via Ports::Null::Annotator instead (mood:
@@ -80,32 +85,32 @@ module SFL
       # Pipeline#compile's own options exactly (store/embed/resume/semantic_coherence_score),
       # plus pass_one_only (see above); the five-stage bind chain is the ladder itself, not
       # something to fragment further.
-      def compile(text, document_id: nil, store: true, embed: true, resume: false, semantic_coherence_score: nil,
-        pass_one_only: false
+      def compile(text, section_id: nil, unit: nil, store: true, embed: true, resume: false,
+        semantic_coherence_score: nil, pass_one_only: false
       )
-        logger.debug("pipeline started", document_id:, text_length: text.length)
+        logger.debug("pipeline started", section_id:, text_length: text.length)
         started_at = now
 
-        result = parse(text, document_id)
+        result = parse(text, section_id)
           .bind { |clauses| Success(pair_with_ideational(clauses)) }
-          .bind { |pairs| annotate(pairs, document_id, resume, semantic_coherence_score, pass_one_only) }
-          .bind { |annotated| persist(annotated, document_id, store) }
-          .bind { |annotated| embed_all(annotated, document_id, embed) }
+          .bind { |pairs| annotate(pairs, section_id, resume, semantic_coherence_score, pass_one_only) }
+          .bind { |annotated| persist(annotated, section_id, store, unit) }
+          .bind { |annotated| embed_all(annotated, section_id, embed) }
 
-        log_completion(document_id, result, started_at)
+        log_completion(section_id, result, started_at)
         result
       end
       # rubocop:enable Metrics/ParameterLists
 
       attr_reader :pass_one, :pass_two, :ideational_extractor, :clause_store, :embedding_store,
-        :embedder, :cache, :logger, :instrumenter, :readability_scorer
+        :embedder, :cache, :logger, :instrumenter, :readability_scorer, :section_registry
       private :pass_one, :pass_two, :ideational_extractor, :clause_store, :embedding_store,
-        :embedder, :cache, :logger, :instrumenter, :readability_scorer
+        :embedder, :cache, :logger, :instrumenter, :readability_scorer, :section_registry
 
-      private def parse(text, document_id)
-        Success(pass_one.process(text, document_id:))
+      private def parse(text, section_id)
+        Success(pass_one.process(text, section_id:))
       rescue PassOne::Error => e
-        logger.error("pipeline pass_one failed", document_id:, error_class: e.class, error_message: e.message)
+        logger.error("pipeline pass_one failed", section_id:, error_class: e.class, error_message: e.message)
         Failure([:pass_one_failed, e.message])
       end
 
@@ -113,11 +118,11 @@ module SFL
         clauses.map { |clause| [clause, ideational_extractor.extract(clause)] }
       end
 
-      private def annotate(pairs, document_id, resume, semantic_coherence_score, pass_one_only)
+      private def annotate(pairs, section_id, resume, semantic_coherence_score, pass_one_only)
         return Success(stub_annotate_all(pairs)) if pass_one_only
-        return Success(annotate_all(pairs, semantic_coherence_score)) unless resume && document_id
+        return Success(annotate_all(pairs, semantic_coherence_score)) unless resume && section_id
 
-        Success(annotate_with_cache(pairs, document_id, semantic_coherence_score))
+        Success(annotate_with_cache(pairs, section_id, semantic_coherence_score))
       end
 
       # Reuses Ports::Null::Annotator rather than re-literalizing its stub
@@ -143,8 +148,8 @@ module SFL
       # the legacy PipelineCache#partition/compile_with_cache pair read
       # every hit from disk twice: once inside partition to decide hit vs.
       # miss, once more afterward to rebuild the original clause order.
-      private def annotate_with_cache(pairs, document_id, semantic_coherence_score)
-        keyed = pairs.map { |clause, ideational| [cache_key_for(document_id, clause), clause, ideational] }
+      private def annotate_with_cache(pairs, section_id, semantic_coherence_score)
+        keyed = pairs.map { |clause, ideational| [cache_key_for(section_id, clause), clause, ideational] }
         hits, miss_keys = cache.partition(keyed.map { |key, _clause, _ideational| key })
 
         # Self-heal poisoned caches: treat untrusted cache entries as misses
@@ -156,7 +161,7 @@ module SFL
 
         fresh_by_key = fresh_annotations(keyed, miss_keys, semantic_coherence_score)
 
-        logger.info("pipeline cache", document_id:, hits: hits.size, misses: miss_keys.size)
+        logger.info("pipeline cache", section_id:, hits: hits.size, misses: miss_keys.size)
         keyed.map { |key, _clause, _ideational| hits[key] || fresh_by_key.fetch(key) }
       end
 
@@ -175,10 +180,10 @@ module SFL
       end
 
       # sentence_index disambiguates clauses with identical text recurring
-      # at different positions in the same document (e.g. repeated
+      # at different positions in the same section (e.g. repeated
       # boilerplate headers) — without it they'd collide on one cache key.
-      private def cache_key_for(document_id, clause)
-        Digest::SHA256.hexdigest("#{document_id}#{clause.sentence_index}#{clause.text}")
+      private def cache_key_for(section_id, clause)
+        Digest::SHA256.hexdigest("#{section_id}#{clause.sentence_index}#{clause.text}")
       end
 
       private def build_annotated_clause(clause, ideational, annotation_result)
@@ -193,22 +198,25 @@ module SFL
           ideational:,
           interpersonal:,
           textual: annotation_result.textual,
-          document_id: clause.document_id,
+          section_id: clause.section_id,
           compiled_at: Time.now,
           untrusted: annotation_result.interpersonal.untrusted || annotation_result.textual&.untrusted == true
         )
       end
 
-      private def persist(annotated, document_id, store)
-        return Success(annotated) unless store && document_id
+      private def persist(annotated, section_id, store, unit)
+        return Success(annotated) unless store && section_id
 
-        logger.debug("persisting clauses to database", document_id:, clause_count: annotated.size)
-        clause_store.replace_document(document_id, annotated)
+        logger.debug("persisting clauses to database", section_id:, clause_count: annotated.size)
+        section_registry.transaction do
+          clause_store.replace_section(section_id, annotated)
+          section_registry.register(unit, annotated.size) if unit
+        end
         Success(annotated)
       end
 
-      # Requires document_id to scope the EmbeddingStore replace, same as
-      # ClauseStore — an embed run with no document_id has nothing to
+      # Requires section_id to scope the EmbeddingStore replace, same as
+      # ClauseStore — an embed run with no section_id has nothing to
       # replace idempotently on a re-run, so it's skipped rather than
       # writing embeddings nothing can look back up.
       #
@@ -216,14 +224,14 @@ module SFL
       # points at — so vectors live at chunk granularity, not duplicated up
       # every ancestor. Until a future chunk-splitting pass populates
       # parent_clause_id, every clause is a leaf, so this is a no-op today.
-      private def embed_all(annotated, document_id, embed)
-        return Success(annotated) unless embed && document_id && !annotated.empty?
+      private def embed_all(annotated, section_id, embed)
+        return Success(annotated) unless embed && section_id && !annotated.empty?
 
         leaves = leaf_clauses(annotated)
-        logger.debug("generating embeddings", document_id:, clause_count: leaves.size)
+        logger.debug("generating embeddings", section_id:, clause_count: leaves.size)
         vectors = embedder.embed_batch(leaves.map(&:text))
         embeddings_by_clause_id = leaves.zip(vectors).to_h { |ac, vector| [ac.id, vector] }
-        embedding_store.replace_document(document_id, embeddings_by_clause_id)
+        embedding_store.replace_section(section_id, embeddings_by_clause_id)
 
         Success(annotated)
       end
@@ -233,19 +241,19 @@ module SFL
         annotated.reject { |c| parent_ids.include?(c.id) }
       end
 
-      private def log_completion(document_id, result, started_at)
+      private def log_completion(section_id, result, started_at)
         elapsed_ms = ((now - started_at) * 1000).round(2)
 
         if result.success?
           clause_count = result.value!.size
-          logger.info("pipeline completed", document_id:, clause_count:, latency_ms: elapsed_ms)
+          logger.info("pipeline completed", section_id:, clause_count:, latency_ms: elapsed_ms)
           # Serialize once per completed pipeline, not once per Pass 2 batch:
           # report_json walks every accumulated span, so logging it inside
           # annotate_batch made long multi-turn runs repeatedly serialize the
           # entire history and added avoidable work to the measured path.
           logger.info("pass_two timing_breakdown", timing_breakdown: instrumenter.report_json) if instrumenter.respond_to?(:report_json)
         else
-          logger.error("pipeline failed", document_id:, failure: result.failure.inspect)
+          logger.error("pipeline failed", section_id:, failure: result.failure.inspect)
         end
       end
 

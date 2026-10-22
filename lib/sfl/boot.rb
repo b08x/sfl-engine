@@ -75,7 +75,7 @@ module SFL
     # @param ruby_llm [Module] injectable seam so specs never touch the real ::RubyLLM
     # @return [Boot::Result]
     # @raise [Boot::Error] a required provider API key is missing, DATABASE_URL is unset, the
-    #   database connection fails, or Langfuse tracing is unreachable and the operator declined
+    #   database connection fails, the task_models table cannot be read, or Langfuse tracing is unreachable and the operator declined
     #   to continue without it
     module_function def call(
       env: ENV,
@@ -88,22 +88,33 @@ module SFL
     )
       Dotenv.load if load_dotenv
 
-      llm_config, lm_factory, embedder, classifier = build_llm_collaborators(env) if require_llm
+      db = require_db ? connect_db(env) : nil
+      model_resolver = build_model_resolver(env, db)
+
+      llm_config, lm_factory, embedder, classifier = build_llm_collaborators(env, model_resolver) if require_llm
 
       configure_tracing(env, tty:, input:) if require_tracing
 
-      db = require_db ? connect_db(env) : nil
-
-      spacy_model = env["SPACY_MODEL"] || DEFAULT_SPACY_MODEL
+      spacy_model = resolve_spacy_model(env)
       pass1_command = resolve_pass1_command(spacy_model)
       pass1_env = pass1_command ? { "PYTHONPATH" => PYTHON_TARGET_DIR } : nil
       api_debug_errors = env["SFL_API_DEBUG_ERRORS"] == "true"
       api_cors_origins = resolve_api_cors_origins(env)
       narrative_variant = resolve_narrative_variant(env)
+      embedding_model = resolve_embedding_model(env)
 
       Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
-        api_debug_errors:, api_cors_origins:, narrative_variant:)
+        api_debug_errors:, api_cors_origins:, narrative_variant:, model_resolver:, embedding_model:)
     end
+
+    # The task_models rows are read only when Boot connected to the database.
+    module_function def build_model_resolver(env, db)
+      TaskModelResolver.new(env:, store: db && Store::PgModelRepository.new(db))
+    end
+
+    module_function def resolve_spacy_model(env) = env["SPACY_MODEL"] || DEFAULT_SPACY_MODEL
+
+    module_function def resolve_embedding_model(env) = presence(env["EMBEDDING_MODEL"]) || Store::PgEmbeddingStore::DEFAULT_MODEL
     # rubocop:enable Metrics/ParameterLists
 
     # Langfuse REST client for the evaluation harness (datasets, scores, queues).
@@ -137,21 +148,103 @@ module SFL
     # (default) and journald; each log call goes to every listed target.
     # SFL_LOG_LEVEL picks the minimum severity (default info). Every line is
     # tagged with {.run_id}.
+    #
+    # While the foreground dashboard owns the terminal, +screen+ (built with
+    # the minimum level) takes the place of the stderr target, and is added
+    # even when stderr is not listed, so the dashboard's log panel always has
+    # the run's log. journald is unaffected.
     # @param env [#[]] environment source, injectable for tests
     # @param load_dotenv [Boolean] read .env first (off in tests)
     # @param journald_socket [String] socket path that must exist for journald
+    # @param screen [#call, nil] level (Integer) -> Core::Ports::Logger, the dashboard's log
     # @return [Core::Ports::Logger]
     # @raise [Error] on an unknown target or level, or a missing journald socket
-    module_function def logger(env: ENV, load_dotenv: true, journald_socket: JOURNALD_SOCKET)
+    module_function def logger(env: ENV, load_dotenv: true, journald_socket: JOURNALD_SOCKET, screen: nil)
       Dotenv.load if load_dotenv
       targets = resolve_log_targets(env)
+      level = resolve_log_level(env)
+      loggers = build_loggers(targets, level, run_id(env:, load_dotenv: false), journald_socket, screen)
+      loggers.one? ? loggers.first : Core::Ports::MultiLogger.new(loggers)
+    end
+
+    module_function def resolve_log_level(env)
       level = env["SFL_LOG_LEVEL"].to_s.empty? ? "info" : env["SFL_LOG_LEVEL"].downcase
       raise Error, "SFL_LOG_LEVEL must be one of #{LOG_LEVELS.keys.join(', ')} (got #{level.inspect})" unless LOG_LEVELS.key?(level)
 
-      id = run_id(env:, load_dotenv: false)
-      loggers = targets.map { |target| build_log_target(target, level, id, journald_socket) }
-      loggers.one? ? loggers.first : Core::Ports::MultiLogger.new(loggers)
+      level
     end
+
+    # One logger per target; +screen+, when given, replaces stderr.
+    module_function def build_loggers(targets, level, id, journald_socket, screen)
+      targets -= ["stderr"] if screen
+      loggers = targets.map { |target| build_log_target(target, level, id, journald_socket) }
+      loggers << screen.call(LOG_LEVELS.fetch(level)) if screen
+      loggers
+    end
+
+    # DATABASE_URL for tasks that connect without the rest of Boot (rake db:migrate).
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [String]
+    # @raise [Error] when DATABASE_URL is unset
+    module_function def database_url(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      presence(env["DATABASE_URL"]) || raise(Error, "DATABASE_URL is not set")
+    end
+
+    # RACK_ENV for the Roda app in app/, default "development". Read without .env.
+    # @param env [#[]] environment source, injectable for tests
+    # @return [String]
+    module_function def rack_environment(env: ENV) = presence(env["RACK_ENV"]) || "development"
+
+    # Settings for the Roda app in app/ (read through app/config/config.rb).
+    # Outside production, .env is loaded first, SESSION_SECRET falls back to a
+    # random per-process secret and DATABASE_URL to a local app_<env> database.
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first outside production (off in tests)
+    # @return [Hash] `{secret:, environment:, db: {url:}}`
+    # @raise [Error] in production when SESSION_SECRET or DATABASE_URL is unset
+    module_function def web_settings(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv && rack_environment(env:) != "production"
+      environment = rack_environment(env:)
+      production = environment == "production"
+      { secret: session_secret(env, production:), environment:, db: { url: web_database_url(env, environment) } }
+    end
+
+    module_function def session_secret(env, production:)
+      secret = presence(env["SESSION_SECRET"])
+      return secret if secret
+      raise Error, "SESSION_SECRET is not set (required when RACK_ENV=production)" if production
+
+      @session_secret ||= SecureRandom.hex(64)
+    end
+
+    module_function def web_database_url(env, environment)
+      return database_url(env:, load_dotenv: false) if environment == "production" || presence(env["DATABASE_URL"])
+
+      "postgres://user:password@localhost:5432/app_#{environment}"
+    end
+
+    # SFL_AUTO_START_DOCKER=1 lets exe/sfl-analyze and exe/sfl-tui start
+    # docker compose. Read before Boot.call, without .env (see DockerServices).
+    # @param env [#[]] environment source, injectable for tests
+    # @return [Boolean]
+    module_function def auto_start_docker?(env: ENV) = env["SFL_AUTO_START_DOCKER"] == "1"
+
+    # SFL_SKIP_LLM_BOOT=true makes the rack boot (boot.rb) skip LLM wiring.
+    # @param env [#[]] environment source, injectable for tests
+    # @return [Boolean]
+    module_function def skip_llm_boot?(env: ENV) = env["SFL_SKIP_LLM_BOOT"] == "true"
+
+    # SFL_ENABLE_TRACING=true makes the rack boot (boot.rb) configure Langfuse tracing.
+    # @param env [#[]] environment source, injectable for tests
+    # @return [Boolean]
+    module_function def tracing_enabled?(env: ENV) = env["SFL_ENABLE_TRACING"] == "true"
+
+    # Where exe/sfl-api binds: HOST (default 0.0.0.0) and PORT (default 3001).
+    # @param env [#fetch] environment source, injectable for tests
+    # @return [Hash] `{host:, port:}`
+    module_function def api_bind(env: ENV) = { host: env.fetch("HOST", "0.0.0.0"), port: env.fetch("PORT", "3001") }
 
     # Run id stamped on every log line: SFL_RUN_ID when set, else a fresh UUID.
     # Generated once per process and memoized only when generated, so a set
@@ -184,6 +277,30 @@ module SFL
       end
     end
 
+    DEFAULT_EDITOR = "vi"
+    DEFAULT_EXPORT_DIR = "./output/exports"
+    DEFAULT_INGEST_LOG_DIR = "./output/logs"
+
+    # Settings for sfl-tui: the reviewer name review decisions are recorded
+    # under, the editor command for editing review text, the export
+    # directory, the launcher's log directory and the kitty variables.
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [Boot::TerminalSettings]
+    module_function def terminal_settings(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      TerminalSettings.new(
+        reviewer: presence(env["SFL_REVIEWER_NAME"]&.strip),
+        editor: resolve_editor(env),
+        export_dir: presence(env["SFL_EXPORT_DIR"]) || DEFAULT_EXPORT_DIR,
+        ingest_log_dir: presence(env["SFL_INGEST_LOG_DIR"]) || DEFAULT_INGEST_LOG_DIR,
+        kitty_window_id: presence(env["KITTY_WINDOW_ID"]),
+        kitty_listen_on: presence(env["KITTY_LISTEN_ON"])
+      )
+    end
+
+    module_function def resolve_editor(env) = presence(env["VISUAL"]) || presence(env["EDITOR"]) || DEFAULT_EDITOR
+
     # Paths of the four raw exports that `rake eval:run_unseen` expands into
     # unseen conversations. Each can be overridden with an SFL_EVAL_* variable;
     # the ChatGPT value may be a glob because its export directory is dated.
@@ -213,8 +330,8 @@ module SFL
       end
     end
 
-    module_function def build_llm_collaborators(env)
-      llm_config = build_llm_config(env)
+    module_function def build_llm_collaborators(env, model_resolver = TaskModelResolver.new(env:))
+      llm_config = model_resolver.call
       validate_api_keys!(llm_config, env)
 
       lm_factory = LLM::LMFactory.new(config: llm_config, env:)
@@ -224,66 +341,31 @@ module SFL
       [llm_config, lm_factory, embedder, classifier]
     end
 
-    # Build per-task LLM configuration from ENV. Each task can be configured
-    # via SFL_TASK_<TASK_NAME>_{MODEL,PROVIDER,TEMPERATURE} environment variables.
-    # Tasks without explicit defaults borrow from related tasks (see below).
-    module_function def build_llm_config(env)
-      pass_two_annotation = pass_two_task_config(:pass_two_annotation, env)
-      pass_two_batch_annotation = pass_two_task_config(:pass_two_batch_annotation, env)
-      context_synthesis = task_config_from_env(
-        :context_synthesis, env,
-        default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
-      )
-      # narrative_generation is the narrator for --narrative reports. It defaults to
-      # context_synthesis, so an unconfigured install behaves as before, and it can be
-      # set separately with SFL_TASK_NARRATIVE_GENERATION_*.
-      narrative_generation = task_config_from_env(
-        :narrative_generation, env,
-        default_provider: context_synthesis.provider, default_model: context_synthesis.model
-      )
-      embedding = embedding_task_config(env)
-      # ingest_classification borrows defaults from embedding (cheapest configured task)
-      ingest_classification = task_config_from_env(
-        :ingest_classification, env, default_provider: embedding.provider, default_model: embedding.model
-      )
-      # loader_drafting borrows defaults from pass_two_annotation (strongest general-purpose task)
-      loader_drafting = task_config_from_env(
-        :loader_drafting, env,
-        default_provider: pass_two_annotation.provider, default_model: pass_two_annotation.model
-      )
+    # Per-task LLM configuration: SFL_TASK_<TASK_NAME>_{MODEL,PROVIDER,...}
+    # env vars, then the `task_models` rows in +store+, then the defaults
+    # (Boot::TaskModelResolver).
+    # @param store [Core::Ports::ModelStore, nil]
+    # @return [LLM::Config]
+    module_function def build_llm_config(env, store: nil) = TaskModelResolver.new(env:, store:).call
 
-      LLM::Config.new(tasks: {
-        pass_two_annotation:,
-        pass_two_batch_annotation:,
-        context_synthesis:,
-        narrative_generation:,
-        embedding:,
-        ingest_classification:,
-        loader_drafting:,
-      })
-    end
-    module_function def pass_two_task_config(name, env)
-      task_config_from_env(name, env, default_provider: DEFAULT_PROVIDER, default_model: nil)
-    end
-
-    module_function def embedding_task_config(env)
-      task_config_from_env(
-        :embedding, env,
-        default_provider: DEFAULT_EMBEDDING_PROVIDER, default_model: env["EMBEDDING_MODEL"]
-      )
+    # The model listings `rake models:refresh` and the Models tab read: the
+    # ruby_llm registry, Ollama at OLLAMA_BASE_URL and OpenRouter (with
+    # OPENROUTER_API_KEY when set).
+    # @param env [#[]] environment source, injectable for tests
+    # @param load_dotenv [Boolean] read .env first (off in tests)
+    # @return [Array<Core::Ports::ModelCatalog>]
+    module_function def model_catalogs(env: ENV, load_dotenv: true)
+      Dotenv.load if load_dotenv
+      [
+        LLM::Catalogs::RubyLLMCatalog.new,
+        LLM::Catalogs::OllamaCatalog.new(base_url: presence(env["OLLAMA_BASE_URL"]) || DEFAULT_OLLAMA_BASE_URL),
+        LLM::Catalogs::OpenRouterCatalog.new(api_key: presence(env["OPENROUTER_API_KEY"])),
+      ]
     end
 
     # Every knob is optional. TEMPERATURE=none and REASONING_EFFORT=none mean
     # "do not send this param": some models (gpt-5.6-luna-pro) reject
     # temperature, and omitting reasoning lets the endpoint choose.
-    module_function def task_config_from_env(name, env, default_provider:, default_model:)
-      prefix = "SFL_TASK_#{name.to_s.upcase}_"
-      model = presence(env["#{prefix}MODEL"]) || default_model
-      provider = presence(env["#{prefix}PROVIDER"])&.to_sym || default_provider
-
-      LLM::TaskConfig.new(model:, provider:, params: task_params_from_env(prefix, env))
-    end
-
     module_function def task_params_from_env(prefix, env)
       params = {}
 

@@ -90,7 +90,7 @@ module SFL
         # Builds a digest from a report JSON written by Formatters::JSONFormatter,
         # so `narrate` can run on a saved report without re-running the analysis.
         # Accepts both report schemes: the conversation keys (conversation_id,
-        # turn_count, speakers) and the document keys (document_id, section_count,
+        # turn_count, speakers) and the document keys (document_key, section_count,
         # headings). Both come back under the conversation keys this class uses.
         #
         # @param parsed [Hash] JSON.parse of the report

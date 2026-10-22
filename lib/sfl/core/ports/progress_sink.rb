@@ -3,8 +3,8 @@
 module SFL
   module Core
     module Ports
-      # Reports pipeline progress to whatever surface is listening (CLI
-      # progress bar, GUI progress control, chat agent status message).
+      # Reports pipeline progress to whatever surface is listening (the runs
+      # table, the foreground dashboard).
       module ProgressSink
         # @param total [Integer]
         # @return [void]
@@ -12,14 +12,16 @@ module SFL
           raise NotImplementedError, "#{self.class} must implement #start"
         end
 
-        # @param by [Integer]
+        # @param by [Integer] items finished
+        # @param failed [Integer] of those, items that failed
         # @return [void]
-        def advance(by: 1)
+        def advance(by: 1, failed: 0)
           raise NotImplementedError, "#{self.class} must implement #advance"
         end
 
+        # @param status [String] "finished", "failed" or "interrupted"
         # @return [void]
-        def finish
+        def finish(status: "finished")
           raise NotImplementedError, "#{self.class} must implement #finish"
         end
       end

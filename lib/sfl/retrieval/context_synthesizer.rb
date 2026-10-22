@@ -156,7 +156,7 @@ module SFL
             "process=#{row.process_type}",
           ].join(", ")
 
-          "[#{idx + 1}] #{evidence_text(row, expand_ancestors)}\n    (#{annotations}; source: #{row.document_id})"
+          "[#{idx + 1}] #{evidence_text(row, expand_ancestors)}\n    (#{annotations}; source: #{row.section_id})"
         end.join("\n")
       end
 

@@ -36,4 +36,11 @@ RSpec.describe SFL::Core::Loaders::ClaudeExportSource do
       expect(source.memories).to eq([])
     end
   end
+
+  it "makes each conversation one document whose source path is the export file (fact 15)" do
+    units = described_class.new(file_ref("spec/fixtures/loaders/claude_conversations.json")).units
+
+    expect(units.map(&:document_key).uniq).to eq(%w[convo-1 convo-2])
+    expect(units.map(&:source_path).uniq).to eq(["spec/fixtures/loaders/claude_conversations.json"])
+  end
 end

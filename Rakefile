@@ -31,7 +31,7 @@ namespace :db do
     Sequel.extension :migration
     require_relative "lib/sfl"
 
-    db = SFL::Store::Database.connect
+    db = SFL::Store::Database.connect(SFL::Boot.database_url)
     SFL::Store::Database.setup_extensions(db)
     Sequel::Migrator.run(db, "db/migrations")
     db.disconnect
@@ -50,9 +50,10 @@ namespace :embeddings do
     # migrates — see Store::Database's own comment); run `rake db:migrate`
     # first if this is a fresh database.
     ctx = SFL::Boot.call(require_tracing: false)
-    embedding_store = SFL::Store::PgEmbeddingStore.new(ctx.db)
-    summary = SFL::Store::EmbeddingRedriver.new(db: ctx.db, embedder: ctx.embedder, embedding_store:).call
-    puts "documents_processed=#{summary[:documents_processed]} " \
+    embedding_store = SFL::Store::PgEmbeddingStore.new(ctx.db, model: ctx.embedding_model)
+    summary = SFL::Store::EmbeddingRedriver.new(db: ctx.db, embedder: ctx.embedder, embedding_store:,
+      model: ctx.embedding_model).call
+    puts "sections_processed=#{summary[:sections_processed]} " \
       "redriven=#{summary[:redriven]} still_failed=#{summary[:still_failed]}"
     ctx.db.disconnect
   end

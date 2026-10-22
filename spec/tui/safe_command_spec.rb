@@ -18,11 +18,11 @@ RSpec.describe SFL::TUI::SafeCommand do
 
     expect(result).to be_a(SFL::TUI::Messages::Failed)
     expect(result.detail).to eq("SFL::Error: pg down")
-    expect(logger).to have_received(:error).with(/retrieval/)
+    expect(logger).to have_received(:error).with("tui command failed", source: :retrieval, detail: "SFL::Error: pg down")
   end
 
   # Try(&) defaults to StandardError, which would let a NotImplementedError
-  # from an unimplemented workspace hook escape onto the command thread — the
+  # from an unimplemented hook escape onto the command thread — the
   # exact swallowed-background-exception mode this module exists to prevent.
   it "catches a non-StandardError (ScriptError) raise instead of letting it escape the command thread" do
     command = described_class.wrap(source: :board, logger:) { raise NotImplementedError, "Board#load" }
@@ -31,7 +31,7 @@ RSpec.describe SFL::TUI::SafeCommand do
 
     expect(result).to be_a(SFL::TUI::Messages::Failed)
     expect(result.detail).to eq("NotImplementedError: Board#load")
-    expect(logger).to have_received(:error).with(/board/)
+    expect(logger).to have_received(:error).with("tui command failed", source: :board, detail: "NotImplementedError: Board#load")
   end
 
   it "still lets Interrupt propagate so ctrl+c reaches the runner" do

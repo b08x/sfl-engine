@@ -20,7 +20,7 @@ module SFL
     # the card's later bullet describes.
     #
     # Storage note: Pipeline (injected) already owns clause persistence —
-    # PgClauseStore#replace_document deletes+reinserts atomically (F7),
+    # PgClauseStore#replace_section deletes+reinserts atomically (F7),
     # so unlike legacy's ConversationAnalyzer/DocumentationAnalyzer this
     # class does NOT take a clause_repo/clause_store: there is no
     # "delete before store" step left for a caller to own. The only
@@ -233,7 +233,7 @@ module SFL
           semantic_coherence_score: nil
         )
       end
-      private def turn_speaker(unit) = unit.speaker || unit.heading || unit.document_id
+      private def turn_speaker(unit) = unit.speaker || unit.heading || unit.section_id
 
       # sequence per unit, ported verbatim from legacy's #analyze loop; each step is already its
       # own private method call.
@@ -258,10 +258,10 @@ module SFL
       private def compile_turn(source, unit, turn_id, compile_opts, pre_turn)
         semantic_coherence_score = pre_turn&.semantic_coherence_score
 
-        compile_kwargs = { document_id: unit.document_id, embed: compile_opts[:store], **compile_opts }
+        compile_kwargs = { section_id: unit.section_id, unit:, embed: compile_opts[:store], **compile_opts }
         compile_kwargs[:semantic_coherence_score] = semantic_coherence_score if semantic_coherence_score
 
-        clauses = unwrap(@pipeline.compile(unit.text, **compile_kwargs), unit.document_id)
+        clauses = unwrap(@pipeline.compile(unit.text, **compile_kwargs), unit.section_id)
         enqueue_review(source, unit, clauses, compile_opts[:store])
 
         build_turn(unit, turn_id, clauses, pre_turn, semantic_coherence_score)
@@ -287,8 +287,8 @@ module SFL
           semantic_coherence_score:
         )
       end
-      private def unwrap(result, document_id)
-        result.value_or { |failure| raise Error, "compile failed for #{document_id.inspect}: #{failure.inspect}" }
+      private def unwrap(result, section_id)
+        result.value_or { |failure| raise Error, "compile failed for #{section_id.inspect}: #{failure.inspect}" }
       end
 
       private def enqueue_review(source, unit, clauses, store)
@@ -297,7 +297,7 @@ module SFL
         entry = source.review_entry(unit:, clauses:)
         return unless entry
 
-        @review_queue_repo.enqueue(document_id: unit.document_id, source_file: unit.document_id, **entry)
+        @review_queue_repo.enqueue(section_id: unit.section_id, source_file: unit.section_id, **entry)
       end
 
       private def report_progress(turn, total, elapsed)

@@ -107,7 +107,7 @@ module SFL
         [
           Sequel[:clauses][:external_id].as(:clause_id),
           Sequel[:clauses][:text],
-          Sequel[:clauses][:document_id],
+          Sequel[:clauses][:section_id],
           Sequel[:clauses][:parent_clause_id],
           Sequel[:interpersonal_payloads][:mood],
           Sequel[:interpersonal_payloads][:tenor],
@@ -144,7 +144,7 @@ module SFL
         Core::Types::RetrievalResult.new(
           clause_id: row[:clause_id],
           text: row[:text],
-          document_id: row[:document_id],
+          section_id: row[:section_id],
           rrf_score: row[:rrf_score],
           semantic_rank: row[:semantic_rank],
           keyword_rank: row[:keyword_rank],

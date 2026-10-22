@@ -46,9 +46,11 @@ module SFL
 
         private def build_unit(chat_id, turn, index)
           Types::Unit.new(
-            document_id: "#{chat_id}#turn-#{index}",
+            section_id: "#{chat_id}#turn-#{index}",
             text: turn[:mes],
             speaker: turn[:name],
+            document_key: chat_id,
+            source_path: @ref.path_hint,
             is_user: turn[:is_user],
             sent_at: parse_sent_at(turn[:send_date]),
             metadata: { "conversation_id" => chat_id }

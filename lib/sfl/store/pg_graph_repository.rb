@@ -15,16 +15,16 @@ module SFL
         @retriever = retriever
       end
 
-      # @param document_id [String, nil] scope to one document, or all
+      # @param section_id [String, nil] scope to one document, or all
       # @return [Array<Core::Types::GraphNode>]
-      def nodes(document_id: nil)
+      def nodes(section_id: nil)
         scope = joined_scope
-        scope = scope.where(Sequel[:clauses][:document_id] => document_id) if document_id
+        scope = scope.where(Sequel[:clauses][:section_id] => section_id) if section_id
 
         scope.select(
           Sequel[:clauses][:external_id].as(:id),
           Sequel[:clauses][:parent_clause_id].as(:parent_id),
-          Sequel[:clauses][:document_id],
+          Sequel[:clauses][:section_id],
           Sequel[:clauses][:text],
           Sequel[:clauses][:readability_flesch],
           Sequel[:clauses][:readability_kincaid],
@@ -36,11 +36,11 @@ module SFL
         ).all.map { |row| build_node(row) }
       end
 
-      # @param document_id [String, nil] scope to one document, or all
+      # @param section_id [String, nil] scope to one document, or all
       # @return [Array<Core::Types::GraphEdge>]
-      def parent_child_edges(document_id: nil)
+      def parent_child_edges(section_id: nil)
         scope = @db[:clauses].exclude(parent_clause_id: nil)
-        scope = scope.where(document_id:) if document_id
+        scope = scope.where(section_id:) if section_id
 
         scope.select(:external_id, :parent_clause_id).all.map do |row|
           Core::Types::GraphEdge.new(from_id: row[:parent_clause_id], to_id: row[:external_id],
@@ -83,7 +83,7 @@ module SFL
         Core::Types::GraphNode.new(
           id: row[:id],
           parent_id: row[:parent_id],
-          document_id: row[:document_id],
+          section_id: row[:section_id],
           text: row[:text],
           mood: row[:mood],
           tenor: row[:tenor],

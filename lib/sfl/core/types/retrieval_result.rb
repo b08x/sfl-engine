@@ -24,7 +24,7 @@ module SFL
       class RetrievalResult < Dry::Struct
         attribute :clause_id, Types::String
         attribute :text, Types::String
-        attribute :document_id, Types::String.optional
+        attribute :section_id, Types::String.optional
         attribute :rrf_score, Types::Float
         attribute :semantic_rank, Types::Integer.optional.default(nil)
         attribute :keyword_rank, Types::Integer.optional.default(nil)

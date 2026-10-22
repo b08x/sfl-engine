@@ -32,7 +32,7 @@ RSpec.describe SFL::CLI do
         expect(parsed[:input]).to eq("input.jsonl")
         expect(parsed[:options]).to eq(
           output_dir: "./output/latest", pass1_only: false, resume: false, store: false,
-          narrative: false, topics: nil, allow_fallback: false, disable_tracing: false
+          narrative: false, topics: nil, allow_fallback: false, disable_tracing: false, collection: "input.jsonl"
         )
       end
 
@@ -55,7 +55,7 @@ RSpec.describe SFL::CLI do
 
         expect(parsed[:options]).to eq(
           output_dir: "./out", pass1_only: true, resume: true, store: true,
-          narrative: true, topics: 5, allow_fallback: true, disable_tracing: true
+          narrative: true, topics: 5, allow_fallback: true, disable_tracing: true, collection: "input.jsonl"
         )
       end
 
@@ -70,7 +70,7 @@ RSpec.describe SFL::CLI do
         parsed = described_class.parse(%w[documentation ./docs --store --narrative])
         expect(parsed[:options]).to eq(
           output_dir: "./output/latest", pass1_only: false, resume: false, store: true,
-          narrative: true, topics: nil, allow_fallback: false, disable_tracing: false
+          narrative: true, topics: nil, allow_fallback: false, disable_tracing: false, collection: "docs"
         )
       end
     end
@@ -117,12 +117,26 @@ RSpec.describe SFL::CLI do
         parsed = described_class.parse(%w[ingest ./inbox])
         expect(parsed[:command]).to eq(:ingest)
         expect(parsed[:input]).to eq("./inbox")
-        expect(parsed[:options]).to eq(output_dir: "./output/latest", disable_tracing: false)
+        expect(parsed[:options]).to eq(output_dir: "./output/latest", disable_tracing: false, collection: "inbox")
       end
 
       it "parses --output-dir and --disable-tracing" do
         parsed = described_class.parse(%w[ingest ./inbox --output-dir ./out --disable-tracing])
-        expect(parsed[:options]).to eq(output_dir: "./out", disable_tracing: true)
+        expect(parsed[:options]).to eq(output_dir: "./out", disable_tracing: true, collection: "inbox")
+      end
+
+      it "parses --collection NAME, trimmed with its case kept (facts 8, 10)" do
+        parsed = described_class.parse(["ingest", "./inbox", "--collection", "  Field Notes "])
+        expect(parsed[:options][:collection]).to eq("Field Notes")
+      end
+
+      it "defaults the collection to the basename of the input directory (fact 9)" do
+        expect(described_class.parse(%w[ingest /data/papers/])[:options][:collection]).to eq("papers")
+      end
+
+      it "rejects an empty --collection with a usage error (fact 10)" do
+        expect { described_class.parse(["ingest", "./inbox", "--collection", " "]) }
+          .to raise_error(SFL::CLI::UsageError, /--collection: collection name must not be empty/)
       end
     end
 

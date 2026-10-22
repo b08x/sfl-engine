@@ -31,10 +31,9 @@ module SFL
       # it prevents can recur than to re-derive this comment later.
       Sequel.extension :fiber_concurrency
 
-      # @param url [String, nil] defaults to ENV["DATABASE_URL"]
+      # @param url [String] DATABASE_URL, resolved by Boot
       # @return [Sequel::Database]
-      def self.connect(url = nil)
-        url ||= ENV.fetch("DATABASE_URL")
+      def self.connect(url)
         db = Sequel.connect(url, pool_class: :timed_queue)
 
         # Enable pg_json extension (supports jsonb via Sequel.pg_jsonb)

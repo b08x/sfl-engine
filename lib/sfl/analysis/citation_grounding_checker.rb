@@ -127,7 +127,7 @@ module SFL
           next unless id && text
 
           idx[id.to_s] = text.to_s
-          doc_id = clause.is_a?(Hash) ? (clause[:document_id] || clause["document_id"]) : clause.document_id
+          doc_id = clause.is_a?(Hash) ? (clause[:section_id] || clause["section_id"]) : clause.section_id
           idx["#{doc_id}:#{id}"] = text.to_s if doc_id
         end
       end

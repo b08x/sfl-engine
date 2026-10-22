@@ -8,8 +8,8 @@ RSpec.describe SFL::Core::Ports::StderrLogger do
   it_behaves_like "a logger port"
 
   it "appends structured fields as key=value pairs" do
-    expect { logger.info("persisted", document_id: "doc-1", count: 3) }
-      .to output("[INFO] persisted document_id=doc-1 count=3\n").to_stderr_from_any_process
+    expect { logger.info("persisted", section_id: "doc-1", count: 3) }
+      .to output("[INFO] persisted section_id=doc-1 count=3\n").to_stderr_from_any_process
   end
 
   it "appends the configured run_id to every line" do

@@ -13,7 +13,7 @@ RSpec.describe SFL::Eval::ProgressLine do
     end
 
     it "returns nil for log text, including journald-style and stderr log lines" do
-      ["pass_one completed document_id=d1", "INFO pipeline completed run_id=abc", "", "progress turn=x total=2"].each do |text|
+      ["pass_one completed section_id=d1", "INFO pipeline completed run_id=abc", "", "progress turn=x total=2"].each do |text|
         expect(described_class.parse(text)).to be_nil
       end
     end

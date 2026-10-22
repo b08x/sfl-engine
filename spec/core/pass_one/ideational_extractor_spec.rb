@@ -11,7 +11,7 @@ RSpec.describe SFL::Core::PassOne::IdeationalExtractor do
 
   def clause_with(text:, tokens:, root_index: 0)
     SFL::Core::Types::SyntacticClause.new(
-      id: "c-1", text:, tokens:, root_index:, sentence_index: 0, document_id: "doc-1"
+      id: "c-1", text:, tokens:, root_index:, sentence_index: 0, section_id: "doc-1"
     )
   end
 

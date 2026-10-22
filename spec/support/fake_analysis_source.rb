@@ -16,7 +16,7 @@ class FakeAnalysisSource
   attr_reader :units
 
   def review_entry(unit:, clauses:) # rubocop:disable Lint/UnusedMethodArgument -- shared Source#review_entry contract
-    @review_entries[unit.document_id]
+    @review_entries[unit.section_id]
   end
 
   def extra_metadata(_turns) = @extra

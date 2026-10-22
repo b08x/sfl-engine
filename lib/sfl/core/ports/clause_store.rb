@@ -3,22 +3,22 @@
 module SFL
   module Core
     module Ports
-      # Persists AnnotatedClauses. `replace_document` is the pipeline's
-      # single write entry point (delete-then-insert under one document_id,
-      # not per-clause upserts), so a re-run of the same document never
+      # Persists AnnotatedClauses. `replace_section` is the pipeline's
+      # single write entry point (delete-then-insert under one section_id,
+      # not per-clause upserts), so a re-run of the same section never
       # leaves stale clauses behind.
       module ClauseStore
-        # @param document_id [String]
+        # @param section_id [String]
         # @param clauses [Array<SFL::Core::Types::AnnotatedClause>]
         # @return [void]
-        def replace_document(document_id, clauses)
-          raise NotImplementedError, "#{self.class} must implement #replace_document"
+        def replace_section(section_id, clauses)
+          raise NotImplementedError, "#{self.class} must implement #replace_section"
         end
 
-        # @param document_id [String]
+        # @param section_id [String]
         # @return [Array<SFL::Core::Types::AnnotatedClause>]
-        def find_by_document(document_id)
-          raise NotImplementedError, "#{self.class} must implement #find_by_document"
+        def find_by_section(section_id)
+          raise NotImplementedError, "#{self.class} must implement #find_by_section"
         end
 
         # @param external_id [String] AnnotatedClause#id of the clause whose

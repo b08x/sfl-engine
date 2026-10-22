@@ -36,6 +36,13 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       allow(pipeline).to receive(:compile).and_return(Success(clauses_for(3, id_prefix: "c")))
     end
 
+    it "passes each loader unit to Pipeline#compile" do
+      described_class.new(pipeline:).analyze(sample_ref)
+
+      expect(pipeline).to have_received(:compile)
+        .with(anything, hash_including(unit: an_instance_of(SFL::Core::Types::Unit))).exactly(3).times
+    end
+
     it "assembles a Core::Types::KnowledgeBaseReport from a markdown fixture's sections" do
       source = described_class.new(pipeline:)
 
@@ -137,6 +144,24 @@ RSpec.describe SFL::Analysis::KnowledgeBaseSource do
       expect(report.metadata[:skipped].size).to eq(1)
       expect(report.metadata[:skipped].first).to include(artifact_id: 2, source_file: sample_path)
       expect(report.metadata[:skipped].first[:error]).to include("compile failed")
+    end
+
+    it "reports every artifact as done after it compiles or is skipped, the last one included" do
+      allow(pipeline).to receive(:compile).and_return(
+        Success(clauses_for(2, id_prefix: "a")),
+        Failure([:pass_one_failed, "boom"]),
+        Success(clauses_for(1, id_prefix: "c"))
+      )
+      done = []
+      source = described_class.new(pipeline:, on_artifact_done: -> (**event) { done << event })
+
+      source.analyze(sample_ref)
+
+      expect(done.map { |event| event.slice(:artifact_id, :total, :failed, :clause_count) }).to eq([
+        { artifact_id: 1, total: 3, failed: false, clause_count: 2 },
+        { artifact_id: 2, total: 3, failed: true, clause_count: 0 },
+        { artifact_id: 3, total: 3, failed: false, clause_count: 1 },
+      ])
     end
 
     it "does not swallow the failure silently — the skip reason is a real message, not a stub" do

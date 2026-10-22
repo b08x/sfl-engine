@@ -32,7 +32,7 @@ RSpec.shared_examples "an annotator port" do
           dep: "ROOT", head_index: -1, morphology: {}, index: 0
         ),
       ],
-      root_index: 0, sentence_index: 0, document_id: "doc-1"
+      root_index: 0, sentence_index: 0, section_id: "doc-1"
     )
   end
 
@@ -78,7 +78,7 @@ RSpec.shared_examples "a clause store port" do
       id: "ann-1", text: "It works.",
       syntactic: SFL::Core::Types::SyntacticClause.new(
         id: "c-1", text: "It works.",
-        tokens: [], root_index: 0, sentence_index: 0, document_id: "doc-1"
+        tokens: [], root_index: 0, sentence_index: 0, section_id: "doc-1"
       ),
       ideational: SFL::Core::Types::IdeationalPayload.new(
         clause_id: "c-1", process_type: "material",
@@ -89,17 +89,17 @@ RSpec.shared_examples "a clause store port" do
         modality_weight: 0.5, tenor: 0.5,
         speaker_attitude: nil, reasoning: nil, annotation_source: "stub"
       ),
-      document_id: "doc-1", compiled_at: Time.now
+      section_id: "doc-1", compiled_at: Time.now
     )
   end
 
-  it "accepts #replace_document without raising" do
-    expect { subject.replace_document("doc-1", [clause]) }.not_to raise_error
+  it "accepts #replace_section without raising" do
+    expect { subject.replace_section("doc-1", [clause]) }.not_to raise_error
   end
 
-  it "returns an Array of clauses from #find_by_document" do
-    subject.replace_document("doc-1", [clause])
-    expect(subject.find_by_document("doc-1")).to be_an(Array)
+  it "returns an Array of clauses from #find_by_section" do
+    subject.replace_section("doc-1", [clause])
+    expect(subject.find_by_section("doc-1")).to be_an(Array)
   end
 end
 
@@ -111,8 +111,8 @@ RSpec.shared_examples "a retriever port" do
 end
 
 RSpec.shared_examples "an embedding store port" do
-  it "accepts #replace_document without raising" do
-    expect { subject.replace_document("doc-1", { "ann-1" => [0.1, 0.2] }) }.not_to raise_error
+  it "accepts #replace_section without raising" do
+    expect { subject.replace_section("doc-1", { "ann-1" => [0.1, 0.2] }) }.not_to raise_error
   end
 end
 
@@ -182,7 +182,7 @@ RSpec.shared_examples "a logger port" do
   end
 
   it "accepts structured fields at every severity without raising" do
-    expect { subject.debug("d", document_id: "doc-1") }.not_to raise_error
+    expect { subject.debug("d", section_id: "doc-1") }.not_to raise_error
     expect { subject.info("i", count: 3) }.not_to raise_error
     expect { subject.warn("w", reason: "retry") }.not_to raise_error
     expect { subject.error("e", error_class: "RuntimeError") }.not_to raise_error

@@ -26,7 +26,7 @@ RSpec.describe SFL::Analysis::DocumentationSource do
 
         units = described_class.new(Dir.children(dir).sort.map { |name| file_ref(File.join(dir, name)) }).units
 
-        md_units = units.select { |u| u.document_id.start_with?("doc.md#", "doc#") }
+        md_units = units.select { |u| u.section_id.start_with?(SFL::Core::Loaders::FileId.call(file_ref(File.join(dir, "doc.md")))) }
         expect(units).not_to be_empty
         expect(md_units).not_to be_empty
       end
@@ -56,8 +56,8 @@ RSpec.describe SFL::Analysis::DocumentationSource do
     end
 
     it "returns the flat clause-index boundary between two contiguous same-file PDF chunk units" do
-      unit_a = SFL::Core::Types::Unit.new(document_id: "doc#a", text: "a", metadata: { "file_id" => "doc" })
-      unit_b = SFL::Core::Types::Unit.new(document_id: "doc#b", text: "b", metadata: { "file_id" => "doc" })
+      unit_a = SFL::Core::Types::Unit.new(section_id: "doc#a", text: "a", metadata: { "file_id" => "doc" })
+      unit_b = SFL::Core::Types::Unit.new(section_id: "doc#b", text: "b", metadata: { "file_id" => "doc" })
       pdf_loader = instance_double(SFL::Core::Loaders::PdfSource)
       allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
       allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
@@ -73,8 +73,8 @@ RSpec.describe SFL::Analysis::DocumentationSource do
     end
 
     it "does not treat two PDF-chunk units from different files as contiguous" do
-      unit_a = SFL::Core::Types::Unit.new(document_id: "a#1", text: "a", metadata: { "file_id" => "doc-a" })
-      unit_b = SFL::Core::Types::Unit.new(document_id: "b#1", text: "b", metadata: { "file_id" => "doc-b" })
+      unit_a = SFL::Core::Types::Unit.new(section_id: "a#1", text: "a", metadata: { "file_id" => "doc-a" })
+      unit_b = SFL::Core::Types::Unit.new(section_id: "b#1", text: "b", metadata: { "file_id" => "doc-b" })
       pdf_loader = instance_double(SFL::Core::Loaders::PdfSource)
       allow(pdf_loader).to receive(:each_unit) { |&blk| [unit_a, unit_b].each(&blk) }
       allow(SFL::Core::Loaders::PdfSource).to receive(:new).and_return(pdf_loader)
@@ -128,7 +128,7 @@ RSpec.describe SFL::Analysis::DocumentationSource do
       metadata = described_class.new("x").extra_metadata(turns)
 
       expect(metadata).to include(
-        unit_label: "Section", actor_label: "Section", actors_list_label: "Headings", id_label: "document_id",
+        unit_label: "Section", actor_label: "Section", actors_list_label: "Headings", id_label: "document_key",
         clause_count: 3
       )
     end

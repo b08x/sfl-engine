@@ -14,7 +14,6 @@ module SFL
     "api" => "API",
     "cli" => "CLI",
     "tui" => "TUI",
-    "gui" => "GUI",
     "llm" => "LLM",
     "trusted_annotation_sources" => "TRUSTED_ANNOTATION_SOURCES",
     "kb_content_type" => "KBContentType",
@@ -27,6 +26,7 @@ module SFL
     "kb_annotated_doc_writer" => "KBAnnotatedDocWriter",
     "kb_annotated_doc_formatter" => "KBAnnotatedDocFormatter",
     "lm_factory" => "LMFactory",
+    "ruby_llm_catalog" => "RubyLLMCatalog",
   }.freeze
   private_constant :INFLECTIONS
 
@@ -39,7 +39,6 @@ module SFL
       loader.tag = "sfl"
       loader.push_dir(__dir__)
       loader.inflector.inflect(INFLECTIONS)
-      loader.ignore("#{__dir__}/sfl/gui") # glimmer-dsl-libui: opt-in require, not eager-loaded
     end
   end
   private_class_method :build_loader

@@ -8,7 +8,7 @@ module SFL
         class EmbeddingStore
           include Ports::EmbeddingStore
 
-          def replace_document(_document_id, _embeddings_by_clause_id)
+          def replace_section(_section_id, _embeddings_by_clause_id)
             nil
           end
         end

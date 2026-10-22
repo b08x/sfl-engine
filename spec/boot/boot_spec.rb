@@ -389,10 +389,121 @@ RSpec.describe SFL::Boot do
       end.to raise_error(SFL::Boot::Error, /DATABASE_URL/)
     end
 
+    it "resolves a task from its task_models row when no env var sets it (fact 58)" do
+      env = base_env.merge("DATABASE_URL" => SFL::Store::StoreTestDb::TEST_DATABASE_URL)
+      SFL::Store::StoreTestDb.clean!
+      SFL::Store::PgModelRepository.new(SFL::Store::StoreTestDb.db)
+        .assign(:loader_drafting, provider: "openrouter", model_id: "db/drafter")
+
+      result = described_class.call(env:, load_dotenv: false, require_db: true, require_tracing: false)
+
+      begin
+        expect(result.llm_config.for(:loader_drafting)).to have_attributes(model: "db/drafter", source: :db)
+        expect(result.llm_config.for(:pass_two_annotation)).to have_attributes(model: "openrouter/gemini-pro", source: :env)
+        expect(result.llm_config.for(:context_synthesis).source).to eq(:default)
+      ensure
+        result.db.disconnect
+      end
+    end
+
+    it "resolves task models from env and defaults only when require_db: false (fact 59)" do
+      result = boot(env: base_env)
+
+      expect(result.llm_config.tasks.values.map(&:source).uniq).to contain_exactly(:env, :default)
+      expect(result.model_resolver.resolve[:loader_drafting].source).to eq(:default)
+    end
+
     it "returns a nil db when require_db: false" do
       result = boot(env: base_env)
 
       expect(result.db).to be_nil
+    end
+  end
+
+  describe ".model_catalogs" do
+    it "lists the ruby_llm registry, Ollama at OLLAMA_BASE_URL and OpenRouter" do
+      catalogs = described_class.model_catalogs(env: { "OLLAMA_BASE_URL" => "http://ollama:1" }, load_dotenv: false)
+
+      expect(catalogs.map(&:name)).to eq(%w[ruby_llm ollama openrouter])
+    end
+  end
+
+  # Fact 72: the values other code used to read from ENV itself.
+  describe "settings read for other code" do
+    it "resolves the embedding store's model from EMBEDDING_MODEL, else the store default" do
+      expect(boot(env: base_env.merge("EMBEDDING_MODEL" => "nomic")).embedding_model).to eq("nomic")
+      expect(boot(env: base_env.except("EMBEDDING_MODEL"), require_llm: false).embedding_model)
+        .to eq(SFL::Store::PgEmbeddingStore::DEFAULT_MODEL)
+    end
+
+    it "returns DATABASE_URL, raising when it is unset" do
+      expect(described_class.database_url(env: { "DATABASE_URL" => "postgres:///x" }, load_dotenv: false)).to eq("postgres:///x")
+      expect { described_class.database_url(env: {}, load_dotenv: false) }.to raise_error(SFL::Boot::Error, /DATABASE_URL/)
+    end
+
+    it "opts into docker auto-start only with SFL_AUTO_START_DOCKER=1" do
+      expect(described_class.auto_start_docker?(env: { "SFL_AUTO_START_DOCKER" => "1" })).to be(true)
+      expect(described_class.auto_start_docker?(env: {})).to be(false)
+    end
+
+    it "skips the rack boot's LLM wiring only with SFL_SKIP_LLM_BOOT=true" do
+      expect(described_class.skip_llm_boot?(env: { "SFL_SKIP_LLM_BOOT" => "true" })).to be(true)
+      expect(described_class.skip_llm_boot?(env: { "SFL_SKIP_LLM_BOOT" => "1" })).to be(false)
+      expect(described_class.skip_llm_boot?(env: {})).to be(false)
+    end
+
+    it "enables the rack boot's tracing only with SFL_ENABLE_TRACING=true" do
+      expect(described_class.tracing_enabled?(env: { "SFL_ENABLE_TRACING" => "true" })).to be(true)
+      expect(described_class.tracing_enabled?(env: { "SFL_ENABLE_TRACING" => "1" })).to be(false)
+      expect(described_class.tracing_enabled?(env: {})).to be(false)
+    end
+
+    it "binds the API to HOST and PORT, defaulting to 0.0.0.0:3001" do
+      expect(described_class.api_bind(env: {})).to eq(host: "0.0.0.0", port: "3001")
+      expect(described_class.api_bind(env: { "HOST" => "localhost", "PORT" => "9" })).to eq(host: "localhost", port: "9")
+    end
+  end
+
+  describe ".web_settings (the Roda app's Config)" do
+    def web(env) = described_class.web_settings(env:, load_dotenv: false)
+
+    let(:production) { { "RACK_ENV" => "production", "SESSION_SECRET" => "s3cret", "DATABASE_URL" => "postgres:///prod" } }
+
+    it "passes SESSION_SECRET, RACK_ENV and DATABASE_URL through in production" do
+      expect(web(production)).to eq(secret: "s3cret", environment: "production", db: { url: "postgres:///prod" })
+    end
+
+    it "raises in production when SESSION_SECRET or DATABASE_URL is unset" do
+      expect { web(production.except("SESSION_SECRET")) }.to raise_error(SFL::Boot::Error, /SESSION_SECRET/)
+      expect { web(production.except("DATABASE_URL")) }.to raise_error(SFL::Boot::Error, /DATABASE_URL/)
+    end
+
+    it "defaults to development with a random per-process secret and a local database" do
+      settings = web({})
+
+      expect(settings[:environment]).to eq("development")
+      expect(settings[:secret]).to match(/\A\h{128}\z/)
+      expect(web({})[:secret]).to eq(settings[:secret])
+      expect(settings[:db][:url]).to eq("postgres://user:password@localhost:5432/app_development")
+    end
+
+    it "uses DATABASE_URL outside production when it is set" do
+      expect(web("RACK_ENV" => "test", "DATABASE_URL" => "postgres:///t")[:db][:url]).to eq("postgres:///t")
+    end
+
+    it "loads .env only outside production" do
+      allow(Dotenv).to receive(:load)
+
+      described_class.web_settings(env: production, load_dotenv: true)
+      expect(Dotenv).not_to have_received(:load)
+
+      described_class.web_settings(env: {}, load_dotenv: true)
+      expect(Dotenv).to have_received(:load)
+    end
+
+    it "reads RACK_ENV without .env, defaulting to development" do
+      expect(described_class.rack_environment(env: {})).to eq("development")
+      expect(described_class.rack_environment(env: { "RACK_ENV" => "production" })).to eq("production")
     end
   end
 end

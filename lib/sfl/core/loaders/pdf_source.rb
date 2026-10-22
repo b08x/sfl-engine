@@ -32,7 +32,7 @@ module SFL
         def initialize(ref, file_id: nil, skip_empty: true, min_length: 40)
           @ref = ref
           @path = ref.path_hint
-          @file_id = file_id || ref.name
+          @file_id = file_id || FileId.call(ref)
           @skip_empty = skip_empty
           @min_length = min_length
         end
@@ -64,9 +64,11 @@ module SFL
           slug = "#{label}-#{index + 1}"
 
           Types::Unit.new(
-            document_id: "#{@file_id}##{slug}",
+            section_id: "#{@file_id}##{slug}",
             text:,
             heading: "#{label} §#{index + 1}",
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: {
               "file_id" => @file_id,
               "heading_level" => 1,

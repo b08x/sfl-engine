@@ -11,9 +11,17 @@ module SFL
       # emits this instead, whether the source is turn-shaped (chat
       # exports, subtitles) or section-shaped (markdown, PDF, canvas).
       # Unused fields for a given source stay at their default (nil/{});
-      # `text` and `document_id` are the only two every source populates.
+      # `text` and `section_id` are the only two every source populates.
+      #
+      # `document_key` names the whole document this section belongs to (a
+      # file path, or a conversation id inside a chat export) and
+      # `source_path` the file it was read from. `parent_section_id` is the
+      # section_id of the enclosing heading, or nil at the top level.
       class Unit < Dry::Struct
-        attribute :document_id, Types::String
+        attribute :section_id, Types::String
+        attribute :document_key, Types::String.optional.default(nil)
+        attribute :source_path, Types::String.optional.default(nil)
+        attribute :parent_section_id, Types::String.optional.default(nil)
         attribute :text, Types::String
         attribute :heading, Types::String.optional.default(nil)
         attribute :speaker, Types::String.optional.default(nil)

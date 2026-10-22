@@ -18,12 +18,12 @@ class Sfl
 
     r.is do
       r.get do
-        p = r.params
+        p = reject_legacy_id(r.params)
         limit = [p.fetch("limit", 50).to_i, 1].max
         offset = [p.fetch("offset", 0).to_i, 0].max
 
         result = ctx.clause_store.find_all(
-          document_id: presence(p["document_id"]), annotation_source: presence(p["annotation_source"]),
+          section_id: presence(p["section_id"]), annotation_source: presence(p["annotation_source"]),
           filters: build_retrieval_filters(p.slice(*STRING_CLAUSE_FILTERS, *NUMERIC_CLAUSE_FILTERS)),
           limit:, offset:
         )

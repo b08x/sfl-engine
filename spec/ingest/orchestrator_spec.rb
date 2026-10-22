@@ -32,6 +32,21 @@ RSpec.describe SFL::Ingest::Orchestrator do
   end
 
   describe "#run" do
+    it "gives dir, ./dir and the absolute path the same document_key and section ids" do
+      write("notes.md", "# Title\n\nThis paragraph is long enough to pass the loader's minimum section length.\n")
+      refs = []
+      allow(kb_source).to receive(:analyze) { |ref, **| refs << ref }
+      relative = Pathname(tmpdir).relative_path_from(Dir.pwd).to_s
+
+      [relative, "./#{relative}", tmpdir].each { |spelling| orchestrator.run(spelling) }
+
+      units = refs.map { |ref| SFL::Core::Loaders::MarkdownSource.new(ref).units }
+      expect(refs.map(&:path_hint).uniq).to eq([File.join(tmpdir, "notes.md")])
+      expect(units.map { |u| u.map(&:document_key) }.uniq.size).to eq(1)
+      expect(units.map { |u| u.map(&:section_id) }.uniq.size).to eq(1)
+      expect(units.first).not_to be_empty
+    end
+
     it "dispatches a deterministically-matched conversation file without calling the classifier" do
       write("chat.jsonl", %({"name":"a","mes":"hi","send_date":"2026-01-01"}\n))
       allow(classifier).to receive(:classify)
@@ -41,6 +56,18 @@ RSpec.describe SFL::Ingest::Orchestrator do
       expect(conversation_engine).to have_received(:analyze)
       expect(classifier).not_to have_received(:classify)
       expect(summary[:dispatched]).to eq(1)
+    end
+
+    it "forwards store: to every dispatch so a stored ingest persists its documents" do
+      write("chat.jsonl", %({"name":"a","mes":"hi","send_date":"2026-01-01"}\n))
+      write("notes.md", "# Title")
+      stored = described_class.new(conversation_engine:, kb_source:, classifier:, loader_drafter:, review_repo:,
+        store: true)
+
+      stored.run(tmpdir)
+
+      expect(conversation_engine).to have_received(:analyze).with(anything, label: "chat", store: true)
+      expect(kb_source).to have_received(:analyze).with(anything, store: true)
     end
 
     it "dispatches a deterministically-matched knowledge_base file to kb_source" do
@@ -175,6 +202,19 @@ RSpec.describe SFL::Ingest::Orchestrator do
       expect(summary[:review_entries]).to eq(1)
       row = SFL::Store::StoreTestDb.db[:ingest_review_entries].where(path: gone_path).first
       expect(review_repo.find(row[:id])[:status]).to eq("draft_failed")
+    end
+
+    it "records a section id conflict against its file and continues with the next file" do
+      clash = write("a.jsonl", %({"name":"a","mes":"hi","send_date":"2026-01-01"}\n))
+      write("b.jsonl", %({"name":"a","mes":"hi","send_date":"2026-01-01"}\n))
+      error = SFL::Core::Ports::SectionRegistry::ConflictError.new("section a#turn-1 belongs to /x/a.jsonl, not #{clash}")
+      allow(conversation_engine).to receive(:analyze).with(anything, label: "a", store: false).and_raise(error)
+
+      summary = orchestrator.run(tmpdir)
+
+      expect(summary).to include(dispatched: 1, review_entries: 1)
+      row = SFL::Store::StoreTestDb.db[:ingest_review_entries].where(path: clash).first
+      expect(row).to include(status: "draft_failed", reasoning: "Dispatch failed: #{error.message}")
     end
   end
 end

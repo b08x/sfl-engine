@@ -35,10 +35,10 @@ module SFL
         end
 
         # @param text [String]
-        # @param document_id [String, nil]
+        # @param section_id [String, nil]
         # @return [Array<SFL::Core::Types::SyntacticClause>]
-        def parse(text, document_id: nil)
-          @mutex.synchronize { request(text, document_id) }
+        def parse(text, section_id: nil)
+          @mutex.synchronize { request(text, section_id) }
         end
 
         # @return [void]
@@ -81,17 +81,17 @@ module SFL
         # sidecar doesn't permanently wedge the parser, but a
         # persistently broken sidecar still surfaces as an error instead
         # of looping forever.
-        private def request(text, document_id, retried: false)
-          write_line(id: SecureRandom.uuid, text:, document_id:)
+        private def request(text, section_id, retried: false)
+          write_line(id: SecureRandom.uuid, text:, section_id:)
           response = read_response
           raise SidecarError, response["error"] if response["error"]
 
           build_clauses(response.fetch("clauses"))
         rescue Errno::EPIPE, IOError, SidecarError => e
-          fail_or_retry(text, document_id, e, retried:)
+          fail_or_retry(text, section_id, e, retried:)
         end
 
-        private def fail_or_retry(text, document_id, error, retried:)
+        private def fail_or_retry(text, section_id, error, retried:)
           if retried
             logger.error("sidecar transport failed permanently", error_class: error.class, error_message: error.message)
             raise SidecarError, "sidecar transport failed: #{error.message}"
@@ -99,7 +99,7 @@ module SFL
 
           logger.warn("sidecar transport failed, restarting and retrying once", error_class: error.class, error_message: error.message)
           restart_process
-          request(text, document_id, retried: true)
+          request(text, section_id, retried: true)
         end
 
         private def read_response
@@ -139,7 +139,7 @@ module SFL
             tokens: clause_hash.fetch("tokens").map { |token_hash| build_token(token_hash) },
             root_index: clause_hash.fetch("root_index"),
             sentence_index: clause_hash.fetch("sentence_index"),
-            document_id: clause_hash["document_id"]
+            section_id: clause_hash["section_id"]
           )
         end
 

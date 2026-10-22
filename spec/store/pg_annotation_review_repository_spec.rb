@@ -9,9 +9,9 @@ RSpec.describe SFL::Store::PgAnnotationReviewRepository do
 
   before { SFL::Store::StoreTestDb.clean! }
 
-  def insert_clause(id:, document_id: "doc-1", annotation_source: "llm", mood: "declarative")
+  def insert_clause(id:, section_id: "doc-1", annotation_source: "llm", mood: "declarative")
     db[:clauses].insert(
-      external_id: id, text: "clause #{id}", document_id:,
+      external_id: id, text: "clause #{id}", section_id:,
       sentence_index: 0, root_index: 0
     )
     db[:ideational_payloads].insert(clause_id: id, process_type: "material")

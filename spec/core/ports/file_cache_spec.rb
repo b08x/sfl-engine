@@ -7,13 +7,13 @@ RSpec.describe SFL::Core::Ports::FileCache do
   def build_clause(id: "ann-1", text: "It works.")
     SFL::Core::Types::AnnotatedClause.new(
       id:, text:, syntactic: build_syntactic(text), ideational: build_ideational, interpersonal: build_interpersonal,
-      document_id: "doc-1", compiled_at: Time.now.round(0)
+      section_id: "doc-1", compiled_at: Time.now.round(0)
     )
   end
 
   def build_syntactic(text)
     SFL::Core::Types::SyntacticClause.new(
-      id: "c-1", text:, tokens: [], root_index: 0, sentence_index: 0, document_id: "doc-1"
+      id: "c-1", text:, tokens: [], root_index: 0, sentence_index: 0, section_id: "doc-1"
     )
   end
 

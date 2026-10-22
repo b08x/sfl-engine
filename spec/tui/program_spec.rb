@@ -3,143 +3,124 @@
 require_relative "spec_helper"
 
 RSpec.describe SFL::TUI::Program do
-  subject(:program) { described_class.new(context:) }
+  let(:services) { SFL::TUI::Services.null(source: TUISpecSupport.source) }
+  let(:state) { described_class.initial }
 
-  let(:context) { TUISpecSupport.context(width: 120, height: 40) }
+  def press(state, key) = described_class.update(state, TUISpecSupport.key(key), services)
 
-  # Real KeyMessages, not doubles: the whole routing contract is keyed off
-  # KeyMessage#to_s, and a double would let a wrong key name pass forever.
-  # `runes` is an Array of CODEPOINTS (the gem packs it with "U*"), and
-  # key_type -1 is what a printable rune arrives as — both confirmed against a
-  # PTY-driven probe, not assumed.
-  def rune_key(char, alt: false)
-    Bubbletea::KeyMessage.new(key_type: -1, runes: char.unpack("U*"), alt:)
+  # Facts 24-25: ratatui tabs Browse, Search, Runs, Models; no Board.
+  it "has the tabs Browse, Search, Runs and Models and no Board" do
+    expect(described_class::TABS.map { |tab| tab::TITLE }).to eq(%w[Browse Search Runs Models])
   end
 
-  def ctrl_c = Bubbletea::KeyMessage.new(key_type: 3)
-
-  it "starts on the Query Console" do
-    expect(program.active_workspace.title).to eq("Query Console")
+  it "switches tabs with the digit keys and quits with q or ctrl_c" do
+    expect(press(state, "3").first.active).to eq(2)
+    expect(press(state, "q").first.quit).to be(true)
+    expect(press(state, "ctrl_c").first.quit).to be(true)
   end
 
-  it "builds one shell per workspace in plan order" do
-    expect(program.workspaces.map(&:title))
-      .to eq(["Query Console", "Review Queues", "Corpus Browser", "Board"])
+  it "sends keys to the active tab while it captures input, except ctrl_c" do
+    typing = described_class.update(press(state, "2").first, TUISpecSupport.key("/"), services).first
+
+    expect(press(typing, "q").first).to have_attributes(quit: false, active: 1)
+    expect(press(typing, "1").first.active_state.query).to eq("1")
+    expect(press(typing, "ctrl_c").first.quit).to be(true)
   end
 
-  describe "#init" do
-    it "returns the model and a single command slot, never an Array of commands" do
-      model, command = program.init
+  it "routes results to the tab that handles them" do
+    loaded = SFL::TUI::Browse::Commands.load(services).call
+    next_state, = described_class.update(state, loaded, services)
 
-      expect(model).to be_a(described_class)
-      expect(command).to be_nil
+    expect(next_state.tabs.first.tree.roots).to eq(["c:1", "c:2"])
+    expect(described_class.update(state, Object.new, services)).to eq([state, nil])
+  end
+
+  # Fact 44: the export path is shown in the status line.
+  it "shows notices, failures and the export path on the status line" do
+    exported, = described_class.update(state, SFL::TUI::Messages::Exported.new(path: "/out/papers-1.md", count: 2), services)
+    failed, = described_class.update(state, SFL::TUI::Messages::Failed.new(:browse, "boom"), services)
+    reviewed, = described_class.update(state, SFL::TUI::Messages::Reviewed.new("approve: s"), services)
+
+    expect(described_class.status_line(exported)).to eq("selected: 0 sections, 0 clauses | exported 2 clauses to /out/papers-1.md")
+    expect(failed).to have_attributes(status: "browse: boom", error: true)
+    expect(reviewed.status).to eq("approve: s")
+  end
+
+  it "shows a plain notice and clears the error flag" do
+    failed, = described_class.update(state, SFL::TUI::Messages::Failed.new(:browse, "boom"), services)
+    notice, = described_class.update(failed, SFL::TUI::Messages::Status.new("loaded"), services)
+
+    expect(notice).to have_attributes(status: "loaded", error: false)
+  end
+
+  # Fact 37 (checked by hand as well): the help line lists the active tab's keys and the global ones.
+  it "lists the active tab's keys and the global keys in the help line" do
+    help = described_class.help(state)
+
+    %w[Space a Esc f e A R E o].each { |key| expect(help).to include(key) }
+    expect(help).to include("1-4 switch tab", "i ingest", "q quit")
+    expect(described_class.help(state.with(active: 1))).to include("/ type query")
+  end
+
+  it "returns each tab's first command" do
+    expect(described_class.init(services).size).to eq(3)
+  end
+
+  describe "the ingest launcher" do
+    let(:loaded) { described_class.update(state, SFL::TUI::Browse::Commands.load(services).call, services).first }
+
+    def type(state, text) = text.chars.reduce(state) { |acc, char| press(acc, char).first }
+
+    # Fact 68: an overlay over any tab, offering Browse's collections.
+    it "opens with i over any tab, offers the loaded collections, and takes every key but ctrl_c" do
+      opened = press(press(loaded, "3").first, "i").first
+
+      expect(opened.launcher.collections).to eq(%w[papers notes])
+      expect(opened.active).to eq(2)
+      expect(type(opened, "q1").launcher.path).to eq("q1")
+      expect(described_class.help(opened)).to include("Enter start", "Esc cancel")
+      expect(press(opened, "esc").first.launcher).to be_nil
+      expect(press(opened, "ctrl_c").first.quit).to be(true)
+    end
+
+    it "does not open while a tab captures typing" do
+      typing = described_class.update(press(state, "2").first, TUISpecSupport.key("/"), services).first
+
+      expect(press(typing, "i").first.launcher).to be_nil
+    end
+
+    it "closes on Enter and returns the start command" do
+      opened = type(press(loaded, "i").first, Dir.pwd)
+      closed, command = press(opened, "enter")
+
+      expect(closed.launcher).to be_nil
+      expect(command).to be_a(Proc)
+    end
+
+    # Fact 70: a detached ingest is followed on the Runs tab.
+    it "moves to the Runs tab and reloads it after a detached launch, and only notes a tab launch" do
+      detached, reload = described_class.update(state, SFL::TUI::Messages::Launched.new(text: "started", detached: true), services)
+      in_tab, none = described_class.update(state, SFL::TUI::Messages::Launched.new(text: "in tab", detached: false), services)
+
+      expect(detached).to have_attributes(active: 2, status: "started")
+      expect(reload.call).to be_a(SFL::TUI::Messages::RunsLoaded)
+      expect(in_tab).to have_attributes(active: 0, status: "in tab")
+      expect(none).to be_nil
+    end
+
+    it "draws the launcher over the active tab" do
+      opened = press(loaded, "i").first
+      lines = TUISpecSupport.render(width: 100, height: 20) { |frame, tui| described_class.render(opened, frame, tui) }
+
+      expect(lines.join("\n")).to include("Ingest", "> Path", "Existing collections: papers, notes")
     end
   end
 
-  describe "#update" do
-    it "quits on ctrl+c, which only ever arrives as a KeyMessage" do
-      _model, command = program.update(ctrl_c)
+  it "draws the tab bar, the active tab, the status line and the help line" do
+    lines = TUISpecSupport.render(width: 100, height: 12) { |frame, tui| described_class.render(state, frame, tui) }
 
-      expect(command).to be_a(Bubbletea::QuitCommand)
-    end
-
-    it "quits on q" do
-      _model, command = program.update(rune_key("q"))
-
-      expect(command).to be_a(Bubbletea::QuitCommand)
-    end
-
-    it "switches workspace on alt+3 and back on alt+1" do
-      switched, = program.update(rune_key("3", alt: true))
-      back, = switched.update(rune_key("1", alt: true))
-
-      expect(switched.active_workspace.title).to eq("Corpus Browser")
-      expect(back.active_workspace.title).to eq("Query Console")
-    end
-
-    it "logs a tab switch with the tab title as a field" do
-      logger = instance_spy(SFL::Core::Ports::JournaldLogger)
-      logged = SFL::TUI::AppContext.new(boot: TUISpecSupport.boot_result, logger:, width: 120, height: 40)
-
-      described_class.new(context: logged).update(rune_key("3", alt: true))
-
-      expect(logger).to have_received(:debug).with("tui tab changed", tab: "Corpus Browser")
-    end
-
-    it "leaves the receiver untouched when switching" do
-      program.update(rune_key("3", alt: true))
-
-      expect(program.active_index).to eq(0)
-    end
-
-    it "resizes its context from a WindowSizeMessage" do
-      resized, = program.update(Bubbletea::WindowSizeMessage.new(width: 200, height: 60))
-
-      expect([resized.context.width, resized.context.height]).to eq([200, 60])
-    end
-
-    it "renders a Failed message as an explicit error state" do
-      failed, = program.update(SFL::TUI::Messages::Failed.new(:retrieval, "pg down"))
-
-      expect(failed.error).to eq("retrieval: pg down")
-      expect(failed.view).to include("pg down")
-    end
-
-    it "clears the error state on a workspace switch" do
-      failed, = program.update(SFL::TUI::Messages::Failed.new(:retrieval, "pg down"))
-      switched, = failed.update(rune_key("3", alt: true))
-
-      expect(switched.error).to be_nil
-    end
-  end
-
-  describe "#view" do
-    it "labels every workspace tab" do
-      expect(program.view).to include("Query Console", "Review Queues", "Corpus Browser", "Board")
-    end
-
-    it "fits the terminal exactly, for every workspace" do
-      4.times do |index|
-        rendered = described_class.new(context:, active_index: index).view
-
-        expect(Lipgloss.width(rendered)).to be <= context.width
-        expect(Lipgloss.height(rendered)).to be <= context.height
-      end
-    end
-
-    it "still fits a terminal at the minimum supported size" do
-      tiny = described_class.new(context: TUISpecSupport.context(width: 40, height: 10)).view
-
-      expect(Lipgloss.width(tiny)).to be <= 40
-      expect(Lipgloss.height(tiny)).to be <= 10
-    end
-
-    # The regression this guards: a Failed detail built from an exception
-    # message (PG/Sequel routinely embed newlines) rendered a THREE-row status
-    # bar at 40 columns, so the frame measured 12 rows in a 10-row terminal —
-    # the wrapped chrome row pushes the body down and desyncs the renderer.
-    # Fixed in two places: Messages::Failed collapses whitespace, and
-    # Program#clamp caps every chrome row at max_height(1).
-    it "keeps the frame at exactly the chrome + body height with a multi-line, over-long error" do
-      tiny = TUISpecSupport.context(width: 40, height: 10)
-      detail = "PG::ConnectionBad: could not connect to server\n\tis the server running on port 5432?\n#{'detail ' * 60}"
-      failed, = described_class.new(context: tiny).update(SFL::TUI::Messages::Failed.new(:retrieval, detail))
-
-      rendered = failed.view
-
-      expect(Lipgloss.height(rendered)).to eq(SFL::TUI::Layout::CHROME_HEIGHT + SFL::TUI::Layout.body_height(tiny))
-      expect(Lipgloss.height(rendered)).to eq(10)
-      expect(Lipgloss.width(rendered)).to be <= 40
-    end
-
-    it "collapses the newlines out of the error detail rather than relying on truncation alone" do
-      failed, = program.update(SFL::TUI::Messages::Failed.new(:retrieval, "line one\nline two"))
-
-      expect(failed.error).to eq("retrieval: line one line two")
-    end
-
-    it "shows the keybinding hint in the status bar" do
-      expect(program.view).to include("alt+1..4")
-    end
+    expect(lines.first).to include("1 Browse", "2 Search", "3 Runs", "4 Models")
+    expect(lines[-3]).to include("selected: 0 sections, 0 clauses")
+    expect(lines[-2]).to include("↑/↓ move")
   end
 end

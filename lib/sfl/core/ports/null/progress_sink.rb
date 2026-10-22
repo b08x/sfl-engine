@@ -12,11 +12,11 @@ module SFL
             nil
           end
 
-          def advance(by: 1) # rubocop:disable Lint/UnusedMethodArgument -- by stays in the signature to match the ProgressSink port contract
+          def advance(by: 1, failed: 0) # rubocop:disable Lint/UnusedMethodArgument -- by and failed stay in the signature to match the ProgressSink port contract
             nil
           end
 
-          def finish
+          def finish(status: "finished") # rubocop:disable Lint/UnusedMethodArgument -- ProgressSink port contract
             nil
           end
         end

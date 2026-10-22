@@ -10,7 +10,7 @@ RSpec.describe SFL::DockerServices do
       calls = []
       command = -> (*args, **opts) { calls << [args, opts] and true }
 
-      result = described_class.ensure_running!(env: {}, command:)
+      result = described_class.ensure_running!(enabled: SFL::Boot.auto_start_docker?(env: {}), command:)
 
       expect(result).to be false
       expect(calls).to be_empty
@@ -20,7 +20,7 @@ RSpec.describe SFL::DockerServices do
       calls = []
       command = -> (*args, **opts) { calls << [args, opts] and true }
 
-      result = described_class.ensure_running!(env: { "SFL_AUTO_START_DOCKER" => "true" }, command:)
+      result = described_class.ensure_running!(enabled: SFL::Boot.auto_start_docker?(env: { "SFL_AUTO_START_DOCKER" => "true" }), command:)
 
       expect(result).to be false
       expect(calls).to be_empty
@@ -31,7 +31,7 @@ RSpec.describe SFL::DockerServices do
       command = -> (*args, **opts) { calls << [args, opts] and true }
       file_exists = -> (_path) { false }
 
-      result = described_class.ensure_running!(env: { "SFL_AUTO_START_DOCKER" => "1" }, file_exists:, command:)
+      result = described_class.ensure_running!(enabled: true, file_exists:, command:)
 
       expect(result).to be false
       expect(calls).to be_empty
@@ -46,7 +46,7 @@ RSpec.describe SFL::DockerServices do
         !args.include?("version")
       end
 
-      result = described_class.ensure_running!(env: { "SFL_AUTO_START_DOCKER" => "1" }, file_exists:, command:)
+      result = described_class.ensure_running!(enabled: true, file_exists:, command:)
 
       expect(result).to be false
       expect(calls.size).to eq(1)
@@ -61,7 +61,7 @@ RSpec.describe SFL::DockerServices do
         !args.include?("info")
       end
 
-      result = described_class.ensure_running!(env: { "SFL_AUTO_START_DOCKER" => "1" }, file_exists:, command:)
+      result = described_class.ensure_running!(enabled: true, file_exists:, command:)
 
       expect(result).to be false
       expect(calls.map(&:first)).to eq([%w[docker compose version], %w[docker info]])
@@ -77,7 +77,7 @@ RSpec.describe SFL::DockerServices do
 
       result = nil
       expect do
-        result = described_class.ensure_running!(env: { "SFL_AUTO_START_DOCKER" => "1" }, file_exists:, command:)
+        result = described_class.ensure_running!(enabled: true, file_exists:, command:)
       end.not_to raise_error
       expect(result).to be false
     end
@@ -92,7 +92,7 @@ RSpec.describe SFL::DockerServices do
       end
 
       result = described_class.ensure_running!(
-        env: { "SFL_AUTO_START_DOCKER" => "1" }, compose_file: "/tmp/compose.yml", file_exists:, command:
+        enabled: true, compose_file: "/tmp/compose.yml", file_exists:, command:
       )
 
       expect(result).to be true

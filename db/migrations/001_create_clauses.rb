@@ -7,7 +7,7 @@
 # legacy's ClauseRepository already made when reconstructing).
 #
 # `tokens`/`groups` snapshot the full SyntacticClause#tokens/#groups arrays
-# as jsonb so PgClauseStore#find_by_document can rebuild SyntacticToken/
+# as jsonb so PgClauseStore#find_by_section can rebuild SyntacticToken/
 # SyntacticGroup structs without a fresh Pass 1 parse. `root_index` is
 # stored directly as an Integer rather than legacy's `root_token` jsonb
 # snapshot + "first token whose dep is ROOT" recompute on read — that

@@ -44,9 +44,11 @@ module SFL
 
         private def build_unit(convo, turn, index)
           Types::Unit.new(
-            document_id: "#{convo[:id]}#turn-#{index}",
+            section_id: "#{convo[:id]}#turn-#{index}",
             text: turn[:mes],
             speaker: turn[:name],
+            document_key: convo[:id],
+            source_path: @ref.path_hint,
             is_user: turn[:is_user],
             sent_at: turn[:send_date] ? Time.parse(turn[:send_date]) : nil,
             metadata: { "conversation_id" => convo[:id], "conversation_title" => convo[:title] }

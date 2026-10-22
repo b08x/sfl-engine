@@ -5,6 +5,7 @@ require "spec_helper"
 RSpec.describe SFL::Core::Loaders::MarkdownSource do
   let(:path) { "spec/fixtures/loaders/sample.md" }
   let(:ref) { file_ref(path) }
+  let(:prefix) { SFL::Core::Loaders::FileId.call(ref) }
 
   it "is a Loaders::Source" do
     expect(described_class.new(ref)).to be_a(SFL::Core::Loaders::Source)
@@ -17,10 +18,10 @@ RSpec.describe SFL::Core::Loaders::MarkdownSource do
     expect(units.map(&:heading)).to eq(["Introduction", "Usage", "Advanced Topics"])
   end
 
-  it "derives document_id from the filename stem and heading slug" do
+  it "derives section_id from the filename stem and heading slug" do
     unit = described_class.new(ref).units.first
 
-    expect(unit.document_id).to eq("sample#introduction")
+    expect(unit.section_id).to eq("#{prefix}#introduction")
   end
 
   it "strips markdown structure down to clean prose" do
@@ -41,5 +42,28 @@ RSpec.describe SFL::Core::Loaders::MarkdownSource do
 
     expect(unit.metadata["heading_level"]).to eq(1)
     expect(unit.metadata["heading_slug"]).to eq("introduction")
+  end
+
+  describe "nesting (fact 13)" do
+    let(:path) { "spec/fixtures/loaders/nested.md" }
+
+    it "makes a heading the parent of what follows until a heading of the same or a higher level" do
+      parents = described_class.new(ref).units.to_h { |unit| [unit.section_id, unit.parent_section_id] }
+
+      expect(parents).to eq(
+        "#{prefix}#preamble" => nil,
+        "#{prefix}#overview" => nil,
+        "#{prefix}#scope" => "#{prefix}#overview",
+        "#{prefix}#limits" => "#{prefix}#scope",
+        "#{prefix}#audience" => "#{prefix}#overview",
+        "#{prefix}#reference" => nil
+      )
+    end
+
+    it "uses the file path as document_key and source_path" do
+      unit = described_class.new(ref).units.first
+
+      expect(unit).to have_attributes(document_key: path, source_path: path)
+    end
   end
 end

@@ -4,6 +4,8 @@ require "spec_helper"
 require "tmpdir"
 
 RSpec.describe SFL::Analysis::ConversationSource do
+  def file_id(path) = SFL::Core::Loaders::FileId.call(file_ref(path))
+
   describe "#each_unit (JSONL path)" do
     subject(:source) { described_class.new(file_ref("spec/fixtures/inputs/sample.jsonl")) }
 
@@ -11,11 +13,11 @@ RSpec.describe SFL::Analysis::ConversationSource do
       expect(source.units.size).to eq(5)
     end
 
-    it "derives document_id as conversation_id#turn-N (1-indexed)" do
+    it "derives section_id as conversation_id#turn-N (1-indexed)" do
       units = source.units
 
-      expect(units.first.document_id).to eq("sample#turn-1")
-      expect(units.last.document_id).to eq("sample#turn-5")
+      expect(units.first.section_id).to eq("#{file_id('spec/fixtures/inputs/sample.jsonl')}#turn-1")
+      expect(units.last.section_id).to eq("#{file_id('spec/fixtures/inputs/sample.jsonl')}#turn-5")
     end
 
     it "maps mes/name/is_user onto text/speaker/is_user" do
@@ -89,7 +91,7 @@ RSpec.describe SFL::Analysis::ConversationSource do
       units = source.units
 
       expect(units).not_to be_empty
-      expect(units.first.document_id).to start_with("simple#turn-")
+      expect(units.first.section_id).to start_with("#{file_id('spec/fixtures/loaders/subtitles/simple.srt')}#turn-")
     end
 
     it "is not audio_modality? for a .jsonl path" do
@@ -109,12 +111,12 @@ RSpec.describe SFL::Analysis::ConversationSource do
       )
     end
 
-    it "builds subtitle-style document_id, metadata and sent_at" do
+    it "builds subtitle-style section_id, metadata and sent_at" do
       mtime = File.mtime("spec/fixtures/inputs/subtitle_cues.jsonl")
       unit = source.units.first
 
-      expect(unit.document_id).to eq("subtitle_cues#turn-0")
-      expect(unit.metadata).to eq({ "file_id" => "subtitle_cues" })
+      expect(unit.section_id).to eq("#{file_id('spec/fixtures/inputs/subtitle_cues.jsonl')}#turn-0")
+      expect(unit.metadata).to eq({ "file_id" => file_id("spec/fixtures/inputs/subtitle_cues.jsonl") })
       expect(unit.is_user).to be(false)
       expect(unit.sent_at).to be_within(1.0).of(mtime + 0.56)
     end

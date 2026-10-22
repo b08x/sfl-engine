@@ -18,9 +18,9 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
 
   before { SFL::Store::StoreTestDb.clean! }
 
-  def insert_clause(external_id:, document_id:, text:, embedding_status:)
+  def insert_clause(external_id:, section_id:, text:, embedding_status:)
     db[:clauses].insert(
-      external_id:, text:, document_id:, sentence_index: 0, root_index: 0, embedding_status:
+      external_id:, text:, section_id:, sentence_index: 0, root_index: 0, embedding_status:
     )
   end
 
@@ -30,7 +30,7 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
 
   describe "#call" do
     it "picks up a never-embedded (pending) clause and moves it to embedded" do
-      insert_clause(external_id: "c-pending", document_id: "doc-1", text: "pending text", embedding_status: "pending")
+      insert_clause(external_id: "c-pending", section_id: "doc-1", text: "pending text", embedding_status: "pending")
 
       redriver.call
 
@@ -41,7 +41,7 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
     end
 
     it "retries a failed clause and moves it to embedded on success" do
-      insert_clause(external_id: "c-failed", document_id: "doc-1", text: "failed text", embedding_status: "failed")
+      insert_clause(external_id: "c-failed", section_id: "doc-1", text: "failed text", embedding_status: "failed")
       db[:clauses].where(external_id: "c-failed").update(embedding_error: "previous failure")
 
       redriver.call
@@ -52,9 +52,9 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
     end
 
     it "leaves an already-embedded clause untouched — not re-embedded, not deleted" do
-      insert_clause(external_id: "c-embedded", document_id: "doc-1", text: "already good", embedding_status: "embedded")
+      insert_clause(external_id: "c-embedded", section_id: "doc-1", text: "already good", embedding_status: "embedded")
       insert_embedding(clause_id: "c-embedded", vector: Array.new(768, 0.9))
-      insert_clause(external_id: "c-pending", document_id: "doc-1", text: "pending text", embedding_status: "pending")
+      insert_clause(external_id: "c-pending", section_id: "doc-1", text: "pending text", embedding_status: "pending")
 
       redriver.call
 
@@ -64,7 +64,7 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
     end
 
     it "keeps a clause failed (with an updated error) when the retry also fails, and reports it in the summary" do
-      insert_clause(external_id: "c-stays-failed", document_id: "doc-2", text: "always fails",
+      insert_clause(external_id: "c-stays-failed", section_id: "doc-2", text: "always fails",
         embedding_status: "failed")
 
       summary = redriver.call
@@ -77,20 +77,20 @@ RSpec.describe SFL::Store::EmbeddingRedriver do
     end
 
     it "returns a summary counting documents processed, redriven, and still-failed clauses" do
-      insert_clause(external_id: "c-1", document_id: "doc-1", text: "pending text", embedding_status: "pending")
-      insert_clause(external_id: "c-2", document_id: "doc-2", text: "always fails", embedding_status: "failed")
+      insert_clause(external_id: "c-1", section_id: "doc-1", text: "pending text", embedding_status: "pending")
+      insert_clause(external_id: "c-2", section_id: "doc-2", text: "always fails", embedding_status: "failed")
 
       summary = redriver.call
 
-      expect(summary).to eq(documents_processed: 2, redriven: 1, still_failed: 1)
+      expect(summary).to eq(sections_processed: 2, redriven: 1, still_failed: 1)
     end
 
     it "does nothing when no clause needs (re-)embedding" do
-      insert_clause(external_id: "c-1", document_id: "doc-1", text: "already good", embedding_status: "embedded")
+      insert_clause(external_id: "c-1", section_id: "doc-1", text: "already good", embedding_status: "embedded")
 
       summary = redriver.call
 
-      expect(summary).to eq(documents_processed: 0, redriven: 0, still_failed: 0)
+      expect(summary).to eq(sections_processed: 0, redriven: 0, still_failed: 0)
     end
   end
 end

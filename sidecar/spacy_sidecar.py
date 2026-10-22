@@ -8,7 +8,7 @@ directly, it only writes/reads JSON lines on this process's stdin/stdout.
 
 Protocol (one JSON object per line, always flushed immediately):
   startup ->            {"type": "ready", "model": "<name>"}
-  request (stdin)  ->   {"id": "<uuid>", "text": "<str>", "document_id": "<str>|null}
+  request (stdin)  ->   {"id": "<uuid>", "text": "<str>", "section_id": "<str>|null}
   response (stdout) ->  {"id": "<uuid>", "clauses": [...]}
                      or  {"id": "<uuid>"|null, "error": "<message>"}
 
@@ -24,7 +24,7 @@ import sys
 import uuid
 
 
-def build_clause(sent, sentence_index, document_id):
+def build_clause(sent, sentence_index, section_id):
     tokens = []
     for local_i, token in enumerate(sent):
         if not token.text.strip():
@@ -51,11 +51,11 @@ def build_clause(sent, sentence_index, document_id):
         "tokens": tokens,
         "root_index": root_index,
         "sentence_index": sentence_index,
-        "document_id": document_id,
+        "section_id": section_id,
     }
 
 
-def parse_text(nlp, text, document_id):
+def parse_text(nlp, text, section_id):
     if not text or not text.strip():
         return []
 
@@ -65,7 +65,7 @@ def parse_text(nlp, text, document_id):
     for sent in doc.sents:
         if not sent.text.strip():
             continue
-        clause = build_clause(sent, sentence_index, document_id)
+        clause = build_clause(sent, sentence_index, section_id)
         if clause is None:
             continue
         clauses.append(clause)
@@ -98,7 +98,7 @@ def main():
             try:
                 request = json.loads(line)
                 request_id = request.get("id")
-                clauses = parse_text(nlp, request.get("text", ""), request.get("document_id"))
+                clauses = parse_text(nlp, request.get("text", ""), request.get("section_id"))
                 emit({"id": request_id, "clauses": clauses})
             except Exception as exc:  # a malformed/unparseable request must not crash the server
                 emit({"id": request_id, "error": str(exc)})

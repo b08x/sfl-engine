@@ -15,7 +15,7 @@ module SFL
         # @param ref [SFL::Core::Refs::FileRef] a ref whose content is a CSV file
         # @param text_column [String] header of the column holding unit text
         # @param file_id [String, nil]
-        # @param document_id_column [String, nil] header for a per-row id;
+        # @param section_id_column [String, nil] header for a per-row id;
         #   defaults to "#{file_id}#row-{n}" when absent
         # @param speaker_column [String, nil]
         # @param heading_column [String, nil]
@@ -27,15 +27,15 @@ module SFL
           ref,
           text_column:,
           file_id: nil,
-          document_id_column: nil,
+          section_id_column: nil,
           speaker_column: nil,
           heading_column: nil,
           skip_empty: true
         )
           @ref = ref
           @text_column = text_column
-          @file_id = file_id || ref.name
-          @document_id_column = document_id_column
+          @file_id = file_id || FileId.call(ref)
+          @section_id_column = section_id_column
           @speaker_column = speaker_column
           @heading_column = heading_column
           @skip_empty = skip_empty
@@ -57,16 +57,18 @@ module SFL
 
         private def build_unit(row, text, index)
           Types::Unit.new(
-            document_id: document_id_for(row, index),
+            section_id: section_id_for(row, index),
             text:,
             heading: @heading_column ? row[@heading_column] : nil,
             speaker: @speaker_column ? row[@speaker_column] : nil,
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: { "file_id" => @file_id, "row" => row.to_h }
           )
         end
 
-        private def document_id_for(row, index)
-          explicit = @document_id_column && row[@document_id_column]
+        private def section_id_for(row, index)
+          explicit = @section_id_column && row[@section_id_column]
           explicit || "#{@file_id}#row-#{index}"
         end
       end

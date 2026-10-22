@@ -48,11 +48,11 @@ RSpec.describe SFL::Analysis::NarrativeGenerator::Digest do
 
     it "accepts a documentation report whose keys use the document vocabulary" do
       doc_metadata = {
-        "id_label" => "document_id",
+        "id_label" => "document_key",
         "unit_label" => "Section",
         "actor_label" => "Section",
         "actors_list_label" => "Headings",
-        "document_id" => "doc-7",
+        "document_key" => "doc-7",
         "section_count" => 2,
         "headings" => %w[A B],
       }
@@ -61,7 +61,7 @@ RSpec.describe SFL::Analysis::NarrativeGenerator::Digest do
       digest = described_class.from_json(doc_json)
 
       expect(digest.metadata).to include("conversation_id" => "doc-7", "turn_count" => 2, "speakers" => %w[A B])
-      expect(digest.metadata).not_to have_key("document_id")
+      expect(digest.metadata).not_to have_key("document_key")
     end
 
     it "rejects a report that predates the turns array, pointing the operator at a re-run" do

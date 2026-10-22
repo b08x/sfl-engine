@@ -17,7 +17,7 @@ RSpec.describe SFL::Core::Loaders::Source do
 
   describe "#units" do
     it "collects everything #each_unit yields" do
-      unit = SFL::Core::Types::Unit.new(document_id: "doc-1", text: "hi")
+      unit = SFL::Core::Types::Unit.new(section_id: "doc-1", text: "hi")
       klass = Class.new do
         include SFL::Core::Loaders::Source
 

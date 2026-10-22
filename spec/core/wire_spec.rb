@@ -25,7 +25,7 @@ RSpec.describe SFL::Core::Wire do
   let(:annotated_clause) do
     syntactic = SFL::Core::Types::SyntacticClause.new(
       id: "syn-1", text: "It works.", tokens: [token],
-      root_index: 0, sentence_index: 0, document_id: "turn-1"
+      root_index: 0, sentence_index: 0, section_id: "turn-1"
     )
     SFL::Core::Types::AnnotatedClause.new(
       id: "ann-1", text: "It works.", syntactic:,
@@ -39,7 +39,7 @@ RSpec.describe SFL::Core::Wire do
         speaker_attitude: nil, reasoning: nil,
         annotation_source: "llm", reasoning_trace:
       ),
-      document_id: "turn-1", compiled_at: Time.now
+      section_id: "turn-1", compiled_at: Time.now
     )
   end
 

@@ -10,12 +10,12 @@ module SFL
     # same each_unit/units contract every Phase 1 loader already
     # implements (Core::Types::Unit is exactly the turn/section shape
     # legacy's ConversationAnalyzer and DocumentationAnalyzer each
-    # hand-derived their own document_id/speaker/timestamp from; reusing
+    # hand-derived their own section_id/speaker/timestamp from; reusing
     # it here means Engine never needs a second "give me the raw chunks"
     # concept).
     #
     # Ported from legacy's ConversationAnalyzer.load_turns/.load_jsonl
-    # dispatch, ConversationAnalyzer's document_id derivation
+    # dispatch, ConversationAnalyzer's section_id derivation
     # ("#{conversation_id}#turn-#{turn_id}"), and its audio-modality-gated
     # review-queue policy (#review_entry below).
     class ConversationSource
@@ -30,6 +30,7 @@ module SFL
         @ref = ref
         @source_type = source_type
         @conversation_id = ref.name
+        @file_id = Core::Loaders::FileId.call(ref)
       end
 
       attr_reader :conversation_id
@@ -47,7 +48,7 @@ module SFL
         return to_enum(:each_unit) unless block_given?
 
         if subtitle_extension?
-          Core::Loaders::SubtitleSource.new(@ref, file_id: @conversation_id).each_unit(&)
+          Core::Loaders::SubtitleSource.new(@ref, file_id: @file_id).each_unit(&)
         elsif cue_records?
           cue_units.each(&)
         else
@@ -136,7 +137,7 @@ module SFL
         end
         raise Core::Loaders::Error, no_turns_message if cues.empty?
 
-        Core::Loaders::SubtitleSource.units_from_cues(cues, ref: @ref, file_id: @conversation_id)
+        Core::Loaders::SubtitleSource.units_from_cues(cues, ref: @ref, file_id: @file_id)
       end
 
       # Integer, Float or a fully numeric String of milliseconds; anything else is 0.0.
@@ -157,9 +158,11 @@ module SFL
 
       private def build_unit(turn_data, idx)
         Core::Types::Unit.new(
-          document_id: "#{@conversation_id}#turn-#{idx + 1}",
+          section_id: "#{@file_id}#turn-#{idx + 1}",
           text: turn_data[:mes],
           speaker: turn_data[:name],
+          document_key: @ref.path_hint || @conversation_id,
+          source_path: @ref.path_hint,
           is_user: turn_data[:is_user],
           sent_at: parse_timestamp(turn_data[:send_date]),
           metadata: { "conversation_id" => @conversation_id }

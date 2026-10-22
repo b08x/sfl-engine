@@ -32,7 +32,7 @@ RSpec.describe SFL::API::Server do
   end
 
   # branching logic (same rationale spec/store/pg_clause_store_spec.rb's own build_clause disable documents).
-  def build_clause(id: "c-1", document_id: "doc-1", mood: "declarative", annotation_source: "llm")
+  def build_clause(id: "c-1", section_id: "doc-1", mood: "declarative", annotation_source: "llm")
     SFL::Core::Types::AnnotatedClause.new(
       id:, text: "The system processed it.",
       syntactic: SFL::Core::Types::SyntacticClause.new(
@@ -43,7 +43,7 @@ RSpec.describe SFL::API::Server do
             dep: "ROOT", head_index: -1, morphology: {}, index: 1
           ),
         ],
-        groups: [], root_index: 0, sentence_index: 0, document_id:
+        groups: [], root_index: 0, sentence_index: 0, section_id:
       ),
       ideational: SFL::Core::Types::IdeationalPayload.new(
         clause_id: id, process_type: "material",
@@ -54,7 +54,7 @@ RSpec.describe SFL::API::Server do
         clause_id: id, mood:, modality_weight: 0.7, tenor: 0.4, speaker_attitude: "neutral",
         reasoning: "clear", annotation_source:, reasoning_trace: nil
       ),
-      document_id:, compiled_at: Time.at(1_700_000_000).utc
+      section_id:, compiled_at: Time.at(1_700_000_000).utc
     )
   end
   # ── GET /health ──────────────────────────────────────────────────────────
@@ -151,10 +151,10 @@ RSpec.describe SFL::API::Server do
     it "compiles synchronously and returns the annotated clauses" do
       clause = build_clause
       allow(pipeline).to receive(:compile)
-        .with("hello", document_id: "doc-1", store: false, embed: false, resume: false)
+        .with("hello", section_id: "doc-1", store: false, embed: false, resume: false)
         .and_return(Success([clause]))
 
-      post "/pipeline/compile", JSON.dump({ text: "hello", document_id: "doc-1" }),
+      post "/pipeline/compile", JSON.dump({ text: "hello", section_id: "doc-1" }),
         "CONTENT_TYPE" => "application/json"
 
       expect(last_response.status).to eq(200)
@@ -169,6 +169,17 @@ RSpec.describe SFL::API::Server do
 
       expect(last_response.status).to eq(500)
     end
+
+    it "rejects the pre-rename id key with a 400 that names section_id, without compiling" do
+      allow(pipeline).to receive(:compile)
+
+      post "/pipeline/compile", JSON.dump({ "text" => "hello", described_class::LEGACY_ID_PARAM => "doc-1" }),
+        "CONTENT_TYPE" => "application/json"
+
+      expect(last_response.status).to eq(400)
+      expect(JSON.parse(last_response.body)["error"]).to include("section_id")
+      expect(pipeline).not_to have_received(:compile)
+    end
   end
 
   # ── POST /retrieve ───────────────────────────────────────────────────────
@@ -181,7 +192,7 @@ RSpec.describe SFL::API::Server do
 
     it "returns ranked results" do
       result = SFL::Core::Types::RetrievalResult.new(
-        clause_id: "c-1", text: "hi", document_id: "doc-1", rrf_score: 0.9
+        clause_id: "c-1", text: "hi", section_id: "doc-1", rrf_score: 0.9
       )
       allow(retriever).to receive(:retrieve).and_return([result])
 
@@ -221,16 +232,23 @@ RSpec.describe SFL::API::Server do
     it "returns a paginated, filtered listing" do
       clause = build_clause
       allow(clause_store).to receive(:find_all)
-        .with(document_id: "doc-1", annotation_source: nil,
+        .with(section_id: "doc-1", annotation_source: nil,
           filters: SFL::Core::Types::RetrievalFilters.new, limit: 50, offset: 0)
         .and_return(clauses: [clause], total: 1)
 
-      get "/clauses", document_id: "doc-1"
+      get "/clauses", section_id: "doc-1"
 
       expect(last_response.status).to eq(200)
       body = JSON.parse(last_response.body)
       expect(body["total"]).to eq(1)
       expect(body["clauses"].first["id"]).to eq("c-1")
+    end
+
+    it "rejects the pre-rename id query param with a 400 that names section_id" do
+      get "/clauses", described_class::LEGACY_ID_PARAM => "doc-1"
+
+      expect(last_response.status).to eq(400)
+      expect(JSON.parse(last_response.body)["error"]).to eq("document_id is no longer accepted; send section_id instead")
     end
   end
 
@@ -317,34 +335,34 @@ RSpec.describe SFL::API::Server do
     end
 
     it "approve: marks reviewed without touching clause storage" do
-      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", document_id: "doc-1")
+      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", section_id: "doc-1")
       allow(review_queue_repo).to receive(:decide)
         .with(id: "r-1", decision: "approve", edited_text: nil, reviewer: nil)
         .and_return(id: "r-1", status: "approved")
-      allow(clause_store).to receive(:replace_document)
+      allow(clause_store).to receive(:replace_section)
 
       post "/review-queue/r-1/decide", JSON.dump({ decision: "approve" }), "CONTENT_TYPE" => "application/json"
 
       expect(last_response.status).to eq(200)
-      expect(clause_store).not_to have_received(:replace_document)
+      expect(clause_store).not_to have_received(:replace_section)
     end
 
-    it "reject: clears the document's stored clauses via replace_document(id, [])" do
-      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", document_id: "doc-1")
-      allow(clause_store).to receive(:replace_document).with("doc-1", [])
+    it "reject: clears the document's stored clauses via replace_section(id, [])" do
+      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", section_id: "doc-1")
+      allow(clause_store).to receive(:replace_section).with("doc-1", [])
       allow(review_queue_repo).to receive(:decide).and_return(id: "r-1", status: "rejected")
 
       post "/review-queue/r-1/decide", JSON.dump({ decision: "reject" }), "CONTENT_TYPE" => "application/json"
 
       expect(last_response.status).to eq(200)
-      expect(clause_store).to have_received(:replace_document).with("doc-1", [])
+      expect(clause_store).to have_received(:replace_section).with("doc-1", [])
     end
 
     it "edit: recompiles the document through the pipeline and returns the new clauses" do
       clause = build_clause
-      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", document_id: "doc-1")
+      allow(review_queue_repo).to receive(:find).with("r-1").and_return(id: "r-1", section_id: "doc-1")
       allow(pipeline).to receive(:compile)
-        .with("edited text", document_id: "doc-1", store: true, embed: true, resume: false)
+        .with("edited text", section_id: "doc-1", store: true, embed: true, resume: false)
         .and_return(Success([clause]))
       allow(review_queue_repo).to receive(:decide)
         .with(id: "r-1", decision: "edit", edited_text: "edited text", reviewer: nil)

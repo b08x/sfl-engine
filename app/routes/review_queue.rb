@@ -44,18 +44,18 @@ class Sfl
   end
 
   # approve -> synchronous: marks reviewed, storage untouched.
-  # reject  -> synchronous: marks reviewed, clears the document's stored
-  #            clauses via Pipeline's own replace_document(document_id, []).
+  # reject  -> synchronous: marks reviewed, clears the section's stored
+  #            clauses via Pipeline's own replace_section(section_id, []).
   # edit    -> synchronous: Pipeline#compile(edited_text, ...) replaces the
-  #            document's clauses in one transaction.
+  #            section's clauses in one transaction.
   private def apply_review_queue_decision(decision, row, edited_text)
     case decision
     when "reject"
-      ctx.clause_store.replace_document(row[:document_id], [])
+      ctx.clause_store.replace_section(row[:section_id], [])
       nil
     when "edit"
-      ctx.pipeline.compile(edited_text, document_id: row[:document_id], store: true, embed: true, resume: false)
-        .value_or { |failure| raise "recompile failed for #{row[:document_id].inspect}: #{failure.inspect}" }
+      ctx.pipeline.compile(edited_text, section_id: row[:section_id], store: true, embed: true, resume: false)
+        .value_or { |failure| raise "recompile failed for #{row[:section_id].inspect}: #{failure.inspect}" }
     end
   end
 end

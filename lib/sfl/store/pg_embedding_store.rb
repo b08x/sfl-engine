@@ -5,15 +5,15 @@ require "pgvector"
 
 module SFL
   module Store
-    # Postgres-backed EmbeddingStore (pgvector). `#replace_document` deletes
+    # Postgres-backed EmbeddingStore (pgvector). `#replace_section` deletes
     # and re-inserts in one transaction, same F7 idempotency-as-contract
-    # rationale as PgClauseStore — a document re-embedded twice never
+    # rationale as PgClauseStore — a section re-embedded twice never
     # leaves stale vectors behind.
     #
     # Legacy's EmbeddingRepository#store inserted one row at a time (it was
     # only ever called once per clause) and relied on a
     # Sequel::UniqueConstraintViolation rescue-and-update fallback for the
-    # rare re-embed. That fallback isn't needed here: #replace_document
+    # rare re-embed. That fallback isn't needed here: #replace_section
     # controls delete-then-insert atomically, so the (clause_id, model)
     # unique index (db/migrations/004) can never be hit on the insert side.
     #
@@ -34,7 +34,8 @@ module SFL
     class PgEmbeddingStore
       include Core::Ports::EmbeddingStore
 
-      DEFAULT_MODEL = ENV.fetch("EMBEDDING_MODEL", "embeddinggemma:latest")
+      # Boot resolves EMBEDDING_MODEL over this (Boot::Result#embedding_model).
+      DEFAULT_MODEL = "embeddinggemma:latest"
 
       # Must match db/migrations/004_create_embeddings.rb's `vector(768)`
       # column exactly. Root cause of a real failure (2026-08-02): pgvector
@@ -57,9 +58,9 @@ module SFL
         @model = model
       end
 
-      # @param document_id [String] embeddings has no document_id column of
+      # @param section_id [String] embeddings has no section_id column of
       #   its own, so the delete scope is every clause_id belonging to this
-      #   document per the `clauses` table — NOT just
+      #   section per the `clauses` table — NOT just
       #   embeddings_by_clause_id's keys. Scoping by the new payload's own
       #   keys instead would only clear rows being immediately
       #   re-inserted, leaving any clause dropped from this embed run (or
@@ -68,14 +69,14 @@ module SFL
       # @param embeddings_by_clause_id [Hash<String, Array<Float>>] a nil or
       #   empty Array value for a clause_id means that clause's embed
       #   attempt failed — see the class comment's F11 contract. One failed
-      #   item does not abort the rest of the document's write.
+      #   item does not abort the rest of the section's write.
       # @return [void]
-      def replace_document(document_id, embeddings_by_clause_id)
-        document_clause_ids = @db[:clauses].where(document_id:).select(:external_id)
+      def replace_section(section_id, embeddings_by_clause_id)
+        section_clause_ids = @db[:clauses].where(section_id:).select(:external_id)
         succeeded, failed = embeddings_by_clause_id.partition { |_clause_id, vector| vector && !vector.empty? }
 
         @db.transaction do
-          @db[:embeddings].where(clause_id: document_clause_ids, model: @model).delete
+          @db[:embeddings].where(clause_id: section_clause_ids, model: @model).delete
 
           insert_succeeded(succeeded)
           mark_embedded(succeeded)

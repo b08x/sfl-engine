@@ -112,4 +112,11 @@ RSpec.describe SFL::Core::Loaders::SubtitleSource do
       expect { described_class.new(file_ref(f.path)).units }.to raise_error(SFL::Core::Loaders::Error)
     end
   end
+
+  it "gives turns no parent and keys them by the file path (fact 14)" do
+    units = described_class.new(file_ref("spec/fixtures/loaders/subtitles/speaker_labels.srt")).units
+
+    expect(units.map(&:parent_section_id).uniq).to eq([nil])
+    expect(units.map(&:document_key).uniq).to eq(["spec/fixtures/loaders/subtitles/speaker_labels.srt"])
+  end
 end

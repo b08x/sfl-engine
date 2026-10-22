@@ -46,13 +46,13 @@ RSpec.describe "Analysis::Engine conversation golden master" do
     counts = clause_counts
     calls = 0
     instance_double(SFL::Core::PassOne::Engine).tap do |dbl|
-      allow(dbl).to receive(:process) do |text, document_id:|
+      allow(dbl).to receive(:process) do |text, section_id:|
         n = counts[calls]
         calls += 1
         Array.new(n) do |i|
           SFL::Core::Types::SyntacticClause.new(
-            id: "#{document_id}-syn-#{i}", text:, tokens: [], root_index: 0,
-            sentence_index: i, document_id:
+            id: "#{section_id}-syn-#{i}", text:, tokens: [], root_index: 0,
+            sentence_index: i, section_id:
           )
         end
       end

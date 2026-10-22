@@ -20,7 +20,7 @@ module SFL
       # file by path — deliberately not resolved/inlined here: that file
       # is its own document and gets its own artifact on a separate pass
       # over the vault; inlining it here would duplicate its clauses
-      # under two document_ids. LinkNode (bare URLs) carries no local
+      # under two section_ids. LinkNode (bare URLs) carries no local
       # prose either.
       class CanvasSource
         include Source
@@ -31,20 +31,19 @@ module SFL
         # @param min_length [Integer] Minimum character length to emit a unit.
         def initialize(ref, file_id: nil, skip_empty: true, min_length: 40)
           @ref = ref
-          @file_id = file_id || ref.name
+          @file_id = file_id || FileId.call(ref)
           @skip_empty = skip_empty
           @min_length = min_length
         end
 
-        def each_unit
+        def each_unit(&)
           return to_enum(:each_unit) unless block_given?
 
-          text_nodes.each_with_index do |node, index|
+          units = text_nodes.each_with_index.filter_map do |node, index|
             text = node.text.to_s.strip
-            next unless emit?(text)
-
-            yield build_unit(text, node.id || "node#{index + 1}")
+            build_unit(text, node.id || "node#{index + 1}") if emit?(text)
           end
+          HeadingTree.nest(units).each(&)
         end
 
         private def text_nodes
@@ -56,9 +55,11 @@ module SFL
 
         private def build_unit(text, slug)
           Types::Unit.new(
-            document_id: "#{@file_id}##{slug}",
+            section_id: "#{@file_id}##{slug}",
             text:,
             heading: "canvas node #{slug}",
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: { "file_id" => @file_id, "heading_level" => 1, "heading_slug" => slug }
           )
         end

@@ -5,7 +5,7 @@ require "spec_helper"
 RSpec.describe SFL::Core::Loaders::JsonSource do
   shared_examples "a record source" do |path|
     subject(:source) do
-      described_class.new(file_ref(path), text_key: :text, speaker_key: :speaker, document_id_key: :id)
+      described_class.new(file_ref(path), text_key: :text, speaker_key: :speaker, section_id_key: :id)
     end
 
     it "is a Loaders::Source" do
@@ -15,14 +15,14 @@ RSpec.describe SFL::Core::Loaders::JsonSource do
     it "yields one Unit per non-blank record, skipping blank text" do
       units = source.units
 
-      expect(units.map(&:document_id)).to eq(%w[rec-1 rec-3])
+      expect(units.map(&:section_id)).to eq(%w[rec-1 rec-3])
       expect(units.map(&:speaker)).to eq(%w[Alice Carol])
     end
 
-    it "falls back to a file_id/row-index document_id when document_id_key is absent" do
+    it "falls back to a file_id/row-index section_id when section_id_key is absent" do
       units = described_class.new(file_ref(path), text_key: :text, file_id: "sample").units
 
-      expect(units.first.document_id).to eq("sample#row-0")
+      expect(units.first.section_id).to eq("sample#row-0")
     end
 
     it "carries the full record Hash in metadata" do

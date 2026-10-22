@@ -21,17 +21,16 @@ module SFL
     COMPOSE_FILE = File.expand_path("../../docker-compose.yml", __dir__)
 
     # @param compose_file [String] injectable for specs
-    # @param env [#[]] injectable seam so specs never touch the real ENV
+    # @param enabled [Boolean] SFL_AUTO_START_DOCKER=1, read by Boot.auto_start_docker?
     # @param file_exists [#call] injectable seam so specs never touch the real filesystem
     # @param command [#call] injectable seam so specs never shell out (Kernel#system-compatible)
     # @return [Boolean] whether `docker compose up` was actually attempted
     module_function def ensure_running!(
-      compose_file: COMPOSE_FILE,
-      env: ENV,
+      enabled:, compose_file: COMPOSE_FILE,
       file_exists: File.method(:exist?),
       command: Kernel.method(:system)
     )
-      return false unless env["SFL_AUTO_START_DOCKER"] == "1"
+      return false unless enabled
       return false unless file_exists.call(compose_file)
       return false unless command.call("docker", "compose", "version", out: File::NULL, err: File::NULL)
       # `docker compose version` only checks the Compose plugin is installed — it succeeds even

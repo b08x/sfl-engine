@@ -12,7 +12,7 @@ module SFL
         attribute :index, Types::Integer
         attribute :text, Types::String
         attribute :clause_ids, Types::Array.of(Types::String)
-        attribute :document_id, Types::String.optional
+        attribute :section_id, Types::String.optional
       end
     end
   end

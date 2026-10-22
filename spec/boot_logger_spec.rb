@@ -34,6 +34,31 @@ RSpec.describe SFL::Boot, ".logger" do
       .to raise_error(SFL::Boot::Error, /SFL_LOG_TARGET.*stderr, journald/)
   end
 
+  describe "with the dashboard's screen log" do
+    let(:board) do
+      SFL::Dashboard::Board.new(SFL::Dashboard::State.initial(run_id: "r", kind: "ingest", collection: nil, models: [],
+        documents: nil, now: Time.at(0)))
+    end
+    let(:screen) { -> (level) { SFL::Dashboard::RingLogger.new(board, level:) } }
+
+    it "replaces the stderr target with the screen log at the configured level" do
+      logger = described_class.logger(env: { "SFL_LOG_LEVEL" => "warn" }, screen:, **opts)
+      logger.info("hidden")
+      logger.warn("shown")
+
+      expect(logger).to be_a(SFL::Dashboard::RingLogger)
+      expect(board.state.log).to eq(["[WARN] shown"])
+    end
+
+    it "keeps journald and adds the screen log next to it" do
+      logger = described_class.logger(env: { "SFL_LOG_TARGET" => "journald,stderr" }, screen:, **opts)
+      logger.info("both")
+
+      expect(logger).to be_a(SFL::Core::Ports::MultiLogger)
+      expect(board.state.log).to eq(["[INFO] both"])
+    end
+  end
+
   it "rejects an unknown level" do
     expect { described_class.logger(env: { "SFL_LOG_LEVEL" => "loud" }, **opts) }
       .to raise_error(SFL::Boot::Error, /SFL_LOG_LEVEL/)

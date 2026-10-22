@@ -41,7 +41,14 @@ module SFL
     # - `narrative_variant`: resolved SFL_NARRATIVE_VARIANT (:v0, :v1 or :v2),
     #   which Narrators::NarrativeGenerator uses to pick its signature. Defaults
     #   to :v1, the sfl-compiler signature.
+    # - `model_resolver`: the Boot::TaskModelResolver behind llm_config, over
+    #   the `task_models` table when the database is connected; the Models tab
+    #   re-resolves through it after an assignment. Built even when
+    #   require_llm: false.
+    # - `embedding_model`: EMBEDDING_MODEL, else Store::PgEmbeddingStore::DEFAULT_MODEL;
+    #   the model PgEmbeddingStore files vectors under.
     Result = Struct.new(:db, :llm_config, :lm_factory, :embedder, :classifier, :pass1_command, :pass1_env,
-      :spacy_model, :api_debug_errors, :api_cors_origins, :narrative_variant, keyword_init: true)
+      :spacy_model, :api_debug_errors, :api_cors_origins, :narrative_variant, :model_resolver, :embedding_model,
+      keyword_init: true)
   end
 end

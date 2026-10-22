@@ -9,7 +9,7 @@ module SFL
         class SyntacticParser
           include Ports::SyntacticParser
 
-          def parse(_text, document_id: nil) # rubocop:disable Lint/UnusedMethodArgument -- document_id stays in the signature to match the SyntacticParser port contract
+          def parse(_text, section_id: nil) # rubocop:disable Lint/UnusedMethodArgument -- section_id stays in the signature to match the SyntacticParser port contract
             []
           end
         end

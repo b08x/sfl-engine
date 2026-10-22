@@ -18,7 +18,7 @@ module SFL
         # @param ref [SFL::Core::Refs::FileRef] a ref whose content is JSON/JSONL
         # @param text_key [Symbol] key holding unit text
         # @param file_id [String, nil]
-        # @param document_id_key [Symbol, nil] key for a per-record id;
+        # @param section_id_key [Symbol, nil] key for a per-record id;
         #   defaults to "#{file_id}#row-{n}" when absent
         # @param speaker_key [Symbol, nil]
         # @param heading_key [Symbol, nil]
@@ -30,15 +30,15 @@ module SFL
           ref,
           text_key:,
           file_id: nil,
-          document_id_key: nil,
+          section_id_key: nil,
           speaker_key: nil,
           heading_key: nil,
           skip_empty: true
         )
           @ref = ref
           @text_key = text_key
-          @file_id = file_id || ref.name
-          @document_id_key = document_id_key
+          @file_id = file_id || FileId.call(ref)
+          @section_id_key = section_id_key
           @speaker_key = speaker_key
           @heading_key = heading_key
           @skip_empty = skip_empty
@@ -72,16 +72,18 @@ module SFL
 
         private def build_unit(record, text, index)
           Types::Unit.new(
-            document_id: document_id_for(record, index),
+            section_id: section_id_for(record, index),
             text:,
             heading: @heading_key ? record[@heading_key] : nil,
             speaker: @speaker_key ? record[@speaker_key] : nil,
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: { "file_id" => @file_id, "record" => record }
           )
         end
 
-        private def document_id_for(record, index)
-          explicit = @document_id_key && record[@document_id_key]
+        private def section_id_for(record, index)
+          explicit = @section_id_key && record[@section_id_key]
           explicit ? explicit.to_s : "#{@file_id}#row-#{index}"
         end
       end

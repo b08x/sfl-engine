@@ -52,7 +52,7 @@ RSpec.describe SFL::CLI do
     it "writes context_synthesis.json only when --output-dir is given" do
       hit_result = instance_double(
         SFL::Core::Types::SynthesisResult, retrieved_count: 1, answer: "yes", confidence: 0.9,
-        cited_clause_ids: ["c-1"], clauses: [{ clause_id: "c-1", text: "It works.", document_id: "doc-1" }],
+        cited_clause_ids: ["c-1"], clauses: [{ clause_id: "c-1", text: "It works.", section_id: "doc-1" }],
         to_h: { query: "does it work?", answer: "yes" }
       )
       allow(synthesizer).to receive(:synthesize).and_return(hit_result)

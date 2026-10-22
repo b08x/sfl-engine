@@ -31,7 +31,7 @@ module SFL
       REVIEW_QUEUE_COLUMNS = [
         Sequel[:clauses][:external_id].as(:id),
         Sequel[:clauses][:text],
-        Sequel[:clauses][:document_id],
+        Sequel[:clauses][:section_id],
         Sequel[:clauses][:source_type],
         Sequel[:ideational_payloads][:process_type],
         Sequel[:ideational_payloads][:participants],
@@ -77,7 +77,7 @@ module SFL
       # @param clause_id [String]
       # @return [Array<Hash>] review rows for a clause, oldest first — plain
       #   Hashes, not typed structs: this is a historical listing/browse
-      #   method (same as PgClauseStore#find_by_document's sibling
+      #   method (same as PgClauseStore#find_by_section's sibling
       #   listing-style callers elsewhere in this app), not a value crossing
       #   a use-case boundary the way the just-recorded review above is.
       def reviews_for(clause_id)

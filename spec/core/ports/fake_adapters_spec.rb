@@ -42,11 +42,11 @@ RSpec.describe SFL::Core::Ports::Fake::ClauseStore do
 
   it_behaves_like "a clause store port"
 
-  it "returns exactly what was written for a document_id" do
+  it "returns exactly what was written for a section_id" do
     clause = SFL::Core::Types::AnnotatedClause.new(
       id: "ann-1", text: "It works.",
       syntactic: SFL::Core::Types::SyntacticClause.new(
-        id: "c-1", text: "It works.", tokens: [], root_index: 0, sentence_index: 0, document_id: "doc-1"
+        id: "c-1", text: "It works.", tokens: [], root_index: 0, sentence_index: 0, section_id: "doc-1"
       ),
       ideational: SFL::Core::Types::IdeationalPayload.new(
         clause_id: "c-1", process_type: "material",
@@ -57,17 +57,17 @@ RSpec.describe SFL::Core::Ports::Fake::ClauseStore do
         modality_weight: 0.5, tenor: 0.5,
         speaker_attitude: nil, reasoning: nil, annotation_source: "stub"
       ),
-      document_id: "doc-1", compiled_at: Time.now
+      section_id: "doc-1", compiled_at: Time.now
     )
 
-    subject.replace_document("doc-1", [clause])
-    expect(subject.find_by_document("doc-1")).to eq([clause])
+    subject.replace_section("doc-1", [clause])
+    expect(subject.find_by_section("doc-1")).to eq([clause])
   end
 
   it "replaces, rather than appends to, a document's clauses on a second write" do
-    subject.replace_document("doc-1", [:first_write])
-    subject.replace_document("doc-1", [:second_write])
-    expect(subject.find_by_document("doc-1")).to eq([:second_write])
+    subject.replace_section("doc-1", [:first_write])
+    subject.replace_section("doc-1", [:second_write])
+    expect(subject.find_by_section("doc-1")).to eq([:second_write])
   end
 end
 
@@ -89,9 +89,9 @@ RSpec.describe SFL::Core::Ports::Fake::EmbeddingStore do
 
   it_behaves_like "an embedding store port"
 
-  it "returns exactly what was written for a document_id" do
-    subject.replace_document("doc-1", { "ann-1" => [0.1, 0.2] })
+  it "returns exactly what was written for a section_id" do
+    subject.replace_section("doc-1", { "ann-1" => [0.1, 0.2] })
 
-    expect(subject.find_by_document("doc-1")).to eq({ "ann-1" => [0.1, 0.2] })
+    expect(subject.find_by_section("doc-1")).to eq({ "ann-1" => [0.1, 0.2] })
   end
 end

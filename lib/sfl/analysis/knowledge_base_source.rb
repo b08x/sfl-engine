@@ -40,7 +40,7 @@ module SFL
     #
     # Storage note: like Analysis::Engine (first Phase 3 slice), this
     # class does not take a clause_repo/clause_store — Pipeline#persist
-    # (via PgClauseStore#replace_document) already deletes+reinserts
+    # (via PgClauseStore#replace_section) already deletes+reinserts
     # atomically, so there is no separate "delete before compile" step
     # left for a caller to own.
     #
@@ -59,26 +59,32 @@ module SFL
       # @param review_queue_repo [Store::PgReviewQueueRepository, nil]
       # @param on_progress [#call, nil] called with { artifact_id:, total:, title:, source_file: }
       #   before each section is compiled
+      # @param on_artifact_done [#call, nil] called with { artifact_id:, total:, failed:,
+      #   clause_count:, defaulted: } after each section is compiled or skipped
       # @param stop_requested [#call, nil] polled once per artifact; if it returns truthy the
       #   loop halts and a partial report is returned
       # @param analyze_images [Boolean] run vision description on image files (disabled by
       #   default — expensive)
       # @param chat [#ask, nil] a vision-capable RubyLLM::Chat (or compatible double), forwarded
       #   to Core::Loaders::ImageSource; required (raises otherwise) when analyze_images: true
-      # matching Engine#initialize's own house style (see its class comment).
+      # rubocop:disable Metrics/ParameterLists -- independently-injectable collaborators and
+      # callbacks, matching Engine#initialize's own house style (see its class comment).
       def initialize(
         pipeline:,
         review_queue_repo: nil,
         on_progress: nil,
+        on_artifact_done: nil,
         stop_requested: nil,
         analyze_images: false,
         chat: nil
       )
+        # rubocop:enable Metrics/ParameterLists
         raise ArgumentError, "chat: is required when analyze_images: true" if analyze_images && chat.nil?
 
         @pipeline = pipeline
         @review_queue_repo = review_queue_repo
         @on_progress = on_progress
+        @on_artifact_done = on_artifact_done
         @stop_requested = stop_requested
         @analyze_images = analyze_images
         @chat = chat
@@ -124,7 +130,8 @@ module SFL
           @on_progress&.call(artifact_id:, total:, title: unit_title(unit), source_file: file)
 
           begin
-            acc << compile_artifact(unit, artifact_id, store, file_meta: { source_file: file, mtime:, source_type: })
+            artifact = compile_artifact(unit, artifact_id, store, file_meta: { source_file: file, mtime:, source_type: })
+            acc << artifact
           rescue => e
             # Same degradation ladder as Pipeline#compile: one malformed vault file (bad
             # frontmatter, unparseable content) must not abort a whole-corpus run — a
@@ -133,10 +140,17 @@ module SFL
             # StandardError and still abort.
             skipped << { artifact_id:, source_file: file, error: e.message }
             warn "[WARN] KB artifact #{artifact_id} (#{file}) skipped: #{e.message}"
+            artifact = nil
           end
+          report_done(artifact_id, total, artifact&.annotation_coverage)
         end
         [artifacts, skipped]
       end
+      private def report_done(artifact_id, total, coverage)
+        @on_artifact_done&.call(artifact_id:, total:, failed: coverage.nil?, clause_count: coverage ? coverage[:total] : 0,
+          defaulted: coverage ? coverage[:fallback] : 0)
+      end
+
       # ported verbatim from legacy's own #load_all_sections; the rescue is what makes a single
       # unreadable file (permissions, corrupt binary) non-fatal for the rest of the corpus.
       private def load_all_units(refs)
@@ -179,7 +193,7 @@ module SFL
         fm_title = frontmatter&.dig("title")&.to_s
         return fm_title unless fm_title.nil? || fm_title.strip.empty?
 
-        unit.heading || unit.document_id
+        unit.heading || unit.section_id
       end
 
       # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
@@ -192,8 +206,8 @@ module SFL
         tags = Array(frontmatter&.dig("tags")).map(&:to_s)
 
         clauses = unwrap(
-          @pipeline.compile(unit.text, document_id: unit.document_id, store:, embed: store,
-            resume: @resume), unit.document_id
+          @pipeline.compile(unit.text, section_id: unit.section_id, unit:, store:, embed: store,
+            resume: @resume), unit.section_id
         )
 
         content_type = @classifier.classify(section: unit, clauses:, frontmatter:)
@@ -203,7 +217,7 @@ module SFL
         human_count = clauses.count { |c| c.interpersonal.annotation_source == "human" }
 
         if store
-          enqueue_review(unit.document_id, source_file, source_type, content_type, unit.text, clauses,
+          enqueue_review(unit.section_id, source_file, source_type, content_type, unit.text, clauses,
             quality_score)
         end
 
@@ -230,21 +244,21 @@ module SFL
       end
       # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
 
-      private def unwrap(result, document_id)
-        result.value_or { |failure| raise Error, "compile failed for #{document_id.inspect}: #{failure.inspect}" }
+      private def unwrap(result, section_id)
+        result.value_or { |failure| raise Error, "compile failed for #{section_id.inspect}: #{failure.inspect}" }
       end
 
       # rubocop:disable Metrics/ParameterLists -- seven independently-meaningful
       # review-queue fields, ported verbatim from legacy's own #enqueue_for_review; the
       # vault_image early-return is a real second, unrelated review policy, not padding.
-      private def enqueue_review(document_id, source_file, source_type, content_type, generated_text, clauses,
+      private def enqueue_review(section_id, source_file, source_type, content_type, generated_text, clauses,
         quality_score
       )
         return unless @review_queue_repo
 
         if source_type == "vault_image"
           @review_queue_repo.enqueue(
-            document_id:, modality: "image", source_file:, generated_text:,
+            section_id:, modality: "image", source_file:, generated_text:,
             reason: "image", source_type:, content_type:
           )
           return
@@ -254,7 +268,7 @@ module SFL
         return unless reason
 
         @review_queue_repo.enqueue(
-          document_id:, modality: "text", source_file:, generated_text:,
+          section_id:, modality: "text", source_file:, generated_text:,
           reason:, source_type:, content_type:
         )
       end

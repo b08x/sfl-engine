@@ -12,7 +12,7 @@ RSpec.describe SFL::LLM::Engine do
   end
   let(:clause) do
     SFL::Core::Types::SyntacticClause.new(
-      id: "c-1", text: "It works.", tokens: [token], root_index: 0, sentence_index: 0, document_id: "doc-1"
+      id: "c-1", text: "It works.", tokens: [token], root_index: 0, sentence_index: 0, section_id: "doc-1"
     )
   end
   let(:ideational) do

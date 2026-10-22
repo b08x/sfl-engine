@@ -15,9 +15,9 @@ module AnalysisFactories
     )
   end
 
-  def build_syntactic_clause(id: "syn-1", text: "text", tokens: [], document_id: "doc-1", sentence_index: 0)
+  def build_syntactic_clause(id: "syn-1", text: "text", tokens: [], section_id: "doc-1", sentence_index: 0)
     SFL::Core::Types::SyntacticClause.new(
-      id:, text:, tokens:, root_index: 0, sentence_index:, document_id:
+      id:, text:, tokens:, root_index: 0, sentence_index:, section_id:
     )
   end
 
@@ -40,15 +40,15 @@ module AnalysisFactories
   # field a spec/analysis/* example needs to vary; splitting it would just relocate the kwargs.
   def build_annotated_clause(
     id: "clause-1", text: "text", tokens: [], process_type: "material", participants: [],
-    mood: "declarative", tenor: 0.5, modality: 0.5, annotation_source: "llm", document_id: "doc-1",
+    mood: "declarative", tenor: 0.5, modality: 0.5, annotation_source: "llm", section_id: "doc-1",
     sentence_index: 0
   )
-    syntactic = build_syntactic_clause(id: "#{id}-syn", text:, tokens:, document_id:, sentence_index:)
+    syntactic = build_syntactic_clause(id: "#{id}-syn", text:, tokens:, section_id:, sentence_index:)
     SFL::Core::Types::AnnotatedClause.new(
       id:, text:, syntactic:,
       ideational: build_ideational(clause_id: syntactic.id, process_type:, participants:),
       interpersonal: build_interpersonal(clause_id: syntactic.id, mood:, tenor:, modality:, annotation_source:),
-      textual: nil, document_id:, compiled_at: Time.now
+      textual: nil, section_id:, compiled_at: Time.now
     )
   end
   # rubocop:enable Metrics/ParameterLists

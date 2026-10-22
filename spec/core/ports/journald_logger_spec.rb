@@ -29,10 +29,10 @@ RSpec.describe SFL::Core::Ports::JournaldLogger do
   end
 
   it "passes structured fields through alongside the message" do
-    logger.warn("retry succeeded", document_id: "doc-1", attempt: 2)
+    logger.warn("retry succeeded", section_id: "doc-1", attempt: 2)
 
     expect(mock_journald).to have_received(:send_message)
-      .with(hash_including(priority: 4, document_id: "doc-1", attempt: 2))
+      .with(hash_including(priority: 4, section_id: "doc-1", attempt: 2))
   end
 
   it "does not let a field override the reserved keys" do

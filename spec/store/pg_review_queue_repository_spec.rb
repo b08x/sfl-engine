@@ -12,13 +12,13 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
   describe "#enqueue" do
     it "inserts a pending row and returns its id" do
       id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "img.png",
+        section_id: "doc-1", modality: "image", source_file: "img.png",
         generated_text: "a description", reason: "image"
       )
 
       row = db[:review_queue].where(id:).first
       expect(row).to include(
-        document_id: "doc-1", modality: "image", generated_text: "a description",
+        section_id: "doc-1", modality: "image", generated_text: "a description",
         reason: "image", status: "pending"
       )
     end
@@ -26,7 +26,7 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
     it "coerces a Symbol content_type to String (live-verified Sequel bug: a bare Symbol " \
       "renders as an unquoted SQL identifier, raising PG::UndefinedColumn)" do
       id = repo.enqueue(
-        document_id: "doc-1", modality: "text", source_file: "f.txt",
+        section_id: "doc-1", modality: "text", source_file: "f.txt",
         generated_text: "text", reason: "low_quality_score", content_type: :"text/plain"
       )
 
@@ -38,11 +38,11 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
   describe "#find" do
     it "returns the row for a known id" do
       id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "img.png",
+        section_id: "doc-1", modality: "image", source_file: "img.png",
         generated_text: "a description", reason: "image"
       )
 
-      expect(repo.find(id)[:document_id]).to eq("doc-1")
+      expect(repo.find(id)[:section_id]).to eq("doc-1")
     end
 
     it "returns nil for an unknown id" do
@@ -53,15 +53,15 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
   describe "#pending" do
     it "returns only pending rows, filtered by modality when given" do
       image_id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "a.png",
+        section_id: "doc-1", modality: "image", source_file: "a.png",
         generated_text: "a", reason: "image"
       )
       repo.enqueue(
-        document_id: "doc-1", modality: "audio", source_file: "a.wav",
+        section_id: "doc-1", modality: "audio", source_file: "a.wav",
         generated_text: "b", reason: "audio_transcript"
       )
       approved_id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "c.png",
+        section_id: "doc-1", modality: "image", source_file: "c.png",
         generated_text: "c", reason: "image"
       )
       repo.decide(id: approved_id, decision: "approve")
@@ -76,7 +76,7 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
   describe "#decide" do
     it "round-trips approve/edit/reject to their mapped status" do
       id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "a.png",
+        section_id: "doc-1", modality: "image", source_file: "a.png",
         generated_text: "a", reason: "image"
       )
 
@@ -93,7 +93,7 @@ RSpec.describe SFL::Store::PgReviewQueueRepository do
 
     it "raises on an unrecognized decision" do
       id = repo.enqueue(
-        document_id: "doc-1", modality: "image", source_file: "a.png",
+        section_id: "doc-1", modality: "image", source_file: "a.png",
         generated_text: "a", reason: "image"
       )
 

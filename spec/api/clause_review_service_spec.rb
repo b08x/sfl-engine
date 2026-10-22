@@ -11,8 +11,8 @@ RSpec.describe SFL::API::ClauseReviewService do
 
   before { SFL::Store::StoreTestDb.clean! }
 
-  def insert_clause(id:, document_id: "doc-1", annotation_source: "llm", mood: "declarative")
-    db[:clauses].insert(external_id: id, text: "clause #{id}", document_id:, sentence_index: 0, root_index: 0)
+  def insert_clause(id:, section_id: "doc-1", annotation_source: "llm", mood: "declarative")
+    db[:clauses].insert(external_id: id, text: "clause #{id}", section_id:, sentence_index: 0, root_index: 0)
     db[:ideational_payloads].insert(clause_id: id, process_type: "material")
     db[:interpersonal_payloads].insert(clause_id: id, mood:, modality_weight: 0.5, tenor: 0.5, annotation_source:)
   end

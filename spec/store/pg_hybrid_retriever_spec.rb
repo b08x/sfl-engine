@@ -11,16 +11,16 @@ RSpec.describe SFL::Store::PgHybridRetriever do
   # Inserts one clauses/ideational_payloads/interpersonal_payloads row set —
   # PgHybridRetriever inner-joins both payload tables (to push
   # RetrievalFilters into SQL), so every fixture clause needs both, the same
-  # way a real PgClauseStore#replace_document write would produce them.
+  # way a real PgClauseStore#replace_section write would produce them.
   # rubocop:disable Metrics/ParameterLists -- one flat fixture-row builder, every
   # parameter maps straight to a column this spec's examples need to control.
   def seed_clause(
-    external_id:, text:, document_id: "doc-1", mood: "declarative",
+    external_id:, text:, section_id: "doc-1", mood: "declarative",
     process_type: "material", source_type: "unspecified",
     modality_weight: 0.5, annotation_source: "llm"
   )
     db[:clauses].insert(
-      external_id:, text:, document_id:, sentence_index: 0, root_index: 0, source_type:
+      external_id:, text:, section_id:, sentence_index: 0, root_index: 0, source_type:
     )
     db[:ideational_payloads].insert(clause_id: external_id, process_type:)
     db[:interpersonal_payloads].insert(clause_id: external_id, mood:, modality_weight:, annotation_source:)

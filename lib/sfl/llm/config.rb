@@ -20,6 +20,14 @@ module SFL
       def for(task)
         tasks.fetch(task) { raise Error, "no model/provider configured for task #{task.inspect}" }
       end
+
+      # @return [Hash{String => Hash}] the run header's models: task =>
+      #   `{provider:, model:, source:}`, with string keys as stored in JSON
+      def header
+        tasks.to_h do |task, config|
+          [task.to_s, { "provider" => config.provider&.to_s, "model" => config.model, "source" => config.source.to_s }]
+        end
+      end
     end
   end
 end

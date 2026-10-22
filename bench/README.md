@@ -10,7 +10,7 @@ the harness that makes that claim checkable.
   around a `sfl-analyze` CLI invocation), emits a YAML record to `results/`. Must be run from
   *inside* the repo being benchmarked — see the file's header comment for why (asdf per-directory
   Ruby version resolution doesn't survive a cross-directory subprocess spawn in this environment).
-- `store_bench.rb` — not yet implemented. `replace_document` with 500 clauses, benchmark-ips,
+- `store_bench.rb` — not yet implemented. `replace_section` with 500 clauses, benchmark-ips,
   old per-clause-transaction loop vs `multi_insert` (Phase 2).
 - `retrieval_bench.rb` — not yet implemented. Seeded pg with a large clause set; filtered vs
   unfiltered retrieve (Phase 2).

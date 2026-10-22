@@ -1,25 +1,13 @@
 # frozen_string_literal: true
 
-require "dotenv"
-
+# Settings for the Roda app. Values come from SFL::Boot, the only code that
+# reads ENV (see SFL::Boot.web_settings and SFL::Boot.rack_environment).
 module Config
   class << self
-    def get
-      Dotenv.load if not_production?
-
-      @config ||= {
-        secret: ENV["SESSION_SECRET"] || 'DEV-ONLY-8<FQF8HiF)>l0hbPk£vBQ#IrYsoO}14k\l+-/gIU[j}l0hbPk£vBQ#IrY',
-        environment:,
-        db: {
-          url: ENV["DATABASE_URL"] || (not_production? ? "postgres://user:password@localhost:5432/app_#{environment}" : nil),
-        },
-      }
-    end
+    def get = @config ||= SFL::Boot.web_settings
 
     def not_production? = environment != "production"
 
-    def environment
-      ENV["RACK_ENV"] || "development"
-    end
+    def environment = SFL::Boot.rack_environment
   end
 end

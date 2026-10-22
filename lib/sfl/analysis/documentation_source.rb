@@ -109,7 +109,7 @@ module SFL
           unit_label: "Section",
           actor_label: "Section",
           actors_list_label: "Headings",
-          id_label: "document_id",
+          id_label: "document_key",
           clause_count: total_clauses,
           low_confidence: total_clauses < MIN_CLAUSE_THRESHOLD,
           low_confidence_threshold: MIN_CLAUSE_THRESHOLD,

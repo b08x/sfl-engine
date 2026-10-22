@@ -6,7 +6,7 @@ RSpec.describe "unknown classification metadata" do
   let(:clause) do
     SFL::Core::Types::SyntacticClause.new(
       id: "c-unknown", text: "Unknown.", tokens: [], root_index: 0,
-      sentence_index: 0, document_id: "doc-1"
+      sentence_index: 0, section_id: "doc-1"
     )
   end
   let(:ideational) do

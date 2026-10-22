@@ -7,7 +7,7 @@ RSpec.describe SFL::Analysis::CitationGroundingChecker do
 
   let(:clause) do
     build_annotated_clause(
-      id: "c1", document_id: "doc-1",
+      id: "c1", section_id: "doc-1",
       text: "The system processes structured linguistic annotations."
     )
   end

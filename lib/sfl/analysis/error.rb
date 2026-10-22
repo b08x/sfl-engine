@@ -5,7 +5,7 @@ module SFL
     # Raised when Analysis::Engine can't proceed — currently only when a
     # Pipeline#compile call itself returns Failure (a Pass 1 failure the
     # pipeline already logged; Engine has nothing useful to add beyond
-    # surfacing it with the document_id that failed).
+    # surfacing it with the section_id that failed).
     class Error < SFL::Error; end
   end
 end

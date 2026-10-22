@@ -27,25 +27,37 @@ module SFL
       # a constant, tune later (design doc's Open Questions).
       CONFIDENCE_THRESHOLD = 0.6
 
-      # (two dispatch targets, the classifier, the drafter, the review repo) plus logger,
-      # matching this codebase's existing per-class DI convention (see LLM::Engine#initialize).
+      # Failures #process records against one file instead of ending the run.
+      FILE_ERRORS = [Analysis::Error, Core::Loaders::Error, Core::Ports::SectionRegistry::ConflictError, Store::Error, SystemCallError].freeze
+
+      # rubocop:disable Metrics/ParameterLists -- five collaborators (two dispatch targets, the
+      # classifier, the drafter, the review repo) plus logger, matching this codebase's per-class
+      # DI convention (see LLM::Engine#initialize), plus store:, forwarded to every dispatch so a
+      # stored ingest persists clauses and records documents and sections through the pipeline's
+      # SectionRegistry.
       def initialize(
         conversation_engine:, kb_source:, classifier:, loader_drafter:, review_repo:,
-        logger: Core::Ports::Null::Logger.new
+        logger: Core::Ports::Null::Logger.new, store: false
       )
+        # rubocop:enable Metrics/ParameterLists
         @conversation_engine = conversation_engine
         @kb_source = kb_source
         @classifier = classifier
         @loader_drafter = loader_drafter
         @review_repo = review_repo
         @logger = logger
+        @store = store
       end
 
+      # The path is expanded to an absolute path here, once, because each file's path_hint is
+      # its document_key and the seed of its section ids: `notes`, `./notes` and the absolute
+      # path must name the same document, or a re-ingest duplicates every clause (fact 17).
+      #
       # @param path [String] a single file, or a directory walked recursively
       # @return [Hash{dispatched:, review_entries:, drafted:}]
       def run(path)
         counts = { dispatched: 0, review_entries: 0, drafted: 0 }
-        corpus = Core::Ports::Adapters::FilesystemCorpusSource.new(path)
+        corpus = Core::Ports::Adapters::FilesystemCorpusSource.new(File.expand_path(path))
         corpus.each_ref do |ref|
           process(ref.path_hint, counts)
         end
@@ -68,7 +80,7 @@ module SFL
 
         classification = classify(file)
         dispatch_or_review(file, classification, counts)
-      rescue Analysis::Error, Core::Loaders::Error, Store::Error, SystemCallError => e
+      rescue *FILE_ERRORS => e
         logger.error("ingest failed", file:, error_class: e.class, error_message: e.message)
         review_repo.enqueue(path: file, status: "draft_failed", reasoning: "Dispatch failed: #{e.message}")
         counts[:review_entries] += 1
@@ -112,7 +124,7 @@ module SFL
         case classification[:mode]
         when "conversation" then dispatch_conversation(ref, classification)
         when "documentation" then dispatch_documentation(ref)
-        when "knowledge_base" then kb_source.analyze(ref)
+        when "knowledge_base" then kb_source.analyze(ref, store: @store)
         end
       end
 
@@ -120,11 +132,11 @@ module SFL
         source = Analysis::ConversationSource.new(
           ref, source_type: classification[:source_type] || classification[:format]
         )
-        conversation_engine.analyze(source, label: ref.name)
+        conversation_engine.analyze(source, label: ref.name, store: @store)
       end
 
       private def dispatch_documentation(ref)
-        conversation_engine.analyze(Analysis::DocumentationSource.new(single_ref: ref), label: ref.name)
+        conversation_engine.analyze(Analysis::DocumentationSource.new(single_ref: ref), label: ref.name, store: @store)
       end
 
       private def label_for(file) = File.basename(file, ".*")

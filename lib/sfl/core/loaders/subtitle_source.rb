@@ -36,7 +36,7 @@ module SFL
         # @param file_id [String, nil]
         def initialize(ref, file_id: nil)
           @ref = ref
-          @file_id = file_id || ref.name
+          @file_id = file_id || FileId.call(ref)
         end
 
         def each_unit(&)
@@ -61,10 +61,12 @@ module SFL
 
         private def build_unit(turn, index)
           Types::Unit.new(
-            document_id: "#{@file_id}#turn-#{index}",
+            section_id: "#{@file_id}#turn-#{index}",
             text: turn[:mes],
             speaker: turn[:name],
             is_user: turn[:is_user],
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             sent_at: turn[:send_date] ? Time.parse(turn[:send_date]) : nil,
             metadata: { "file_id" => @file_id }
           )

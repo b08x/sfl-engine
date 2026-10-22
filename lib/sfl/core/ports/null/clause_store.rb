@@ -8,11 +8,11 @@ module SFL
         class ClauseStore
           include Ports::ClauseStore
 
-          def replace_document(_document_id, _clauses)
+          def replace_section(_section_id, _clauses)
             nil
           end
 
-          def find_by_document(_document_id)
+          def find_by_section(_section_id)
             []
           end
         end

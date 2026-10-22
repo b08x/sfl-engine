@@ -18,7 +18,7 @@ RSpec.describe SFL::Analysis::Engine do
   # spec/support/fake_analysis_source.rb.
 
   def build_unit(id, text: "hello", speaker: "Alice")
-    SFL::Core::Types::Unit.new(document_id: id, text:, speaker:, is_user: nil, sent_at: nil, metadata: {})
+    SFL::Core::Types::Unit.new(section_id: id, text:, speaker:, is_user: nil, sent_at: nil, metadata: {})
   end
 
   let(:pipeline) { instance_double(SFL::Core::Pipeline) }
@@ -301,7 +301,7 @@ RSpec.describe SFL::Analysis::Engine do
       expect(review_queue_repo).not_to have_received(:enqueue)
     end
 
-    it "calls review_queue_repo.enqueue with document_id/source_file plus the merged entry when store: true" do
+    it "calls review_queue_repo.enqueue with section_id/source_file plus the merged entry when store: true" do
       allow(review_queue_repo).to receive(:enqueue)
       engine = described_class.new(pipeline:, review_queue_repo:)
       entry = { modality: "audio", reason: "audio_transcript", generated_text: "hello", source_type: "chat_native" }
@@ -309,7 +309,7 @@ RSpec.describe SFL::Analysis::Engine do
 
       engine.analyze(source, label: "x", store: true)
 
-      expect(review_queue_repo).to have_received(:enqueue).with(document_id: "doc-1", source_file: "doc-1", **entry)
+      expect(review_queue_repo).to have_received(:enqueue).with(section_id: "doc-1", source_file: "doc-1", **entry)
     end
   end
 
@@ -472,6 +472,15 @@ RSpec.describe SFL::Analysis::Engine do
       engine.analyze(FakeAnalysisSource.new([build_unit("d1")]), label: "x")
 
       expect(events).to eq(%i[compiled progress])
+    end
+
+    it "passes each unit to Pipeline#compile so the section registry can record it" do
+      unit = build_unit("d1")
+      allow(pipeline).to receive(:compile).and_return(Success([]))
+
+      described_class.new(pipeline:, progress_writer: -> (_line) {}).analyze(FakeAnalysisSource.new([unit]), label: "x")
+
+      expect(pipeline).to have_received(:compile).with(unit.text, hash_including(section_id: "d1", unit:))
     end
 
     it "defaults to stderr and never touches the injected logger" do

@@ -11,7 +11,7 @@ module SFL
         attribute :groups, Types::Array.of(SyntacticGroup).default([].freeze)
         attribute :root_index, Types::Integer
         attribute :sentence_index, Types::Integer
-        attribute :document_id, Types::String.optional
+        attribute :section_id, Types::String.optional
         # AnnotatedClause#id of the clause this one is a child chunk of, or
         # nil for a root/top-level clause (self-referential FK on `clauses`,
         # db/migrations/011_add_parent_clause_id_to_clauses.rb).

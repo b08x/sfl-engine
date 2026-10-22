@@ -29,7 +29,7 @@ module SFL
         @db = db
       end
 
-      # @param document_id [String] stable id; target for a caller's own
+      # @param section_id [String] stable id; target for a caller's own
       #   clause-store replace on edit/reject
       # @param modality [String] "image" | "text" | "audio"
       # @param source_file [String]
@@ -47,10 +47,10 @@ module SFL
       # @return [String] the new row's id
       # rubocop:disable Metrics/ParameterLists -- mirrors legacy's #enqueue signature exactly;
       # six independent scalar fields on an insert-only row, no natural grouping to extract.
-      def enqueue(document_id:, modality:, source_file:, generated_text:, reason:, source_type: nil, content_type: nil)
+      def enqueue(section_id:, modality:, source_file:, generated_text:, reason:, source_type: nil, content_type: nil)
         id = SecureRandom.uuid
         @db[:review_queue].insert(
-          id:, modality: modality.to_s, document_id: document_id.to_s, source_file: source_file.to_s,
+          id:, modality: modality.to_s, section_id: section_id.to_s, source_file: source_file.to_s,
           content_type: content_type&.to_s, source_type: source_type&.to_s,
           generated_text: generated_text.to_s, reason: reason.to_s, status: "pending", created_at: Time.now
         )

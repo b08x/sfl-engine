@@ -5,9 +5,9 @@ require "time"
 
 module SFL
   module Store
-    # Postgres-backed ClauseStore. `#replace_document` is the pipeline's
+    # Postgres-backed ClauseStore. `#replace_section` is the pipeline's
     # single write entry point: one transaction deletes every existing
-    # `clauses` row for the document and bulk-inserts the new set (F7 —
+    # `clauses` row for the section and bulk-inserts the new set (F7 —
     # idempotency lives in the interface, not in caller discipline the way
     # legacy's separate `ClauseRepository#delete_by_document` method
     # required). Deleting only from `clauses` and trusting the
@@ -21,7 +21,7 @@ module SFL
     # `clause_id`). SyntacticClause#id, IdeationalPayload#clause_id, and
     # InterpersonalPayload#clause_id are all distinct uuids upstream (see
     # Pipeline#build_annotated_clause), but #store never records them —
-    # #find_by_document's reconstructed clauses have all three collapsed to
+    # #find_by_section's reconstructed clauses have all three collapsed to
     # the outer AnnotatedClause#id. This is a pre-existing, accepted lossy
     # round trip (documented, not accidental).
     # rubocop:disable Metrics/ClassLength -- one storage adapter with one small,
@@ -36,12 +36,12 @@ module SFL
         @db = db
       end
 
-      # @param document_id [String]
+      # @param section_id [String]
       # @param clauses [Array<Core::Types::AnnotatedClause>]
       # @return [void]
-      def replace_document(document_id, clauses)
+      def replace_section(section_id, clauses)
         @db.transaction do
-          @db[:clauses].where(document_id:).delete
+          @db[:clauses].where(section_id:).delete
           insert_all(clauses)
         end
         nil
@@ -50,8 +50,8 @@ module SFL
       # Updates only the interpersonal payload for one already-stored clause
       # — the single-clause re-annotation write path (human-in-the-loop
       # "re_annotated" review decision re-runs Pass 2 only, not the whole
-      # document through Pipeline#compile). Deliberately narrower than
-      # #replace_document: this never touches the clauses/ideational_payloads
+      # section through Pipeline#compile). Deliberately narrower than
+      # #replace_section: this never touches the clauses/ideational_payloads
       # rows, so syntactic structure and process_type/participants survive
       # untouched.
       #
@@ -63,11 +63,11 @@ module SFL
         nil
       end
 
-      # @param document_id [String]
+      # @param section_id [String]
       # @return [Array<Core::Types::AnnotatedClause>]
-      def find_by_document(document_id)
+      def find_by_section(section_id)
         rows = @db[:clauses]
-          .where(document_id:)
+          .where(section_id:)
           .order(:sentence_index, :id)
           .all
 
@@ -106,12 +106,12 @@ module SFL
 
       # Corpus-Browser-style filtered, paginated listing across the full
       # clauses/ideational_payloads/interpersonal_payloads join — the API's
-      # GET /clauses (v1's ClauseRepository#find_all). `document_id` and
+      # GET /clauses (v1's ClauseRepository#find_all). `section_id` and
       # `annotation_source` aren't RetrievalFilters attributes (that struct
       # is scoped to Ports::Retriever#retrieve's scalar-stance filters), so
       # they're applied directly rather than routed through ClauseFilters.
       #
-      # @param document_id [String, nil]
+      # @param section_id [String, nil]
       # @param annotation_source [String, nil]
       # @param filters [Core::Types::RetrievalFilters] mood/process_type/source_type/
       #   min_modality/max_modality/min_tenor/max_tenor
@@ -119,11 +119,11 @@ module SFL
       # @param offset [Integer]
       # @return [Hash] :clauses (Array<AnnotatedClause>), :total (Integer)
       # apply-filters/count/paginate/reconstruct sequence.
-      def find_all(document_id: nil, annotation_source: nil, filters: Core::Types::RetrievalFilters.new,
+      def find_all(section_id: nil, annotation_source: nil, filters: Core::Types::RetrievalFilters.new,
         limit: 50, offset: 0
       )
         scope = joined_scope
-        scope = scope.where(Sequel[:clauses][:document_id] => document_id) if document_id
+        scope = scope.where(Sequel[:clauses][:section_id] => section_id) if section_id
         if annotation_source
           scope = scope.where(Sequel[:interpersonal_payloads][:annotation_source] => annotation_source)
         end
@@ -164,7 +164,7 @@ module SFL
         {
           external_id: clause.id,
           text: clause.text,
-          document_id: clause.document_id,
+          section_id: clause.section_id,
           sentence_index: clause.syntactic.sentence_index,
           root_index: clause.syntactic.root_index,
           tokens: Sequel.pg_jsonb(clause.syntactic.tokens.map(&:to_h)),
@@ -253,7 +253,7 @@ module SFL
           syntactic: reconstruct_syntactic(row),
           ideational: reconstruct_ideational(ideational, row[:external_id]),
           interpersonal: reconstruct_interpersonal(interpersonal, row[:external_id]),
-          document_id: row[:document_id],
+          section_id: row[:section_id],
           compiled_at: row[:created_at]
         )
       end
@@ -265,7 +265,7 @@ module SFL
           groups: Array(row[:groups]).map { |g| reconstruct_group(g) },
           root_index: row[:root_index],
           sentence_index: row[:sentence_index],
-          document_id: row[:document_id],
+          section_id: row[:section_id],
           parent_clause_id: row[:parent_clause_id],
           readability: reconstruct_readability(row)
         )

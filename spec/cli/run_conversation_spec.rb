@@ -12,7 +12,8 @@ require "dspy"
 RSpec.describe SFL::CLI do
   let(:boot_result) do
     SFL::Boot::Result.new(
-      db: instance_double(Sequel::Database), llm_config: instance_double(SFL::LLM::Config),
+      db: instance_double(Sequel::Database),
+      llm_config: instance_double(SFL::LLM::Config, header: { "pass_two_annotation" => { "provider" => "openrouter", "model" => "m", "source" => "db" } }),
       lm_factory: instance_double(SFL::LLM::LMFactory), embedder: instance_double(SFL::LLM::Embedder),
       pass1_command: nil, spacy_model: "en_core_web_sm"
     )
@@ -71,6 +72,31 @@ RSpec.describe SFL::CLI do
   end
 
   describe ".run_conversation" do
+    it "writes a stored annotation run to the runs table and finishes it (fact 21)" do
+      run_log = SFL::Core::Ports::Fake::RunLog.new
+      allow(SFL::Store::PgRunRepository).to receive(:new).with(boot_result.db).and_return(run_log)
+      allow(SFL::Boot).to receive(:run_id).and_return("run-3")
+      allow(Thread).to receive(:new).and_return(instance_double(Thread, kill: nil))
+      allow(engine).to receive(:analyze).and_return(result_with("llm"))
+
+      described_class.run_conversation("a.jsonl", options.merge(store: true, collection: "chats"))
+
+      expect(run_log.rows["run-3"]).to include(kind: "annotate", collection: "chats", status: "finished")
+    end
+
+    it "records the effective model per task in the run header (fact 65)" do
+      run_log = SFL::Core::Ports::Fake::RunLog.new
+      allow(SFL::Store::PgRunRepository).to receive(:new).with(boot_result.db).and_return(run_log)
+      allow(SFL::Boot).to receive(:run_id).and_return("run-4")
+      allow(Thread).to receive(:new).and_return(instance_double(Thread, kill: nil))
+      allow(engine).to receive(:analyze).and_return(result_with("llm"))
+
+      described_class.run_conversation("a.jsonl", options.merge(store: true, collection: "chats"))
+
+      expect(run_log.rows["run-4"][:models])
+        .to eq("pass_two_annotation" => { "provider" => "openrouter", "model" => "m", "source" => "db" })
+    end
+
     it "returns 0 when every clause carries a trusted annotation" do
       allow(engine).to receive(:analyze).and_return(result_with("llm", "llm"))
 
@@ -105,6 +131,26 @@ RSpec.describe SFL::CLI do
 
       expect { expect(described_class.run_conversation("./dir", options)).to eq(1) }
         .to output(%r{1/2 conversations failed: a \(1 fallback clauses\)}).to_stderr
+    end
+
+    it "keeps going after a file that raises and names it in the failure summary" do
+      allow(described_class).to receive(:gather_conversation_files).and_return(
+        [
+          { path: "spec/fixtures/inputs/sample.jsonl", source_type: "chat_native", label: "a" },
+          { path: "spec/fixtures/inputs/sillytavern_group.jsonl", source_type: "chat_native", label: "b" },
+        ]
+      )
+      calls = 0
+      allow(engine).to receive(:analyze) do
+        calls += 1
+        raise SFL::Analysis::Error, "bad export" if calls == 1
+
+        result_with("llm")
+      end
+
+      expect { expect(described_class.run_conversation("./dir", options)).to eq(1) }
+        .to output(%r{\[ERROR\] a: bad export.*1/2 conversations failed: a}m).to_stderr
+      expect(engine).to have_received(:analyze).twice
     end
 
     it "does not fail a --pass1-only run, whose stub values are what the operator asked for" do

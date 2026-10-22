@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "document_id": "sample",
+    "document_key": "sample",
     "source_file": "spec/fixtures/docs/sample.md",
     "section_count": 3,
     "headings": [
@@ -12,7 +12,7 @@
     "unit_label": "Section",
     "actor_label": "Section",
     "actors_list_label": "Headings",
-    "id_label": "document_id",
+    "id_label": "document_key",
     "topics_enabled": true,
     "interrupted": false,
     "total": 3,

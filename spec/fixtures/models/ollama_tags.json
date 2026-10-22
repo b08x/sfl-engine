@@ -1,0 +1,28 @@
+{
+  "models": [
+    {
+      "name": "llama3.2:latest",
+      "model": "llama3.2:latest",
+      "modified_at": "2026-09-30T10:12:03.123456789-04:00",
+      "size": 2019393189,
+      "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "details": { "format": "gguf", "family": "llama", "parameter_size": "3.2B", "quantization_level": "Q4_K_M" }
+    },
+    {
+      "name": "embeddinggemma:latest",
+      "model": "embeddinggemma:latest",
+      "modified_at": "2026-09-28T08:00:00.000000000-04:00",
+      "size": 621875417,
+      "digest": "85462619ee721b466c5927c8a4cd4a1ac9e7fd1bf5e0f4e10b4bb0a0d4a4c7c1",
+      "details": { "format": "gguf", "family": "gemma3", "parameter_size": "307.58M", "quantization_level": "BF16" }
+    },
+    {
+      "name": "llava:7b",
+      "model": "llava:7b",
+      "modified_at": "2026-09-01T08:00:00.000000000-04:00",
+      "size": 4733363377,
+      "digest": "8dd30f6b0cb19f555f2c7a7ebda861449ea2cc76bf1f44e262931f45fc81d081",
+      "details": { "format": "gguf", "family": "llama", "parameter_size": "7B", "quantization_level": "Q4_0" }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": "upstage/solar-pro4",
+      "canonical_slug": "upstage/solar-pro4",
+      "name": "Upstage: Solar Pro 4",
+      "created": 1789000000,
+      "context_length": 65536,
+      "architecture": { "modality": "text->text", "input_modalities": ["text"], "output_modalities": ["text"], "tokenizer": "Other" },
+      "pricing": { "prompt": "0.00000015", "completion": "0.0000006" },
+      "top_provider": { "context_length": 65536, "max_completion_tokens": 8192, "is_moderated": false }
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "canonical_slug": "google/gemini-2.5-flash",
+      "name": "Google: Gemini 2.5 Flash",
+      "created": 1750000000,
+      "context_length": 1048576,
+      "architecture": { "modality": "text+image->text", "input_modalities": ["text", "image", "file"], "output_modalities": ["text"], "tokenizer": "Gemini" },
+      "pricing": { "prompt": "0.0000003", "completion": "0.0000025" },
+      "top_provider": { "context_length": 1048576, "max_completion_tokens": 65535, "is_moderated": false }
+    }
+  ]
+}

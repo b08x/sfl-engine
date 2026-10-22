@@ -6,7 +6,7 @@
 # clauses successfully got a real vector vs which didn't, and no way to
 # later ask "which clauses need to be (re-)embedded". `embedding_status`
 # closes that gap; `embedding_error` carries the failure reason when
-# status is "failed" (see PgEmbeddingStore#replace_document and
+# status is "failed" (see PgEmbeddingStore#replace_section and
 # EmbeddingRedriver).
 #
 # Every newly-inserted clause defaults to "pending" at the DB level — no

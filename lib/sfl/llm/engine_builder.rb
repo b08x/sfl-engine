@@ -8,7 +8,7 @@ module SFL
     class EngineBuilder
       def self.call(
         config:,
-        lm_factory: LMFactory.new(config:),
+        lm_factory:,
         breaker: Core::Ports::Null::Breaker.new,
         instrumenter: Core::Ports::Null::Instrumenter.new,
         logger: Core::Ports::Null::Logger.new

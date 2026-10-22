@@ -15,11 +15,8 @@ RSpec.describe SFL::Store::Database do
       end
     end
 
-    it "raises when no url is given and DATABASE_URL is unset" do
-      original = ENV.delete("DATABASE_URL")
-      expect { described_class.connect }.to raise_error(KeyError)
-    ensure
-      ENV["DATABASE_URL"] = original if original
+    it "requires the url; Boot resolves DATABASE_URL (fact 72)" do
+      expect { described_class.connect }.to raise_error(ArgumentError)
     end
   end
 

@@ -110,6 +110,14 @@ class Sfl < Roda
     )
   end
 
+  # @raise [ArgumentError] when params carry the pre-rename id key
+  def reject_legacy_id(params)
+    legacy = SFL::API::Server::LEGACY_ID_PARAM
+    return params unless params.key?(legacy)
+
+    raise ArgumentError, "#{legacy} is no longer accepted; send section_id instead"
+  end
+
   def presence(value)
     value.to_s.strip.empty? ? nil : value
   end

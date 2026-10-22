@@ -10,11 +10,11 @@ module SFL
       # annotation storage, even though both are usually written together
       # at the end of one pipeline run.
       module EmbeddingStore
-        # @param document_id [String]
+        # @param section_id [String]
         # @param embeddings_by_clause_id [Hash<String, Array<Float>>]
         # @return [void]
-        def replace_document(document_id, embeddings_by_clause_id)
-          raise NotImplementedError, "#{self.class} must implement #replace_document"
+        def replace_section(section_id, embeddings_by_clause_id)
+          raise NotImplementedError, "#{self.class} must implement #replace_section"
         end
       end
     end

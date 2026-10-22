@@ -7,7 +7,7 @@ module SFL
     module Ports
       # Writes to systemd-journald with one structured field per keyword, plus
       # CODE_FILE / CODE_LINE / CODE_FUNC taken from the calling frame, so
-      # `journalctl -o json` or `journalctl DOCUMENT_ID=doc-1` can filter on
+      # `journalctl -o json` or `journalctl SECTION_ID=doc-1` can filter on
       # state instead of parsing message text.
       class JournaldLogger
         include Ports::Logger

@@ -33,7 +33,7 @@ module SFL
           @ref = ref
           @path = ref.path_hint
           @chat = chat
-          @file_id = file_id || ref.name
+          @file_id = file_id || FileId.call(ref)
         end
 
         def each_unit
@@ -66,9 +66,11 @@ module SFL
         # is a distinct fact about the source image, not padding.
         private def build_unit(text, vision_failed)
           Types::Unit.new(
-            document_id: "#{@file_id}#image",
+            section_id: "#{@file_id}#image",
             text:,
             heading: "Image: #{File.basename(@path)}",
+            document_key: @ref.path_hint || @file_id,
+            source_path: @ref.path_hint,
             metadata: {
               "file_id" => @file_id,
               "content_type" => "image",

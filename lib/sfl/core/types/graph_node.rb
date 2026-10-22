@@ -10,7 +10,7 @@ module SFL
       class GraphNode < Dry::Struct
         attribute :id, Types::String
         attribute :parent_id, Types::String.optional.default(nil)
-        attribute :document_id, Types::String.optional.default(nil)
+        attribute :section_id, Types::String.optional.default(nil)
         attribute :text, Types::String
         attribute :mood, Types::MoodType.optional.default(nil)
         attribute :tenor, Types::TenorValue.optional.default(nil)

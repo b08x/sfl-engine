@@ -27,4 +27,11 @@ RSpec.configure do |config|
   config.order = :random
 
   Kernel.srand config.seed
+
+  # The CLI draws a full-screen dashboard when stdout and stderr are
+  # terminals, which they are when the suite runs in one. Specs that want
+  # the dashboard stub this back to true.
+  config.before do
+    allow(SFL::CLI).to receive(:terminal?).and_return(false) if defined?(SFL::CLI)
+  end
 end

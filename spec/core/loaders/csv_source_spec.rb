@@ -4,7 +4,7 @@ require "spec_helper"
 
 RSpec.describe SFL::Core::Loaders::CsvSource do
   subject(:source) do
-    described_class.new(file_ref(path), text_column: "text", speaker_column: "speaker", document_id_column: "id")
+    described_class.new(file_ref(path), text_column: "text", speaker_column: "speaker", section_id_column: "id")
   end
 
   let(:path) { "spec/fixtures/loaders/sample.csv" }
@@ -16,7 +16,7 @@ RSpec.describe SFL::Core::Loaders::CsvSource do
   it "yields one Unit per non-blank row" do
     units = source.units
 
-    expect(units.map(&:document_id)).to eq(%w[row-1 row-3])
+    expect(units.map(&:section_id)).to eq(%w[row-1 row-3])
     expect(units.map(&:speaker)).to eq(%w[Alice Carol])
   end
 
@@ -28,16 +28,16 @@ RSpec.describe SFL::Core::Loaders::CsvSource do
 
   it "includes blank rows when skip_empty is false" do
     units = described_class.new(
-      file_ref(path), text_column: "text", document_id_column: "id", skip_empty: false
+      file_ref(path), text_column: "text", section_id_column: "id", skip_empty: false
     ).units
 
-    expect(units.map(&:document_id)).to eq(%w[row-1 row-2 row-3])
+    expect(units.map(&:section_id)).to eq(%w[row-1 row-2 row-3])
   end
 
-  it "falls back to a file_id/row-index document_id when document_id_column is absent" do
+  it "falls back to a file_id/row-index section_id when section_id_column is absent" do
     units = described_class.new(file_ref(path), text_column: "text", file_id: "sample").units
 
-    expect(units.first.document_id).to eq("sample#row-0")
+    expect(units.first.section_id).to eq("sample#row-0")
   end
 
   it "carries the full row Hash in metadata" do

@@ -1,155 +1,127 @@
 # frozen_string_literal: true
 
-require "bubbletea"
-require "lipgloss"
-
 module SFL
   module TUI
-    # The root MVU model: owns tab state, routes Alt+1..4, and forwards every
-    # other message to the active workspace.
+    # The root of the TUI: tab container state, a pure update, and the
+    # frame layout (tab bar, active tab, status line, help line).
     #
-    # This is the ONLY Bubbletea::Model in the app, and it implements
-    # bubbletea-ruby's real arities — init/0, update/1, view/0. The AppContext
-    # is closed over, not passed in (docs/tui-implementation-plan.md §3/§4
-    # describe a context-passing variant of these methods; that is not the API
-    # the gem actually has, and building against it would fail at the first
-    # message).
-    #
-    # Every method returns a SINGLE Bubbletea::Command or nil — never an Array.
-    # Multiple commands combine through Bubbletea.batch/Bubbletea.sequence.
-    class Program
-      include Bubbletea::Model
+    # Tabs are modules answering one protocol (see Browse). Adding a tab is
+    # adding a module to TABS.
+    module Program
+      TABS = [Browse, Search, Runs, Models].freeze
+      QUIT_KEYS = %w[ctrl_c q].freeze
+      TAB_KEYS = TABS.each_index.to_h { |index| [(index + 1).to_s, index] }.freeze
+      LAUNCH_KEY = "i"
+      GLOBAL_HELP = "1-#{TABS.size} switch tab · i ingest · q quit".freeze
+      # The help line wraps onto a second row on narrow terminals.
+      HELP_ROWS = 2
 
-      WORKSPACE_CLASSES = [
-        Workspaces::QueryConsole,
-        Workspaces::ReviewQueue,
-        Workspaces::CorpusBrowser,
-        Workspaces::Board,
-      ].freeze
-
-      # Ctrl+C reaches the model ONLY as a KeyMessage — bubbletea-ruby installs
-      # no SIGINT handler. A model that does not map it to Bubbletea.quit stays
-      # alive with the terminal stranded in raw mode inside the alt screen, and
-      # the user's only recourse is another terminal. It is mapped
-      # unconditionally, before any workspace delegation, for that reason.
-      QUIT_KEYS = ["ctrl+c", "q"].freeze
-
-      TAB_KEYS = (1..(WORKSPACE_CLASSES.size)).to_h { |index| ["alt+#{index}", index - 1] }.freeze
-
-      attr_reader :context, :workspaces, :active_index, :error
-
-      def initialize(context:, workspaces: nil, active_index: 0, error: nil)
-        @context = context
-        @workspaces = workspaces || WORKSPACE_CLASSES.map(&:new)
-        @active_index = active_index
-        @error = error
+      # - `tabs`: one state per entry in TABS
+      # - `status`: the latest notice or failure, nil for none
+      # - `launcher`: the ingest launcher's Launcher::State while it is open
+      State = Data.define(:tabs, :active, :status, :error, :quit, :launcher) do
+        def active_tab = TABS.fetch(active)
+        def active_state = tabs.fetch(active)
       end
 
-      def init
-        initialized, commands = init_workspaces
-        [with(workspaces: initialized), batch(commands)]
-      end
+      extend self
 
-      def update(message)
+      def initial = State.new(tabs: TABS.map(&:initial), active: 0, status: nil, error: false, quit: false, launcher: nil)
+
+      # @return [Array<Proc>] each tab's first command
+      def init(services) = TABS.filter_map { |tab| tab.init(services) }
+
+      # @param message [Object] a Messages::* value
+      # @return [Array(State, Proc|nil)]
+      def update(state, message, services)
         case message
-        when Bubbletea::WindowSizeMessage then [resized(message), nil]
-        when Bubbletea::KeyMessage then handle_key(message)
-        when Messages::Failed then [with(error: message.to_s), nil]
-        else delegate(message)
+        when Messages::Key then key(state, message.key, services)
+        when Messages::Failed then [state.with(status: message.to_s, error: true), nil]
+        when Messages::Status then [state.with(status: message.text, error: false), nil]
+        when Messages::Exported then [state.with(status: "exported #{message.count} clauses to #{message.path}", error: false), nil]
+        when Messages::Launched then launched(state, message, services)
+        else route(state, message, services)
         end
       end
 
-      def view
-        Lipgloss.join_vertical(
-          Lipgloss::Position::LEFT,
-          clamp(tab_bar),
-          active_workspace.view(context),
-          clamp(status_bar)
-        )
+      def key(state, key, services)
+        return [state.with(quit: true), nil] if key == "ctrl_c"
+        return launcher_key(state, key, services) if state.launcher
+
+        return delegate(state, state.active, Messages::Key.new(key), services) if state.active_tab.capturing?(state.active_state)
+
+        global_key(state, key, services)
       end
 
-      def active_workspace = workspaces.fetch(active_index)
-
-      private def handle_key(message)
-        key = message.to_s
-        return [self, Bubbletea.quit] if QUIT_KEYS.include?(key)
+      # Keys the container claims when the active tab is not capturing text.
+      private def global_key(state, key, services)
+        return [state.with(quit: true), nil] if QUIT_KEYS.include?(key)
+        return [state.with(launcher: Launcher.open(collections(state))), nil] if key == LAUNCH_KEY
 
         index = TAB_KEYS[key]
-        return [switch_to(index), nil] if index
+        return [state.with(active: index), nil] if index
 
-        delegate(message)
+        delegate(state, state.active, Messages::Key.new(key), services)
       end
 
-      # Failure states are cleared on a tab switch: an error belongs to the
-      # pane that produced it, and carrying it across the whole chrome would
-      # make an unrelated workspace look broken.
-      private def switch_to(index)
-        return self if index == active_index
-
-        context.logger.debug("tui tab changed", tab: workspaces.fetch(index).title)
-        with(active_index: index, error: nil)
+      # While the launcher is open every key but ctrl_c belongs to it.
+      def launcher_key(state, key, services)
+        launcher, request = Launcher.update(state.launcher, key)
+        [state.with(launcher:), request && Launcher::Commands.start(services, request)]
       end
 
-      private def resized(message)
-        with(context: context.with_size(width: message.width, height: message.height))
+      # A detached ingest is followed on the Runs tab, which reloads now.
+      def launched(state, message, services)
+        state = state.with(status: message.text, error: false)
+        return [state, nil] unless message.detached
+
+        [state.with(active: TABS.index(Runs)), Runs.load(services)]
       end
 
-      private def delegate(message)
-        workspace, command = active_workspace.update(message, context)
-        replaced = workspaces.each_with_index.map { |existing, index| (index == active_index) ? workspace : existing }
-
-        [with(workspaces: replaced), command]
+      # @return [Array<String>] collection names Browse has loaded
+      def collections(state)
+        tree = state.tabs.fetch(TABS.index(Browse)).tree
+        tree.roots.map { |id| tree.node(id).label }
       end
 
-      private def init_workspaces
-        commands = []
-        initialized = workspaces.map do |workspace|
-          model, command = workspace.init(context)
-          commands << command if command
-          model
-        end
-        [initialized, commands]
+      # Results go to the tab that handles them; a Reviewed notice also
+      # reaches the status line.
+      def route(state, message, services)
+        index = TABS.index { |tab| tab.handles?(message) }
+        return [state, nil] unless index
+
+        state = state.with(status: message.text, error: false) if message.is_a?(Messages::Reviewed)
+        delegate(state, index, message, services)
       end
 
-      private def batch(commands)
-        case commands.size
-        when 0 then nil
-        when 1 then commands.first
-        else Bubbletea.batch(*commands)
-        end
+      def delegate(state, index, message, services)
+        tab_state, command = TABS.fetch(index).update(state.tabs.fetch(index), message, services)
+        tabs = state.tabs.dup.tap { |all| all[index] = tab_state }
+        [state.with(tabs:), command]
       end
 
-      private def tab_bar
-        Lipgloss.join_horizontal(
-          Lipgloss::Position::TOP,
-          *workspaces.each_with_index.map do |workspace, index|
-            Theme.tab("#{index + 1} #{workspace.title}", active: index == active_index)
-          end
-        )
+      # @return [String] every key the active tab and the container accept
+      def help(state)
+        return "#{Launcher::HELP} · ctrl_c quit" if state.launcher
+
+        "#{state.active_tab.help(state.active_state)} · #{GLOBAL_HELP}"
       end
 
-      private def status_bar
-        return Theme.error("error · #{error}") if error
+      # @return [String] the tab's own status, then the latest notice
+      def status_line(state) = [state.active_tab.status(state.active_state), state.status].compact.join(" | ")
 
-        Theme.status("alt+1..#{workspaces.size} switch workspace · q / ctrl+c quit")
-      end
-
-      # The chrome rows are the only part of the frame not built from Layout's
-      # arithmetic — four full tab labels are wider than a narrow terminal, and
-      # a tab bar that wraps pushes the whole body down a row and desyncs the
-      # renderer. Truncating is the lesser evil; the workspace panes below are
-      # already sized to fit exactly.
-      #
-      # max_height(1) is the structural half of that invariant, and it is here
-      # rather than at each caller on purpose: the status bar renders arbitrary
-      # failure detail, and one future caller that forgets to sanitise would
-      # otherwise silently reintroduce a wrapped chrome row. Messages::Failed
-      # collapses whitespace as well, so the clamp is a backstop, not the only
-      # line of defence.
-      private def clamp(line) = Lipgloss::Style.new.max_width(context.width).max_height(1).render(line)
-
-      private def with(context: @context, workspaces: @workspaces, active_index: @active_index, error: @error)
-        self.class.new(context:, workspaces:, active_index:, error:)
+      # @param frame [RatatuiRuby::Frame]
+      # @param tui [RatatuiRuby::TUI]
+      def render(state, frame, tui)
+        tabs_area, body, status_area, help_area = tui.layout_split(frame.area, direction: :vertical,
+          constraints: [tui.constraint_length(1), tui.constraint_fill(1), tui.constraint_length(1), tui.constraint_length(HELP_ROWS)])
+        titles = TABS.each_with_index.map { |tab, index| "#{index + 1} #{tab::TITLE}" }
+        frame.render_widget(tui.tabs(titles:, selected_index: state.active, highlight_style: tui.style(fg: :cyan, modifiers: [:bold])),
+          tabs_area)
+        state.active_tab.render(state.active_state, frame, body, tui)
+        Launcher::View.render(state.launcher, frame, body, tui) if state.launcher
+        frame.render_widget(tui.paragraph(text: status_line(state), style: tui.style(fg: state.error ? :red : :reset)), status_area)
+        frame.render_widget(tui.paragraph(text: help(state), wrap: true, style: tui.style(fg: :dark_gray)), help_area)
       end
     end
   end

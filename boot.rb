@@ -31,7 +31,7 @@ end
 # Initialize providers for the Roda application
 # These are defined in app/config/providers/ and provide the basic
 # infrastructure needed by the web app (database, logging, mail)
-SFL::DockerServices.ensure_running!
+SFL::DockerServices.ensure_running!(enabled: SFL::Boot.auto_start_docker?)
 Providers::DB::Conn.boot
 Providers::Mailer.boot
 Providers::Logger.boot
@@ -45,8 +45,8 @@ DB = Providers::DB::Conn.get
 sfl_boot = SFL::Boot.call(
   load_dotenv: false,
   require_db: false,
-  require_llm: ENV["SFL_SKIP_LLM_BOOT"] != "true",
-  require_tracing: ENV["SFL_ENABLE_TRACING"] == "true"
+  require_llm: !SFL::Boot.skip_llm_boot?,
+  require_tracing: SFL::Boot.tracing_enabled?
 )
 sfl_boot.db = DB
 Providers::Engine.boot(sfl_boot)

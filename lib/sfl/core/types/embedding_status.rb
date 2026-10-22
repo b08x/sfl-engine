@@ -8,7 +8,7 @@ module SFL
       # db/migrations/008_add_embedding_status_to_clauses.rb), "embedded" =
       # a real vector was successfully written to `embeddings`, "failed" =
       # an embed attempt returned no usable vector for this clause (see
-      # PgEmbeddingStore#replace_document and EmbeddingRedriver). Distinct
+      # PgEmbeddingStore#replace_section and EmbeddingRedriver). Distinct
       # from "no embeddings row" — every clause always has a status, so
       # "needs (re-)embedding" is a normal query (`status IN ('pending',
       # 'failed')`) instead of an absence check.

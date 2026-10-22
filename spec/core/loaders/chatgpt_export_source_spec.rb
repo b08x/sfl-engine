@@ -14,7 +14,7 @@ RSpec.describe SFL::Core::Loaders::ChatgptExportSource do
   it "walks the mapping tree into a chronological User/ChatGPT turn sequence, skipping the system turn" do
     units = source.units
 
-    expect(units.map(&:document_id)).to eq(%w[convo-1#turn-0 convo-1#turn-1])
+    expect(units.map(&:section_id)).to eq(%w[convo-1#turn-0 convo-1#turn-1])
     expect(units.map(&:speaker)).to eq(%w[User ChatGPT])
     expect(units.map(&:is_user)).to eq([true, false])
     expect(units.first.text).to eq("What is reciprocal rank fusion?")
@@ -30,5 +30,9 @@ RSpec.describe SFL::Core::Loaders::ChatgptExportSource do
     unit = source.units.first
 
     expect(unit.sent_at).to eq(Time.at(1_780_000_001))
+  end
+
+  it "keys each conversation's turns by the conversation id and the export file (fact 15)" do
+    expect(source.units.map { |u| [u.document_key, u.source_path] }.uniq).to eq([["convo-1", path]])
   end
 end

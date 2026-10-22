@@ -17,7 +17,8 @@ $LOAD_PATH.unshift(lib) if File.directory?(lib) && !$LOAD_PATH.include?(lib)
 
 $stdout.sync = true
 
-port = ENV.fetch("PORT", "3001")
-host = ENV.fetch("HOST", "0.0.0.0")
+require_relative "../lib/sfl"
+
+bind = SFL::Boot.api_bind
 exec "bundle", "exec", "falcon", "serve", "-c", "config.ru",
-  "-b", "http://#{host}:#{port}"
+  "-b", "http://#{bind[:host]}:#{bind[:port]}"

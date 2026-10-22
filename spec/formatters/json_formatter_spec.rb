@@ -68,14 +68,14 @@ RSpec.describe SFL::Formatters::JSONFormatter do
 
     it "renames metadata/profiles keys per unit_label/actor_label/id_label/actors_list_label" do
       doc_metadata = metadata.merge(
-        unit_label: "Section", actor_label: "heading", actors_list_label: "Headings", id_label: "document_id"
+        unit_label: "Section", actor_label: "heading", actors_list_label: "Headings", id_label: "section_id"
       )
       doc_result = build_analysis_result(metadata: doc_metadata, turns: [turn],
         speaker_profiles: { "Alice" => build_speaker_profile })
 
       doc_parsed = JSON.parse(described_class.new(doc_result).render, symbolize_names: true)
 
-      expect(doc_parsed[:metadata]).to include(document_id: "conv-1", section_count: 1, headings: ["Alice"])
+      expect(doc_parsed[:metadata]).to include(section_id: "conv-1", section_count: 1, headings: ["Alice"])
       expect(doc_parsed).to have_key(:heading_profiles)
       expect(doc_parsed).not_to have_key(:speaker_profiles)
     end

@@ -6,7 +6,7 @@ RSpec.describe SFL::Analysis::ContentTypeClassifier do
   subject(:classifier) { described_class.new }
 
   def build_section(text: "Some prose about the system.")
-    SFL::Core::Types::Unit.new(document_id: "doc#1", text:, metadata: {})
+    SFL::Core::Types::Unit.new(section_id: "doc#1", text:, metadata: {})
   end
 
   describe "#classify" do

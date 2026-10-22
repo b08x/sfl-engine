@@ -11,7 +11,7 @@ module SFL
         attribute :ideational, IdeationalPayload
         attribute :interpersonal, InterpersonalPayload
         attribute :textual, TextualPayload.optional.default(nil)
-        attribute :document_id, Types::String.optional
+        attribute :section_id, Types::String.optional
         attribute :compiled_at, Types::Time
         attribute :untrusted, Types::Bool.default(false)
       end

@@ -16,7 +16,7 @@ RSpec.describe SFL::Core::Ports::Loader do
 
     let(:unit) do
       SFL::Core::Types::Unit.new(
-        document_id: "doc-1", text: "Hello", heading: nil,
+        section_id: "doc-1", text: "Hello", heading: nil,
         metadata: {}, speaker: nil, sent_at: nil, is_user: nil
       )
     end

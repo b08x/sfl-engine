@@ -3,12 +3,12 @@
 require "spec_helper"
 
 RSpec.describe SFL::Core::Types::Unit do
-  it "requires document_id and text" do
-    expect { described_class.new(document_id: "doc-1", text: "hello") }.not_to raise_error
+  it "requires section_id and text" do
+    expect { described_class.new(section_id: "doc-1", text: "hello") }.not_to raise_error
   end
 
   it "defaults every turn/section-specific field so section-shaped and turn-shaped sources share one constructor" do
-    unit = described_class.new(document_id: "doc-1", text: "hello")
+    unit = described_class.new(section_id: "doc-1", text: "hello")
 
     expect(unit.heading).to be_nil
     expect(unit.speaker).to be_nil
@@ -18,7 +18,7 @@ RSpec.describe SFL::Core::Types::Unit do
   end
 
   it "accepts turn-shaped fields" do
-    unit = described_class.new(document_id: "doc-1", text: "hi", speaker: "Alice", is_user: true, sent_at: Time.now)
+    unit = described_class.new(section_id: "doc-1", text: "hi", speaker: "Alice", is_user: true, sent_at: Time.now)
 
     expect(unit.speaker).to eq("Alice")
     expect(unit.is_user).to be(true)

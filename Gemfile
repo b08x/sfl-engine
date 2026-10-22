@@ -158,45 +158,12 @@ gem "tty-spinner"
 gem "informers"
 
 # =============================================================================
-# GUI (Phase 6)
+# TUI
 # =============================================================================
-# lib/sfl/gui, exe/sfl-review: first desktop app, wraps Store::PgReviewQueueRepository.
-# Bundles libui (the `libui` gem) — no Java/Electron dependency, prerequisite-free
-# native windows.
+# lib/sfl/tui, exe/sfl-tui: the keyboard-driven terminal UI (Browse, Search,
+# Runs, Models tabs). ratatui_ruby wraps the Rust ratatui crate; the committed
+# Gemfile.lock and its sha256 CHECKSUMS block pin the exact version.
 
-# Native GUI framework
-gem "glimmer-dsl-libui"
-
-# fiddle dropped out of Ruby's default gems as of 4.0 (this app's pinned Ruby);
-# the `libui` gem's FFI layer requires "fiddle/import" unconditionally, so it must
-# be declared explicitly here or `require "glimmer-dsl-libui"` raises LoadError
-# under `bundle exec` (discovered running this task's spike).
-gem "fiddle"
-
-# =============================================================================
-# TUI (Phase 7)
-# =============================================================================
-# lib/sfl/tui, exe/sfl-tui: the keyboard-driven console over the
-# pipeline/retrieval/review-queue collaborators, per docs/tui-implementation-plan.md §1.
-# These are the charm-ruby ports (marcoroth/*-ruby) of Charm's Go libraries:
-# pre-1.0, single-maintainer, with no semver guarantee yet, so each constraint is
-# narrowed to the minor series this toolchain is installed and verified against
-# ("~> 0.1.4" admits 0.1.x, not 0.2.0) rather than a loose "~> 0.1" — a 0.2.x bump here
-# is a breaking-change risk, not a patch. The constraint is a floor on blast radius,
-# NOT the determinism mechanism: the committed Gemfile.lock plus its sha256 CHECKSUMS
-# block is what actually pins the exact versions every run resolves to. Verified
-# loading clean under Ruby 4.0.4 with the prebuilt native extensions (Phase 0 spike).
-# lipgloss/glamour ship prebuilt .so; bubbles is pure Ruby.
-
-# Elm-style MVU runtime
-gem "bubbletea" # Elm-style MVU runtime (Runner, Model, Message)
-
-# UI component libraries
-gem "bubbles" # List/Viewport/TextInput/Spinner sub-models
-gem "glamour" # markdown -> ANSI for the synthesis/detail panes
-gem "lipgloss" # pane styling + join_horizontal/join_vertical layout
-
-# Alternative TUI framework
 gem "ratatui_ruby"
 
 # =============================================================================

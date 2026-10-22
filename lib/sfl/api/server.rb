@@ -43,6 +43,8 @@ module SFL
       NUMERIC_CLAUSE_FILTERS = %w[min_modality max_modality min_tenor max_tenor].freeze
       REVIEW_DECISIONS = Core::Types::ReviewDecision.values.freeze
       REVIEW_QUEUE_DECISIONS = Core::Types::ReviewQueueDecision.values.freeze
+      # The pre-rename name of section_id. Requests that still send it get a 400.
+      LEGACY_ID_PARAM = "document_id"
 
       CORS_HEADERS = {
         "access-control-allow-methods" => "GET, POST, OPTIONS",
@@ -115,19 +117,19 @@ module SFL
       end
       # POST /pipeline/compile
       #
-      # Body: {text:, document_id:, store:, embed:}
+      # Body: {text:, section_id:, store:, embed:}
       # sequence; each line does exactly one of those four things.
       private def compile_pipeline(req)
-        body = parse_body(req)
+        body = reject_legacy_id(parse_body(req))
         text = body["text"]
         raise ArgumentError, "text is required" if text.nil? || text.to_s.strip.empty?
 
-        document_id = body["document_id"] || "api-#{SecureRandom.uuid}"
+        section_id = body["section_id"] || "api-#{SecureRandom.uuid}"
         store = body.fetch("store", false)
         embed = body.fetch("embed", false)
 
-        clauses = ctx.pipeline.compile(text, document_id:, store:, embed:, resume: false)
-          .value_or { |failure| raise "compile failed for #{document_id.inspect}: #{failure.inspect}" }
+        clauses = ctx.pipeline.compile(text, section_id:, store:, embed:, resume: false)
+          .value_or { |failure| raise "compile failed for #{section_id.inspect}: #{failure.inspect}" }
         json(200, clauses.map { |c| Core::Wire.dump(c) })
       end
       # POST /retrieve
@@ -162,16 +164,16 @@ module SFL
       end
       # GET /clauses
       #
-      # Query params: document_id, annotation_source, source_type, mood,
+      # Query params: section_id, annotation_source, source_type, mood,
       # process_type, min_modality, max_modality, min_tenor, max_tenor,
       # limit (default 50), offset (default 0).
       private def list_clauses(req)
-        p = req.params
+        p = reject_legacy_id(req.params)
         limit = [p.fetch("limit", 50).to_i, 1].max
         offset = [p.fetch("offset", 0).to_i, 0].max
 
         result = ctx.clause_store.find_all(
-          document_id: presence(p["document_id"]), annotation_source: presence(p["annotation_source"]),
+          section_id: presence(p["section_id"]), annotation_source: presence(p["annotation_source"]),
           filters: build_retrieval_filters(p.slice(*STRING_CLAUSE_FILTERS, *NUMERIC_CLAUSE_FILTERS)),
           limit:, offset:
         )
@@ -235,13 +237,13 @@ module SFL
       #
       # Body: {decision: "approve"|"edit"|"reject", edited_text?:, reviewer?:}
       #   approve -> synchronous: marks reviewed, storage untouched.
-      #   reject  -> synchronous: marks reviewed, clears the document's stored
-      #              clauses (Pipeline's own write path, replace_document with
+      #   reject  -> synchronous: marks reviewed, clears the section's stored
+      #              clauses (Pipeline's own write path, replace_section with
       #              an empty array, rather than a separate delete method --
       #              same "idempotency lives in the interface" contract
-      #              PgClauseStore#replace_document already documents).
+      #              PgClauseStore#replace_section already documents).
       #   edit    -> synchronous: Pipeline#compile(edited_text, ...) replaces
-      #              the document's clauses in one transaction (Pipeline's
+      #              the section's clauses in one transaction (Pipeline's
       #              own persist step already deletes-then-inserts -- no
       #              separate pre-delete needed here).
       # apply-decision/record/respond sequence.
@@ -271,11 +273,11 @@ module SFL
       private def apply_review_queue_decision(decision, row, edited_text)
         case decision
         when "reject"
-          ctx.clause_store.replace_document(row[:document_id], [])
+          ctx.clause_store.replace_section(row[:section_id], [])
           nil
         when "edit"
-          ctx.pipeline.compile(edited_text, document_id: row[:document_id], store: true, embed: true, resume: false)
-            .value_or { |failure| raise "recompile failed for #{row[:document_id].inspect}: #{failure.inspect}" }
+          ctx.pipeline.compile(edited_text, section_id: row[:section_id], store: true, embed: true, resume: false)
+            .value_or { |failure| raise "recompile failed for #{row[:section_id].inspect}: #{failure.inspect}" }
         end
       end
 
@@ -294,6 +296,14 @@ module SFL
           }.compact
         )
       end
+      # @return [Hash] params, unchanged
+      # @raise [ArgumentError] when params carry the pre-rename id key
+      private def reject_legacy_id(params)
+        return params unless params.key?(LEGACY_ID_PARAM)
+
+        raise ArgumentError, "#{LEGACY_ID_PARAM} is no longer accepted; send section_id instead"
+      end
+
       private def presence(value)
         value.to_s.strip.empty? ? nil : value
       end

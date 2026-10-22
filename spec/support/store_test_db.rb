@@ -48,7 +48,8 @@ module SFL
       def self.clean!
         db.run(<<~SQL)
           TRUNCATE clauses, ideational_payloads, interpersonal_payloads, embeddings,
-                   annotation_reviews, review_queue, ingest_review_entries
+                   annotation_reviews, review_queue, ingest_review_entries,
+                   collections, documents, sections, runs, models, task_models
           RESTART IDENTITY CASCADE
         SQL
       end

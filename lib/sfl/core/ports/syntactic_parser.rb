@@ -9,9 +9,9 @@ module SFL
       # that transport directly, and so tests can swap in Null/Fake.
       module SyntacticParser
         # @param text [String]
-        # @param document_id [String, nil]
+        # @param section_id [String, nil]
         # @return [Array<SFL::Core::Types::SyntacticClause>]
-        def parse(text, document_id: nil)
+        def parse(text, section_id: nil)
           raise NotImplementedError, "#{self.class} must implement #parse"
         end
       end

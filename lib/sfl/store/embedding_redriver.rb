@@ -8,29 +8,29 @@ module SFL
     # F11 fix, part two: re-drives embeddings for every clause whose
     # `embedding_status` is "pending" (never embedded) or "failed" (a
     # previous embed attempt returned no usable vector — see
-    # PgEmbeddingStore#replace_document). An operator-facing admin command
+    # PgEmbeddingStore#replace_section). An operator-facing admin command
     # (`rake embeddings:redrive`, see Rakefile), not a pipeline stage — it
     # has no Core::Ports contract of its own, the same "no current second
     # backend to swap" reasoning as PgAnnotationReviewRepository/
     # PgReviewQueueRepository.
     #
-    # Batches by document_id, not one clause at a time: embeddings are
-    # written per-document via EmbeddingStore#replace_document, and the
+    # Batches by section_id, not one clause at a time: embeddings are
+    # written per-section via EmbeddingStore#replace_section, and the
     # Embedder port is itself batch-oriented (#embed_batch).
     #
     # Data-loss guard (the concern this class's own card calls out):
-    # EmbeddingStore#replace_document deletes EVERY embeddings row for a
-    # document before re-inserting (its own F7 idempotency contract) — so
-    # re-driving only the gapped subset of a document and calling
-    # #replace_document with just that subset would silently delete the
+    # EmbeddingStore#replace_section deletes EVERY embeddings row for a
+    # section before re-inserting (its own F7 idempotency contract) — so
+    # re-driving only the gapped subset of a section and calling
+    # #replace_section with just that subset would silently delete the
     # already-good vectors of every other, already-embedded clause in the
-    # same document. #redrive_document avoids this by reading back the
-    # current vectors for that document's non-gapped clauses first and
+    # same section. #redrive_section avoids this by reading back the
+    # current vectors for that section's non-gapped clauses first and
     # merging them with the freshly re-driven ones before calling
-    # #replace_document — the full current embedding set for the document
+    # #replace_section — the full current embedding set for the section
     # goes in, not just the delta. A narrower "update these clause_ids
     # only" method on EmbeddingStore was considered and rejected: it would
-    # duplicate #replace_document's delete-scope logic in a second place
+    # duplicate #replace_section's delete-scope logic in a second place
     # for a benefit only this one admin command needs.
     class EmbeddingRedriver
       # @param db [Sequel::Database] read access to `clauses`/`embeddings`
@@ -49,37 +49,37 @@ module SFL
         @model = model
       end
 
-      # @return [Hash] { documents_processed:, redriven:, still_failed: }
+      # @return [Hash] { sections_processed:, redriven:, still_failed: }
       def call
-        results = gapped_document_ids.map { |document_id| redrive_document(document_id) }
+        results = gapped_section_ids.map { |section_id| redrive_section(section_id) }
 
         {
-          documents_processed: results.size,
+          sections_processed: results.size,
           redriven: results.sum { |r| r[:redriven] },
           still_failed: results.sum { |r| r[:still_failed] },
         }
       end
 
-      private def gapped_document_ids
+      private def gapped_section_ids
         @db[:clauses]
           .where(embedding_status: %w[pending failed])
-          .exclude(document_id: nil)
+          .exclude(section_id: nil)
           .distinct
-          .select_map(:document_id)
+          .select_map(:section_id)
       end
 
-      private def redrive_document(document_id)
-        gapped = gapped_clauses(document_id)
+      private def redrive_section(section_id)
+        gapped = gapped_clauses(section_id)
         return { redriven: 0, still_failed: 0 } if gapped.empty?
 
         new_by_clause_id = new_vectors_for(gapped)
-        write_merged(document_id, gapped, new_by_clause_id)
+        write_merged(section_id, gapped, new_by_clause_id)
         summarize(new_by_clause_id)
       end
 
-      private def gapped_clauses(document_id)
+      private def gapped_clauses(section_id)
         @db[:clauses]
-          .where(document_id:, embedding_status: %w[pending failed])
+          .where(section_id:, embedding_status: %w[pending failed])
           .select(:external_id, :text)
           .all
       end
@@ -89,10 +89,10 @@ module SFL
         gapped.zip(vectors).to_h { |clause, vector| [clause[:external_id], vector] }
       end
 
-      private def write_merged(document_id, gapped, new_by_clause_id)
+      private def write_merged(section_id, gapped, new_by_clause_id)
         gapped_ids = gapped.map { |c| c[:external_id] }
-        merged = existing_embeddings(document_id, gapped_ids).merge(new_by_clause_id)
-        @embedding_store.replace_document(document_id, merged)
+        merged = existing_embeddings(section_id, gapped_ids).merge(new_by_clause_id)
+        @embedding_store.replace_section(section_id, merged)
       end
 
       private def summarize(new_by_clause_id)
@@ -100,18 +100,18 @@ module SFL
         { redriven:, still_failed: new_by_clause_id.size - redriven }
       end
 
-      # Already-embedded clauses in this document that are NOT part of this
+      # Already-embedded clauses in this section that are NOT part of this
       # redrive batch — read back so the merge in #write_merged carries
-      # them, unchanged, into #replace_document's payload (see class
+      # them, unchanged, into #replace_section's payload (see class
       # comment's data-loss guard).
-      private def existing_embeddings(document_id, gapped_clause_ids)
-        rows_to_vectors(existing_embedding_rows(document_id, gapped_clause_ids))
+      private def existing_embeddings(section_id, gapped_clause_ids)
+        rows_to_vectors(existing_embedding_rows(section_id, gapped_clause_ids))
       end
 
-      private def existing_embedding_rows(document_id, gapped_clause_ids)
+      private def existing_embedding_rows(section_id, gapped_clause_ids)
         @db[:embeddings]
           .join(:clauses, external_id: :clause_id)
-          .where(Sequel[:clauses][:document_id] => document_id, Sequel[:embeddings][:model] => @model)
+          .where(Sequel[:clauses][:section_id] => section_id, Sequel[:embeddings][:model] => @model)
           .exclude(Sequel[:clauses][:external_id] => gapped_clause_ids)
           .select(Sequel[:embeddings][:clause_id], Sequel[:embeddings][:embedding])
           .all

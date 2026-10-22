@@ -7,7 +7,8 @@ module SFL
     # Builds a DSPy::LM for a given task name, resolving its
     # {provider, model, params} from an injected Config (track decision 8).
     class LMFactory
-      def initialize(config:, env: ENV)
+      # @param env [#[]] provider API keys, passed by Boot
+      def initialize(config:, env:)
         @config = config
         @env = env
       end

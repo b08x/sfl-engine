@@ -1,37 +1,63 @@
 # frozen_string_literal: true
 
-require "bubbletea"
-
 module SFL
   module TUI
-    # Custom messages the app injects into the MVU loop.
-    #
-    # Every one subclasses Bubbletea::Message and calls super() in its
-    # initializer — omitting super() leaves the base message's own state
-    # uninitialised and the runner drops the message silently.
+    # Messages fed to Program.update: key presses from the event loop, and
+    # the results commands return.
     module Messages
-      # The single failure channel. A command must NEVER raise: an exception on
-      # a background command thread is swallowed by the runner after smearing a
-      # backtrace across the frame, so collaborator failures are unwrapped from
-      # a Dry::Monads Failure into this message and rendered as an explicit
-      # error state instead.
-      class Failed < Bubbletea::Message
-        # Any run of whitespace — newlines included. An exception message from
-        # PG/Sequel routinely carries embedded newlines, and a multi-line
-        # status bar is a multi-row status bar: it pushes the workspace body
-        # down and desynchronises the renderer. Collapsing here keeps the
-        # detail readable; Program#clamp enforces the single row structurally.
+      # A key press, named the way RatatuiRuby::Event::Key#to_sym names it:
+      # "a", "A", " ", "enter", "esc", "up", "ctrl_c".
+      Key = Data.define(:key)
+
+      # A one-line notice for the status line.
+      Status = Data.define(:text)
+
+      # A review decision or recompile finished; Browse reloads after it.
+      Reviewed = Data.define(:text)
+
+      # Browse's tree and review state, freshly read from the BrowseSource.
+      BrowseLoaded = Data.define(:tree, :reviews)
+
+      # One section's clauses.
+      ClausesLoaded = Data.define(:section_id, :clauses)
+
+      # An export finished.
+      Exported = Data.define(:path, :count)
+
+      # Search results, each row a Hash with `collection:`, `document_key:`,
+      # `section:` and the RetrievalResult fields.
+      SearchResults = Data.define(:query, :rows)
+
+      # RunLog rows, newest first, each with a `state`.
+      RunsLoaded = Data.define(:rows)
+
+      # The Models tab's data: one row per task (Models::Rows.tasks), every
+      # listed model (ModelStore#list), and an optional notice from the
+      # assign or refresh that preceded the load.
+      ModelsLoaded = Data.define(:tasks, :models, :notice)
+
+      # An ingest started from the launcher: in a new kitty tab, or as a
+      # detached child (`detached: true`) whose run the Runs tab shows.
+      Launched = Data.define(:text, :detached)
+
+      # The event loop's clock: sent when a poll for input timed out, so
+      # tabs that poll (Runs) can refresh.
+      Tick = Data.define(:at)
+
+      # The single failure channel: a command that raised returns this, and
+      # the status line shows it.
+      class Failed
+        # Any run of whitespace, newlines included: the status line is one row.
         WHITESPACE = /\s+/
 
         attr_reader :source, :detail
 
-        # @param source [Symbol] which workspace or collaborator failed
+        # @param source [Symbol] which tab or collaborator failed
         # @param detail [String] operator-facing text; whitespace is collapsed
-        #   to a single line before it reaches the chrome
         def initialize(source, detail)
-          super()
           @source = source
           @detail = detail.to_s.gsub(WHITESPACE, " ").strip
+          freeze
         end
 
         def to_s = "#{source}: #{detail}"
