@@ -133,3 +133,82 @@ check; a failing step blocks the next.
     config:
     `grep -nE "ENV|Logger" lib/sfl/core/loaders/transcription_source.rb lib/sfl/core/loaders/image_meta_source.rb`
     Expected: no matches.
+
+## G. Loader-drafter quarantine and validation gates
+
+Applies to SFL::Ingest::LoaderDrafter
+(features/loader_draft_quarantine.feature,
+features/loader_draft_validation.feature,
+features/loader_draft_safety.feature): LLM candidate loader drafts
+must never again land in the Zeitwerk-eager-loaded
+lib/sfl/core/loaders/ tree, must pass syntax and naming gates before
+anything is written, and must stay human-reviewable.
+
+16. Confirm the drafter no longer names the loaded tree:
+    `grep -n "lib/sfl/core/loaders" lib/sfl/ingest/loader_drafter.rb`
+    Expected: no matches. The constructor takes `drafts_dir:`
+    (default `docs/ingest-review/candidates`), `docs_dir:` (default
+    `docs/ingest-review`) and an injectable `predictor:` seam, and no
+    kwarg points inside `lib/`. `SFL::Boot` and `.env.example` are
+    unchanged — the quarantine default needs no ENV knob.
+
+17. Run `bundle exec rspec spec/ingest/loader_drafter_spec.rb`.
+    Expected: the file exists (the AGENTS.md mirrored-spec rule for
+    lib/sfl/ingest/loader_drafter.rb) and passes with an injected
+    predictor double — no network, no LLM. Its examples cover the
+    quarantine destination (never lib/sfl/core/loaders), the three
+    gates (class-name pattern, RubyVM::AbstractSyntaxTree syntax
+    parse, declared `class <class_name>` under SFL::Core::Loaders),
+    the `<stem>-invalid.md` evidence doc with "INVALID — do not
+    promote", the raised error hierarchy, the idempotent identical
+    re-draft, the differing-draft DuplicateDraftError, and the
+    `{loader_path:, doc_path:}` return pair.
+
+18. Reproduce the incident shape, safely:
+    ```
+    mkdir -p docs/ingest-review/candidates
+    printf '```ruby\nclass Broken\n' > docs/ingest-review/candidates/qa_broken_draft.rb
+    bundle exec rake
+    ```
+    Expected: RSpec, RuboCop and the Zeitwerk check all pass — a
+    syntactically broken .rb inside the quarantine cannot break the
+    run. This only holds because `docs/ingest-review/candidates/` is
+    listed under `AllCops: Exclude:` in `.rubocop.yml` (RuboCop's
+    default includes inspect `docs/**/*.rb`; without the exclude this
+    step fails with a Lint/Syntax offense). Delete the probe file
+    afterwards.
+
+19. End-to-end draft of a real unrecognized file:
+    ```
+    bundle exec exe/sfl-analyze ingest <a file the classifier returns "unknown" for> --collection qa-drafts
+    ```
+    Expected: exit code 0; the file is queued with status
+    `loader_drafted`; a draft `.rb` exists under
+    `docs/ingest-review/candidates/` and nothing new exists under
+    `lib/sfl/core/loaders/`; `ruby -c` on the draft prints "Syntax
+    OK"; its review doc's Status section says "Not registered", names
+    the quarantine path, and gives the promotion recipe (`ruby -c`,
+    copy to `lib/sfl/core/loaders/`, mirrored spec, entry in
+    `SFL::Ingest::DeterministicRules`) — no automatic registration.
+
+20. Re-run step 19 on the same file.
+    Expected: either the same two paths come back with the existing
+    draft unmodified (byte-identical re-draft), or the file is
+    recorded `draft_failed` with a message naming the collision
+    (differing re-draft). In both cases the first draft and its doc
+    are untouched and `ls docs/ingest-review/candidates/` shows no
+    suffixed junk files.
+
+21. Attribution check for the step 19/20 runs: read the stderr log (or
+    `journalctl SFL_RUN_ID=<id>`).
+    Expected: every drafted and every failed file has its structured
+    line — `ingest run complete` counts, and for each failure a
+    `loader draft failed` line carrying `file:` and the gate named in
+    the error message, all tagged with the run's `SFL_RUN_ID`.
+
+22. Hygiene:
+    `bundle exec rubocop lib/sfl/ingest/loader_drafter.rb spec/ingest/loader_drafter_spec.rb`
+    and `grep -n "ENV" lib/sfl/ingest/loader_drafter.rb`.
+    Expected: no RuboCop offenses (frozen_string_literal first line)
+    and no ENV reads — configuration arrives as constructor
+    arguments, with `SFL::Boot` injecting the `lm` as today.

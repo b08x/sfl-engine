@@ -205,6 +205,26 @@ RSpec.describe SFL::Ingest::Orchestrator do
       expect(rows.map { |r| r[:status] }).to all(eq("draft_failed"))
     end
 
+    it "records draft_failed with the collision in the reasoning when the drafter " \
+      "raises DuplicateDraftError (the quarantined class name wins, nothing is overwritten)" do
+      path = write("dup.unknownext", "novel shape")
+      classifier_results[File.read(path)] = SFL::Core::Types::ClassificationResult.new(
+        format: "unknown", mode: nil, confidence: 0.1, reasoning: "no loader recognizes this shape"
+      )
+      collision = "loader draft for #{path} would overwrite an existing draft for " \
+        "SFL::Core::Loaders::GenericJsonlChatSource at " \
+        "docs/ingest-review/candidates/generic_jsonl_chat_source.rb; nothing was written"
+      allow(loader_drafter).to receive(:draft)
+        .and_raise(SFL::Ingest::LoaderDrafter::DuplicateDraftError, collision)
+
+      summary = orchestrator.run(tmpdir)
+
+      expect(summary[:drafted]).to eq(0)
+      expect(summary[:review_entries]).to eq(1)
+      row = review_repo.find(SFL::Store::StoreTestDb.db[:ingest_review_entries].first[:id])
+      expect(row).to include(status: "draft_failed", path:, reasoning: "Draft failed: #{collision}")
+    end
+
     it "skips a path whose review entry is already resolved on a rerun" do
       path = write("weird.unknownext", "totally novel shape")
       review_repo.enqueue(path:, status: "resolved", reasoning: "handled by hand")
