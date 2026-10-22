@@ -1,8 +1,6 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    addressable (2.9.0)
-      public_suffix (>= 2.0.2, < 8.0)
     algorithms (1.1.0)
     amatch (0.7.0)
       mize
@@ -126,7 +124,6 @@ GEM
     dspy-schema (1.0.2)
       sorbet-runtime (>= 0.5.0)
     erb (6.0.7)
-    event_stream_parser (1.0.0)
     excon (1.7.3)
       logger
     falcon (0.57.0)
@@ -163,11 +160,7 @@ GEM
       rake (~> 13.3)
     googleapis-common-protos-types (1.23.0)
       google-protobuf (~> 4.26)
-    hana (1.3.7)
     highline (3.0.1)
-    http-2 (1.3.0)
-    httpx (1.9.0)
-      http-2 (>= 1.2.0)
     ice_nine (0.11.2)
     image_processing (2.2.0)
     informers (1.3.0)
@@ -190,15 +183,7 @@ GEM
       journald-native (~> 1.0)
     journald-native (1.0.12)
     json (2.21.2)
-    json-schema (6.2.1)
-      addressable (~> 2.8)
-      bigdecimal (>= 3.1, < 5)
     json_canvas (0.1.0)
-    json_schemer (2.5.0)
-      bigdecimal
-      hana (~> 1.3)
-      regexp_parser (~> 2.0)
-      simpleidn (~> 0.2)
     jsonl (0.1.5)
     kramdown (2.5.2)
       rexml (>= 3.4.4)
@@ -223,9 +208,6 @@ GEM
       uri (>= 0.11.1)
     net-protocol (0.4.0)
       timeout
-    nexo_ai (0.12.0)
-      ruby_llm (~> 1.16)
-      zeitwerk (~> 2.6)
     nokogiri (1.19.4-x86_64-linux-gnu)
       racc (~> 1.4)
     observer (0.1.2)
@@ -305,7 +287,6 @@ GEM
     psych (5.5.0)
       date
       stringio
-    public_suffix (7.0.5)
     pycall (1.5.3)
       fiddle (>= 1.0.0)
     racc (1.8.1)
@@ -398,15 +379,15 @@ GEM
       fiddle
       pycall (>= 1.5.3, < 2.0)
       terminal-table (>= 3.0, < 5)
-    ruby_llm (1.16.0)
+    ruby_llm (2.1.1)
       base64
-      event_stream_parser (~> 1)
-      faraday (>= 1.10.0)
+      faraday (>= 1.10.0, != 2.0.0)
       faraday-multipart (>= 1)
       faraday-net_http (>= 1)
       faraday-retry (>= 1)
-      marcel (~> 1)
-      ruby_llm-schema (~> 0)
+      json (< 4)
+      marcel (>= 1.0, < 3)
+      schematist (~> 1.1)
       zeitwerk (~> 2)
     ruby_llm-docker (0.3.0)
       base64
@@ -414,12 +395,6 @@ GEM
       ruby_llm
       tool_forge
       zeitwerk
-    ruby_llm-mcp (1.0.1)
-      httpx (~> 1.4)
-      json-schema (>= 5.0, < 7)
-      json_schemer (~> 2.4)
-      ruby_llm (~> 1.9)
-      zeitwerk (~> 2)
     ruby_llm-schema (0.4.0)
     ruby_llm-template (0.1.6)
       ruby_llm (>= 1.0)
@@ -430,7 +405,6 @@ GEM
     sequel (5.109.0)
       bigdecimal
     simplecov (1.3.2)
-    simpleidn (0.3.0)
     solargraph (0.61.0)
       ast (~> 2.4.3)
       backport (~> 1.2)
@@ -567,7 +541,6 @@ DEPENDENCIES
   kreuzberg
   lingua
   memory_profiler
-  nexo_ai
   opentelemetry-exporter-otlp
   opentelemetry-sdk
   pg
@@ -593,7 +566,6 @@ DEPENDENCIES
   ruby-lsp
   ruby-spacy
   ruby_llm-docker
-  ruby_llm-mcp
   ruby_llm-template
   schematist
   sequel
@@ -614,7 +586,6 @@ DEPENDENCIES
   zeitwerk
 
 CHECKSUMS
-  addressable (2.9.0) sha256=7fdf6ac3660f7f4e867a0838be3f6cf722ace541dd97767fa42bc6cfa980c7af
   algorithms (1.1.0) sha256=a9f55e4670400e85e755ab9cd4026be431c3249c3d1858fd2f64ad87897d3fdf
   amatch (0.7.0) sha256=d503a09a3b73f96b3ecb14347dcb149830555771a23a9b24e1c4d9f39de03e2b
   anthropic (1.80.0) sha256=d02c7d532726c195b83de4d7355aaa0462b127f74f74d0b9540b3113356d0ea1
@@ -661,7 +632,6 @@ CHECKSUMS
   dspy-openai (1.0.3) sha256=441a76edb6e9d0d15ef196f1c778a16c362a44351dc1814b14569bb810d8ad45
   dspy-schema (1.0.2) sha256=d06918855b828c61868435534255468354c13f0eaf56d77b2b2696bd6dab2b0e
   erb (6.0.7) sha256=c5ca6dc25b0ef974a44dc8f59fe847577122483b1968a38dec305c60bf91ee92
-  event_stream_parser (1.0.0) sha256=a2683bab70126286f8184dc88f7968ffc4028f813161fb073ec90d171f7de3c8
   excon (1.7.3) sha256=ea13fabcab2b5f5bb64e2952a0ac018bf9882832fe7a58206630be18ba888fa9
   falcon (0.57.0) sha256=c9b060bc23a3b90a80376078aae037d8f48e0b2f12f5f30f360d4b29d7baf0f7
   faraday (2.14.4) sha256=9bb4408c44621b0dbaaaa39e5dbfc4dbe58cc6751b6eb94d16ae9e1f2f2fab6e
@@ -675,10 +645,7 @@ CHECKSUMS
   fiddle (1.1.8) sha256=7fa8ee3627271497f3add5503acdbc3f40b32f610fc1cf49634f083ef3f32eee
   google-protobuf (4.36.2-x86_64-linux-gnu) sha256=d25a820873e423f1d209ae8c672a4a28b019e2429debd0901d26670a0b4e14db
   googleapis-common-protos-types (1.23.0) sha256=992e740a523794d9fc5f29a504465d8fc737aaa16c930fe7228e3346860faf0a
-  hana (1.3.7) sha256=5425db42d651fea08859811c29d20446f16af196308162894db208cac5ce9b0d
   highline (3.0.1) sha256=ca18b218fd581b1fae832f89bfeaf2b34d3a93429c44fd4411042ffce286f009
-  http-2 (1.3.0) sha256=58fc8636c2b937b651853e9f6d9ada9fdaa8bf80b5a7d0333ce15653e5ca6ac1
-  httpx (1.9.0) sha256=ce6fb4bee1d23d311fb41414094f3423a0ad7b6ae68ea6d9619d1b6e411f18a9
   ice_nine (0.11.2) sha256=5d506a7d2723d5592dc121b9928e4931742730131f22a1a37649df1c1e2e63db
   image_processing (2.2.0) sha256=e0cb9892a4395ac2b7bb2fac5c6f5bc63361f2f18ed08773e21fce5b111c6974
   informers (1.3.0) sha256=7d8ea9f6c32ecd4519ccbf8b2d89e9ecfa7c7916700020926c21926d6506de83
@@ -692,9 +659,7 @@ CHECKSUMS
   journald-logger (3.1.0) sha256=6af69d285a75147ccc0911957897de1aae7f1f2f2929b07fa7624563b4232ec8
   journald-native (1.0.12) sha256=f38cd397623e4efad4afe83e48ec0e5cc13634329d5e056ea440bd72a1e6726f
   json (2.21.2) sha256=1f1d3b7cf2b3ba1a69beca0bb6db13d5438b80bff3cd54cdaaa620b9b07c1c6a
-  json-schema (6.2.1) sha256=c0bf6113d772348bfd159fb096950beeb1e1e25aaeea50b676bd45191d8dbdf3
   json_canvas (0.1.0) sha256=443aea00cbab785d1dea452a0f6396cfc49fa988c967b37f2e3b2326d96bcf05
-  json_schemer (2.5.0) sha256=2f01fb4cce721a4e08dd068fc2030cffd0702a7f333f1ea2be6e8991f00ae396
   jsonl (0.1.5) sha256=f52d30f2db6cea161d579adf630349f43f3938c4d3339c621fb4d34b2ce37f35
   kramdown (2.5.2) sha256=1ba542204c66b6f9111ff00dcc26075b95b220b07f2905d8261740c82f7f02fa
   kramdown-parser-gfm (1.1.0) sha256=fb39745516427d2988543bf01fc4cf0ab1149476382393e0e9c48592f6581729
@@ -712,7 +677,6 @@ CHECKSUMS
   multipart-post (2.4.1) sha256=9872d03a8e552020ca096adadbf5e3cb1cd1cdd6acd3c161136b8a5737cdb4a8
   net-http (0.10.0) sha256=1a2ff6e37a05724973c43f2bf7bf105f59c36a4cd0a7e9b1c021a0a566987c27
   net-protocol (0.4.0) sha256=f9f90c8c6f64794a45160bf422177a336db12809de3beeeaa26b88fcd2e8c853
-  nexo_ai (0.12.0) sha256=d4c598007dba2583983d8445a341e205bcfb64f2c84d39bbfd1e49c432c7f4b4
   nokogiri (1.19.4-x86_64-linux-gnu) sha256=379fae440b28915e3f19d752ce2dcf8465ed2b2fbefd2a7ca0dd497bc981a06a
   observer (0.1.2) sha256=d8a3107131ba661138d748e7be3dbafc0d82e732fffba9fccb3d7829880950ac
   onnxruntime (0.11.8-x86_64-linux) sha256=b75d5df9159babfa09c13b02bd0b46e775829f77fe2e6e68ca47cce4a0832363
@@ -746,7 +710,6 @@ CHECKSUMS
   pry (0.16.0) sha256=d76c69065698ed1f85e717bd33d7942c38a50868f6b0673c636192b3d1b6054e
   pry-byebug (3.12.0) sha256=594e094ae8a8390a7ad4c7b36ae36e13304ed02664c67417d108dc5f7213d1b7
   psych (5.5.0) sha256=4b245bbbd0f3238df8ccee766ebc1a6b062b10e4ee1d3284eb588739ba156a0a
-  public_suffix (7.0.5) sha256=1a8bb08f1bbea19228d3bed6e5ed908d1cb4f7c2726d18bd9cadf60bc676f623
   pycall (1.5.3) sha256=bb8c626c44ecc64508a73e6f7cd9b34e35a63daf25b332803b15e39919efe36d
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
   rack (3.2.7) sha256=93e13e1c24f93556671d85d2d79fa228c3485815c50d7e2f265b5330c6528fb7
@@ -781,16 +744,14 @@ CHECKSUMS
   ruby-lsp (0.26.11) sha256=4cc8f1587237ff8c9031680b5491df901a82559eeaa1ae96863ffe700b32583d
   ruby-progressbar (1.13.0) sha256=80fc9c47a9b640d6834e0dc7b3c94c9df37f08cb072b7761e4a71e22cff29b33
   ruby-spacy (0.7.0) sha256=05ac35576671370e49c6b556b3c43fd38fab63433c0c70b5ca07f6611ae69099
-  ruby_llm (1.16.0) sha256=26bd5310cf2ce55f74a60f8aae0b0d0327b586ff4532c84828103c3b2b905a18
+  ruby_llm (2.1.1) sha256=2a59a6c100d1f7a5c5df7f3c392392c4430220ed936a34fdd34dd15954cc3573
   ruby_llm-docker (0.3.0) sha256=b1cee68b2e2d1f97e8d91763ad142cbb1d3d0166637c2d5e09e76c18e953173e
-  ruby_llm-mcp (1.0.1) sha256=22121bfdea1874935debdd9cee0235d02473885ce8347cf745a323f0707fd248
   ruby_llm-schema (0.4.0) sha256=e930f5a5316f9301bff3fb7fe572e44727d05bb8e50621001bbb49a47d63b8da
   ruby_llm-template (0.1.6) sha256=163e1f195276df31596af1862a43cb4b7ed256e9fa7a7802690c728748c1702a
   samovar (2.5.1) sha256=8a9fc41eb8868084f0321eb41678c485cfbc7d282fb306c0be67c3284b1d2394
   schematist (1.1.0) sha256=905d8f0286830926e77e0d631bee325ee741c4b99640bc99735593b40ba73e7b
   sequel (5.109.0) sha256=e0d1d474442d620c8497d7f4851c0cc3a277920519051b8014b2877aa55efffe
   simplecov (1.3.2) sha256=2a22ec1759f1b8db60881a2e038758956fc69ef93ed669be0bde0678de6d0e85
-  simpleidn (0.3.0) sha256=12ca730bed2f3db04d11e9bfd1bca3e11fb37f55b21eb2e9793fb5814bf54d03
   solargraph (0.61.0) sha256=7fcc98d75bf5483b09ea07c86ba695486b9859c557574f7a6d26ec3009c9f138
   sorbet-baml (0.5.1) sha256=065091d055e28f80efeb0701f78fadb6edc476f3b940b0d0d1ab46fbb451b023
   sorbet-result (1.4.0) sha256=194eededbcb78cf04ee2db8bd3b19e76f305dc043062ed90c56b4b9eac268ccd

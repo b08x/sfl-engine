@@ -3,7 +3,7 @@
 module SFL
   module LLM
     module Catalogs
-      # The ruby_llm model registry after `RubyLLM.models.refresh!`. Ollama
+      # The ruby_llm model registry after `RubyLLM.models.refresh`. Ollama
       # and OpenRouter models are left out: OllamaCatalog and
       # OpenRouterCatalog list those providers from their own endpoints.
       class RubyLLMCatalog
@@ -12,14 +12,14 @@ module SFL
         EXCLUDED_PROVIDERS = [OllamaCatalog::PROVIDER, OpenRouterCatalog::PROVIDER].freeze
 
         # Refreshes the process-wide registry (remote providers only) and
-        # returns its RubyLLM::Model::Info entries.
+        # returns its RubyLLM::Model entries (ruby_llm 2.x).
         REFRESH = lambda do
           require "ruby_llm"
-          RubyLLM::Models.refresh!(remote_only: true)
+          RubyLLM::Models.refresh(remote_only: true)
           RubyLLM.models.all
         end
 
-        # @param registry [#call] -> Array<RubyLLM::Model::Info>
+        # @param registry [#call] -> Array<RubyLLM::Model>
         def initialize(registry: REFRESH)
           @registry = registry
         end
@@ -38,9 +38,10 @@ module SFL
         end
 
         private def capabilities(info)
-          base = (info.type == "embedding") ? ["embedding"] : []
-          base << "chat" if info.type == "chat"
-          base << "vision" if info.supports_vision?
+          type = info.type.to_s
+          base = (type == "embedding") ? ["embedding"] : []
+          base << "chat" if type == "chat"
+          base << "vision" if info.modalities.input.include?("image")
           (base + info.capabilities.map(&:to_s)).uniq
         end
       end

@@ -6,7 +6,7 @@ require "ruby_llm"
 # Fact 55: the ruby_llm registry, without the providers listed by their own catalogs.
 RSpec.describe SFL::LLM::Catalogs::RubyLLMCatalog do
   def info(id, provider, output: ["text"], input: ["text"], capabilities: [])
-    RubyLLM::Model::Info.new(id:, name: id.upcase, provider:, context_window: 1000, capabilities:,
+    RubyLLM::Model.new(id:, name: id.upcase, provider:, context_window: 1000, capabilities:,
       modalities: { input:, output: }, pricing: { text_tokens: { standard: { input_per_million: 1.5 } } })
   end
 
@@ -29,6 +29,15 @@ RSpec.describe SFL::LLM::Catalogs::RubyLLMCatalog do
     ])
     expect(entries.first).to have_attributes(name: "GPT-X", context_window: 1000)
     expect(entries.first.pricing).to include(:text_tokens)
+  end
+
+  it "refreshes the remote-only registry through the ruby_llm 2.x API by default" do
+    models = instance_double(RubyLLM::Models, all: registry)
+    allow(RubyLLM::Models).to receive(:refresh).with(remote_only: true).and_return(models)
+    allow(RubyLLM).to receive(:models).and_return(models)
+
+    expect(described_class.new.fetch.map(&:model_id)).to eq(%w[gpt-x embed-x])
+    expect(RubyLLM::Models).to have_received(:refresh).with(remote_only: true)
   end
 
   it "is authoritative for the providers it listed" do

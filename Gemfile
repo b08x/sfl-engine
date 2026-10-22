@@ -22,10 +22,9 @@ gem "zeitwerk"
 # just doesn't exist anymore in 3.x, so every jsonb-column read raises
 # `ArgumentError: unknown keyword: create_additions`. Un-pin once Sequel
 # ships a 3.x-compatible release.
-# gem "json", "~> 2.21"
 #
-#
-# Gem::ConflictError: Unable to activate ruby_llm-2.0.0, because json-3.0.2 conflicts with json (< 3)
+# ruby_llm 2.1.x requires json < 4, so this pin is compatible with it.
+# (ruby_llm 2.0.0 required json < 3 and conflicted with json 3.x.)
 gem "json", "~> 2.21"
 # Type system and data structures
 gem "dry-monads", "~> 1.6"
@@ -52,9 +51,7 @@ gem "dspy-o11y-langfuse"
 gem "dspy-openai"
 
 # Alternative/Extended LLM tooling
-gem "nexo_ai"
 gem "ruby_llm-docker"
-gem "ruby_llm-mcp"
 gem "ruby_llm-template"
 # =============================================================================
 # OBSERVABILITY & TRACING
