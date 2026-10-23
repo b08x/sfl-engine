@@ -8,6 +8,11 @@ check; a failing step blocks the next.
 
 ## A. Preflight (repo health)
 
+Steps 1-2 verify the cleanup after incident `4a53727` and describe the
+pre-quarantine world: drafts used to be written straight into
+`lib/sfl/core/loaders/`. Since the loader-draft quarantine they land in
+`docs/ingest-review/candidates/` instead; section G pins that behavior.
+
 1. Run `bundle exec rake`.
    Expected: RSpec, RuboCop and the Zeitwerk check all pass. In
    particular the Zeitwerk check fails before the change if the four
@@ -116,11 +121,15 @@ check; a failing step blocks the next.
 ## E. Documentation
 
 13. Run `grep -rn "Not registered" docs/ingest-review/`.
-    Expected: no matches. Each of the four docs' Status sections names
-    the final production class and file per
+    Expected: no matches in the four superseded docs. Each of the four
+    docs' Status sections names the final production class and file per
     `features/ingest_review_docs.feature`, records the resolved field
     mapping, and (for the three transcription docs) states the
     supersession by `TranscriptionSource`.
+    Matches in fresh candidate docs are expected, not a failure: the
+    loader drafter's review-doc template writes `**Not registered.**`
+    into every draft it produces (`lib/sfl/ingest/loader_drafter.rb`),
+    because a draft is never registered automatically.
 
 ## F. Hygiene
 
