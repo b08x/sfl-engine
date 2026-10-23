@@ -30,6 +30,7 @@ The two parts are stored separately. Retrieval can filter clauses by their inter
 ## Collections, documents, sections and runs
 
 - `sfl-analyze ingest <path> --collection NAME` stores clauses and records each document and section in collection NAME. The collection is created when it does not exist. Without `--collection`, the name is the basename of `<path>`. `conversation --store` and `documentation --store` take the same option.
+- A file shape no loader recognizes is drafted: the review queue records `loader_drafted` with a candidate loader `.rb` in `docs/ingest-review/candidates/` (a quarantine outside the autoloaded `lib/` tree) and a review doc in `docs/ingest-review/`. Nothing is registered automatically; promoting a draft is a manual review (see the recipe in the draft's review doc). A draft must pass three gates before it is written — class-name pattern, `RubyVM::AbstractSyntaxTree.parse` (parse, never `eval`) and a declared class under `SFL::Core::Loaders`. A gate failure records `draft_failed` and raises; the syntax-parse and declared-class gates also leave a `<stem>-invalid.md` evidence doc naming the gate.
 - Collection names are trimmed, keep their case and are unique ignoring case. An empty name is rejected.
 - Tables: `collections`, `documents` (one row per `document_key`), `sections` (one row per `section_id`, nested through `parent_section_id`) and `runs`.
 - Markdown and canvas sections nest by heading level. A heading is the parent of the sections that follow it until a heading of the same or a higher level. Turn sections have no parent, and their label is the speaker.
@@ -126,7 +127,7 @@ lib/sfl/llm/     LLM engines, signatures, model configuration
 lib/sfl/store/   Sequel repositories for Postgres and pgvector
 lib/sfl/retrieval/  context synthesis
 lib/sfl/analysis/   analysis engines and sources
-lib/sfl/ingest/  input loaders
+lib/sfl/ingest/  ingest orchestration, deterministic rules, loader drafting
 lib/sfl/formatters/ output formatters
 lib/sfl/eval/    Langfuse client and eval runner
 lib/sfl/api/     HTTP API

@@ -9,6 +9,9 @@ Instructions for coding agents working in this repository. See `README.md` for t
 - `bundle exec rake db:migrate` applies migrations.
 - `bundle exec rake db:purge_collection[NAME]` deletes a collection with its documents, sections and clauses.
 - `bundle exec rake models:refresh` fills the `models` table from the model catalogs.
+- `bundle exec bundler-audit check` scans `Gemfile.lock` against the local ruby-advisory-db. Run `bundle exec bundler-audit update` first on a fresh machine to fetch the advisory database. Not part of `bundle exec rake`.
+- `bundle exec mutant run --use rspec` runs mutation testing (the `mutant-rspec` gem, `:quality` group; there is no `.mutant.yml`, so pass an explicit subject). Not part of `bundle exec rake`.
+- `features/*.feature` hold the Gherkin acceptance scenarios, and `features/qa-procedure.md` is the manual QA procedure that verifies them through the RSpec suite. `cucumber` (`:development, :test` group) is bundled so the external implementer/verifier gates can run `bundle exec cucumber`; the repo ships no step definitions.
 
 ## Config
 
@@ -31,6 +34,7 @@ Instructions for coding agents working in this repository. See `README.md` for t
 - Do not edit `.env`. Do not commit secrets.
 - The TUI (`lib/sfl/tui/`) is a pure update over immutable state. `Program.update(state, message, services)` returns the new state and at most one command; commands are Procs built with `SafeCommand` that do the I/O and return the next message. Specs drive it with `Core::Ports` fakes and render into ratatui's test terminal (`RatatuiRuby.init_test_terminal`). A tab is a module answering `TITLE`, `initial`, `init`, `update`, `handles?`, `capturing?`, `help`, `status` and `render`; add it to `Program::TABS`.
 - There is no desktop GUI. Review happens in the TUI's Browse tab.
+- Loader drafts are inert data, never code. `docs/ingest-review/candidates/` holds LLM-drafted candidate `.rb` files outside the Zeitwerk tree; never `require`, `load` or copy one into `lib/`, and never edit a draft to "fix" it — `.rubocop.yml` excludes that directory on purpose (incident `4a53727`: one bad draft in `lib/sfl/core/loaders/` failed `bundle exec rake`). Promotion is the manual recipe in the draft's review doc: `ruby -c`, copy to `lib/sfl/core/loaders/`, add the mirrored spec, register a basename rule in `SFL::Ingest::DeterministicRules`. The recipe omits the catalog wiring a promoted loader also needs before the orchestrator dispatches it: the rule's source type must be a key in `Orchestrator::CATALOG_LOADER_SOURCE_TYPES` with a matching factory in `Core::Loaders::Catalog` (a superseded review doc's `Registered:` paragraph shows the full chain). Acceptance criteria: `features/loader_draft_*.feature` and section G of `features/qa-procedure.md`.
 
 ## Glossary
 
