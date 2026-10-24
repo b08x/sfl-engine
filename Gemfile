@@ -254,3 +254,7 @@ gem "tty-command"
 gem "tree_sitter_language_pack", "~> 1.20"
 
 gem "rllama", "~> 1.2"
+
+gem "bake", "~> 0.25.0", group: :development
+gem "decode", "~> 0.30.0", group: :development
+gem "rubydex", "~> 0.4.2", group: :development

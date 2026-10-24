@@ -8,7 +8,7 @@ FROM python:3.12-slim
 WORKDIR /sidecar
 
 RUN pip install --no-cache-dir spacy~=3.8 \
-    && python -m spacy download en_core_web_sm
+    && python -m spacy download en_core_web_md
 
 COPY spacy_sidecar.py .
 

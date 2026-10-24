@@ -93,6 +93,9 @@ GEM
       cucumber-messages (>= 34.1, < 36)
     cucumber-tag-expressions (11.0.1)
     date (3.6.0)
+    decode (0.30.0)
+      prism
+      rbs (~> 4.0)
     diff-lcs (1.6.2)
     docker-api (2.4.0)
       excon (>= 0.64.0)
@@ -445,6 +448,7 @@ GEM
     ruby_llm-template (0.1.6)
       ruby_llm (>= 1.0)
       ruby_llm-schema (>= 0.2.0)
+    rubydex (0.4.2-x86_64-linux)
     samovar (2.5.1)
       console (~> 1.0)
     schematist (1.1.0)
@@ -572,11 +576,13 @@ PLATFORMS
 DEPENDENCIES
   algorithms
   amatch (~> 0.4)
+  bake (~> 0.25.0)
   benchmark-ips
   bm25f
   bundler-audit (~> 0.9.3)
   csv (~> 3.3)
   cucumber (~> 12.0)
+  decode (~> 0.30.0)
   dotenv (~> 3.2)
   dry-monads (~> 1.6)
   dry-struct (~> 1.6)
@@ -624,6 +630,7 @@ DEPENDENCIES
   ruby-spacy
   ruby_llm-docker
   ruby_llm-template
+  rubydex (~> 0.4.2)
   schematist
   sequel
   simplecov
@@ -682,6 +689,7 @@ CHECKSUMS
   cucumber-query (16.1.1) sha256=96f75ee07c892d21046ac699fb3879abab0686991af1a10a6f73ef0565b7134f
   cucumber-tag-expressions (11.0.1) sha256=ead62a1c6bb613de1f5469975a9dd11ba2ced7322a6c8837cdde9db33dcbeac5
   date (3.6.0) sha256=18ac945c4e24ebd93534f8eab8c2fd8c5604b3e977105b3798d62a1e8d27b580
+  decode (0.30.0) sha256=f567364ad206f1b60987faeec0551dd1481aea7dfb192d7fab77020154b1a845
   diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
   docker-api (2.4.0) sha256=824be734f4cc8718189be9c8e795b6414acbbf7e8b082a06f959a27dd8dd63e6
   dotenv (3.2.0) sha256=e375b83121ea7ca4ce20f214740076129ab8514cd81378161f11c03853fe619d
@@ -821,6 +829,7 @@ CHECKSUMS
   ruby_llm-docker (0.3.0) sha256=b1cee68b2e2d1f97e8d91763ad142cbb1d3d0166637c2d5e09e76c18e953173e
   ruby_llm-schema (0.4.0) sha256=e930f5a5316f9301bff3fb7fe572e44727d05bb8e50621001bbb49a47d63b8da
   ruby_llm-template (0.1.6) sha256=163e1f195276df31596af1862a43cb4b7ed256e9fa7a7802690c728748c1702a
+  rubydex (0.4.2-x86_64-linux) sha256=ec8522671fb16a5d0c87329568823c83a2edd4d8db587e47ed311b4fd1ae69aa
   samovar (2.5.1) sha256=8a9fc41eb8868084f0321eb41678c485cfbc7d282fb306c0be67c3284b1d2394
   schematist (1.1.0) sha256=905d8f0286830926e77e0d631bee325ee741c4b99640bc99735593b40ba73e7b
   securerandom (0.4.1) sha256=cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1
