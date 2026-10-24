@@ -29,10 +29,27 @@ pip install spacy
 python3 -m spacy download en_core_web_sm
 ```
 
-`SpacySidecarParser.new(model: "en_core_web_sm")` defaults to
-`["python3", "sidecar/spacy_sidecar.py", "--model", model]`.
+`SFL::Core::PassOne::SpacySidecarParser.new(model: "en_core_web_sm")` defaults to
+`["python3", "sidecar/spacy_sidecar.py", "--model", model]`. The model is
+resolved at boot from the `SPACY_MODEL` env var, falling back to
+`en_core_web_sm` (`SFL::Boot::DEFAULT_SPACY_MODEL`) — and
+`spacy_sidecar.py`'s own `--model` default is `en_core_web_sm` too. So the
+local-dev path still runs `sm` unless you say otherwise.
 
 ## Running it via Docker
+
+The image downloads `en_core_web_md` at build time and bakes it into its
+`CMD`, so the Docker default is `md` — a bare
+`docker run -i --rm sfl-spacy-sidecar` runs it with no further arguments.
+(This differs from the local-dev default above: the *script's* `--model`
+default is `sm`, but the Dockerfile's `CMD` overrides it with `md`. An
+explicit `--model` must name a model the image actually downloaded.)
+
+`bin/build-sidecar` builds the image and smoke-tests it over the sidecar's
+real NDJSON protocol — `--model` defaults to the model parsed from the
+Dockerfile's download line, `--tag` to `sfl-spacy-sidecar`; `--no-smoke`
+and `--no-cache` do what they say. On success it prints the parser
+construction snippet. Or build by hand:
 
 ```shell
 docker build -t sfl-spacy-sidecar sidecar/
@@ -42,8 +59,8 @@ Then construct the parser with an explicit command, e.g.:
 
 ```ruby
 SFL::Core::PassOne::SpacySidecarParser.new(
-  model: "en_core_web_sm",
-  command: ["docker", "run", "-i", "--rm", "sfl-spacy-sidecar", "--model", "en_core_web_sm"]
+  model: "en_core_web_md",
+  command: ["docker", "run", "-i", "--rm", "sfl-spacy-sidecar", "--model", "en_core_web_md"]
 )
 ```
 
