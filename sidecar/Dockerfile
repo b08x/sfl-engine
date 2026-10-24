@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir spacy~=3.8 \
 COPY spacy_sidecar.py .
 
 ENTRYPOINT ["python", "spacy_sidecar.py"]
-CMD ["--model", "en_core_web_sm"]
+CMD ["--model", "en_core_web_md"]
