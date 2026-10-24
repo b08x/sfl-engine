@@ -1,4 +1,4 @@
-# QA procedure — transcription and image-meta loaders
+# QA procedure — loaders, sources and store features
 
 Manually runnable checks against the finished work, in order. Steps 1-8
 apply to the loader change itself; steps 9-12 apply only once the
@@ -610,8 +610,8 @@ first.
    ingested: the all-or-nothing rule rolls back every unit of the file,
    including the complete conversations before the cut.
    The batch behavior (the failed file listed in the run summary, the
-   redundancy skip) is covered by the feature scenarios and has no
-   command step here, because the repo does not yet name a batch entry point.
+   redundancy skip) is covered by the feature scenarios and by the batch
+   entry point, the `sfl-analyze json-records` command named in step 5.
 
 7. Check that the run did not load the file whole. Run step 5 again under
    `/usr/bin/time -v` and read `Maximum resident set size`. Expected: under

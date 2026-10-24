@@ -45,7 +45,7 @@ module SFL
     #   the `task_models` table when the database is connected; the Models tab
     #   re-resolves through it after an assignment. Built even when
     #   require_llm: false.
-    # - `embedding_model`: EMBEDDING_MODEL, else Store::PgEmbeddingStore::DEFAULT_MODEL;
+    # - `embedding_model`: SFL_TASK_EMBEDDING_MODEL, else Store::PgEmbeddingStore::DEFAULT_MODEL;
     #   the model PgEmbeddingStore files vectors under.
     Result = Struct.new(:db, :llm_config, :lm_factory, :embedder, :classifier, :pass1_command, :pass1_env,
       :spacy_model, :api_debug_errors, :api_cors_origins, :narrative_variant, :model_resolver, :embedding_model,

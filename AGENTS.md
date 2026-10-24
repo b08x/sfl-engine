@@ -8,6 +8,7 @@ Instructions for coding agents working in this repository. See `README.md` for t
 - `bundle exec rspec spec/path/to_spec.rb` runs one spec file.
 - `bundle exec rake db:migrate` applies migrations.
 - `bundle exec rake db:purge_collection[NAME]` deletes a collection with its documents, sections and clauses.
+- `bundle exec rake db:archive_document[KEY]` / `db:unarchive_document[KEY]` set or clear `archived_at` on a document by exact `document_key`. `bundle exec rake db:prune_missing_sources[dry-run]` deletes documents whose source file is gone, with their sections and clauses, unless they are archived; `dry-run` prints the counts only.
 - `bundle exec rake models:refresh` fills the `models` table from the model catalogs.
 - `bundle exec bundler-audit check` scans `Gemfile.lock` against the local ruby-advisory-db. Run `bundle exec bundler-audit update` first on a fresh machine to fetch the advisory database. Not part of `bundle exec rake`.
 - `bundle exec mutant run --use rspec` runs mutation testing (the `mutant-rspec` gem, `:quality` group; there is no `.mutant.yml`, so pass an explicit subject). Not part of `bundle exec rake`.

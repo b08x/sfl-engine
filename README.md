@@ -57,10 +57,12 @@ Everything below this line is operational reference.
 - Collection names are trimmed, keep their case and are unique ignoring case. An empty name is rejected.
 - Tables: `collections`, `documents` (one row per `document_key`), `sections` (one row per `section_id`, nested through `parent_section_id`) and `runs`.
 - Markdown and canvas sections nest by heading level. A heading is the parent of the sections that follow it until a heading of the same or a higher level. Turn sections have no parent, and their label is the speaker.
-- Each conversation in a chat export file is one document; the export file is its source path.
+- Each conversation in a chat export file is one document; the export file is its source path. A JSON records file is streamed by `JsonRecordsSource` (catalog key `:claude_export`): the document key is the record's `uuid`, and each yielded message is a section, `section_id` `<uuid>#turn-N` with N counting from 0. A SillyTavern session file is one document keyed by its file path; each physical line is one complete JSON record and yields one section.
+- `sfl-analyze json-records <file> [...] --collection NAME` ingests JSON records files one file at a time; without `--collection` the name is the basename of the first file's directory. Each file's units are written inside one transaction, so a failed file leaves nothing behind. The run summary lists each failed, redundant and skipped record with its byte offset, record index and reason, then `processed N, skipped ..., failed N, stale_removed N`; the exit status is 1 when any file failed. A failed file whose conversation uuids all appear intact in another file of the same batch is reported redundant, not failed. At the end of the run, sections of a re-ingested document that this run did not write are removed.
 - Ingesting a document whose key exists in another collection moves it, with its sections, and logs a `document moved` warning naming both collections. Re-ingesting into the same collection replaces its sections and clauses.
 - Migration 016 puts clauses stored before collections existed into a collection named `legacy`: one document per section id prefix before `#`, one section per section id.
 - `bundle exec rake db:purge_collection[NAME]` deletes a collection with its documents, sections and clauses and prints the counts.
+- `bundle exec rake db:archive_document[KEY]` sets `archived_at` on a document, by exact `document_key`; `db:unarchive_document[KEY]` clears it. Hybrid retrieval (`PgHybridRetriever`) excludes archived documents; `db:prune_missing_sources[dry-run]` deletes documents whose source file is gone, with their sections and clauses, unless they are archived — pass `dry-run` to change nothing and print the counts only.
 - `bundle exec rake models:refresh` fills the `models` table from the `ruby_llm` registry and the Ollama and OpenRouter listings. A model missing from its provider's latest listing is marked unavailable; its row is kept. A provider whose listing fails is left unchanged, and the task exits non-zero.
 - Stored runs (`ingest`, and `conversation`/`documentation` with `--store`) write one `runs` row keyed by `SFL_RUN_ID`, with kind, collection, status, total, done, failed, current item, pid and start, heartbeat and finish times. The heartbeat is written every 5 seconds. A running row whose heartbeat is older than 30 seconds is shown as stalled; one whose process no longer exists is shown as dead.
 
@@ -68,7 +70,7 @@ Everything below this line is operational reference.
 
 | Command | Purpose |
 |---|---|
-| `bundle exec exe/sfl-analyze` | CLI: `conversation`, `documentation`, `knowledge-base`, `ingest` and `context` subcommands |
+| `bundle exec exe/sfl-analyze` | CLI: `conversation`, `documentation`, `knowledge-base`, `ingest`, `json-records` and `context` subcommands |
 | `bundle exec exe/sfl-api` | HTTP API server (default port 3001) |
 | `bundle exec exe/sfl-tui` | Terminal UI: browse, review, select and export; search |
 
@@ -76,7 +78,7 @@ Run `exe/sfl-analyze --help` for options.
 
 ## Terminal UI
 
-`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models. Runs lists every run in the `runs` table (ingest, annotate, export, recompile), newest first, re-read every 2 seconds; stalled and dead runs are marked. Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model is the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable), else its `task_models` row, else the default. `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back; `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`. Each run row records the effective model per task in its `models` column. `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
+`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models. Runs lists every run in the `runs` table (ingest, annotate, export, recompile), newest first, re-read every 2 seconds; stalled and dead runs are marked. Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model is the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable), else its `task_models` row, else the built-in default — a free OpenRouter model (`google/gemma-4-26b-a4b-it:free`), so a task with nothing assigned makes no paid call. `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back; `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`. Each run row records the effective model per task in its `models` column. `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
 
 Browse shows collections, documents and nested sections on the left, the focused section's clauses in the middle and detail on the right.
 
