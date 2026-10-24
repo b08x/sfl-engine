@@ -1,24 +1,47 @@
 # SFL Engine
 
-SFL Engine is a Ruby application that annotates text with Systemic Functional Linguistics (SFL) metadata and uses that metadata when retrieving text for an LLM.
+SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata and uses that metadata when retrieving text for an LLM. The mechanism fits in one sentence; the convictions behind it take a page, and the page is worth reading first, because they explain nearly every unusual decision in the operational sections below.
 
-## Purpose
+## Why this engine exists
 
-The engine splits each clause of an input text into two parts:
+Most retrieval systems can answer *what is this text about?*. Very few can answer *how was it said?* — and by "how," I mean stance: whether a sentence asserts, hedges, instructs or worries; whether a speaker positions themselves above, below or alongside the listener; whether a claim is presented as a finding or offered as a guess. Vector similarity averages those distinctions away, and I find that a real loss, because stance is exactly the dimension a careful reader notices first.
 
-- Ideational payload: what happened (processes, participants, circumstances).
-- Interpersonal payload: how it is presented (mood, modality, tenor, attitude).
+The theory that names those distinctions is Systemic Functional Linguistics — Halliday's account of language as choice-in-context, in which one clause simultaneously does several kinds of work, its *metafunctions*: an **ideational** payload (what happened: processes, participants, circumstances) and an **interpersonal** payload (how it is presented: mood, modality, tenor, attitude). Halliday's theory also describes a third, *textual* metafunction; the engine's payload split leads with the two its retrieval hypothesis depends on. ("Metafunction" is a technical term, not a metaphor — it names the different kinds of meaning one clause carries at once.)
 
-The two parts are stored separately. Retrieval can filter clauses by their interpersonal values before text is passed to an LLM.
+SFL has mostly been a close-reading framework for humans. This engine uses it the other way round: as a feature-extraction schema for machines. Annotation turns stance from something a prompt can *ask* a model to respect into something a query can *filter on* — and that difference is structural. A prompt instruction is a suggestion; a scalar filter that excludes a clause before the model's context is ever assembled is a guarantee. The engine's founding bet is that the second kind of defense is the one worth engineering.
 
-## Main concepts
+Two storage decisions follow from that bet:
 
-- Pass 1: syntactic parsing that finds clauses, process types, participants and circumstances.
-- Pass 2: LLM annotation of mood, modality, tenor and attitude. The model is set per task through `SFL_TASK_*` variables.
-- Store: Postgres with pgvector holds the clauses, embeddings and review queues.
-- Retrieval: hybrid retrieval over the store, followed by context synthesis.
-- Analysis: engines and scorers that run over conversations, documentation and knowledge bases.
-- Eval: Langfuse datasets and a runner for unseen conversations.
+- **Payload separation.** The ideational and interpersonal payloads do not share a table. Facts live in one place, tone in another. This is not normalization for its own sake; it is what makes "how was this said" a filterable dimension in its own right rather than a paraphrase of "what was said." Retrieval can filter clauses by their interpersonal values before any text reaches the LLM.
+- **Clause-level units.** The unit of storage and retrieval is the clause, not a token-count chunk. A fixed-size chunk is a computational convenience; a clause is a complete unit of meaning — one process, its participants, its circumstances, one stance — so what gets retrieved is whole.
+
+## Design principles
+
+Each principle below is enforced somewhere checkable — a spec, a gate or a code path — noted inline.
+
+1. **Defense is structural, not behavioral.** Retrieval filters run against stored metadata, before the model's context is assembled. A clause that fails the filter never enters the context window.
+2. **LLM output is untrusted data, never code.** When ingest meets a file shape no loader recognizes, the LLM's candidate loader is parsed (never `eval`'d), gated on three checks, and written into a quarantine directory the runtime never loads. Promotion into `lib/` is a human copy, never a code path. Incident `4a53727` — one bad draft dropped into the autoloaded tree, failing the whole test suite — is why this is a permanent constraint rather than a preference.
+3. **One bad input never halts the run.** Ingest isolates failure per file: a file that fails is recorded in the review queue, and the rest of the run continues.
+4. **Degradation is truthful, never silently fudged.** An out-of-range annotation value is rejected by contract and degraded with recorded provenance, not rescaled to fit. Fallback annotations are marked as fallback and excluded from what retrieval can cite — a fallback should never silently ground an answer.
+5. **Determinism where rules work; models where semantics need them.** Pass 1 is deterministic syntactic parsing; Pass 2 is LLM annotation. Annotation provenance is recorded — a fallback value is marked as fallback — so a degraded value is never mistaken for a finding.
+6. **Citations are checked, not trusted.** The context synthesizer maps the model's citation numbers to real clause ids and drops the out-of-range ones.
+7. **Configuration flows one way.** `SFL::Boot` is the only code that reads `ENV`; every other class receives its configuration as injected arguments, and a spec fails on any other `ENV` read under `lib/`, `exe/` or `rakelib/`.
+8. **Review is human and named.** Review decisions are refused without `SFL_REVIEWER_NAME`, and annotation review is read-only in the UI — the decision trail is not editable from the review screen.
+9. **Naming is vocabulary.** *Document*, *section* and *clause* mean specific things (see the Glossary), everywhere — code, specs, CLI output and docs.
+10. **Docs are audit, not brochure.** `docs/gem-inventory.md` records what every dependency does — and which ones do nothing — with cited call sites; documentation commits pin claims to verified behavior.
+
+## How the engine works
+
+The engine compiles text into annotated clauses in two passes with a hard boundary between them:
+
+- **Pass 1** — deterministic syntactic parsing that finds clauses, process types, participants and circumstances. It runs as a Python spaCy sidecar over NDJSON, behind a typed port, so the rest of the codebase never sees the transport and tests can swap in fakes. The pipeline composes the passes through a Result ladder: a Pass 1 failure short-circuits straight past everything downstream.
+- **Pass 2** — LLM annotation of mood, modality, tenor and attitude, producing the interpersonal payload. The model is set per task through `SFL_TASK_*` variables. Batches are bounded, and provider-side failures back off and retry instead of filling the run with placeholders.
+- **Store** — Postgres with pgvector holds the clauses, their separated payloads, embeddings and review queues. One database, one place to filter and search within a transaction.
+- **Retrieval** — hybrid retrieval (reciprocal-rank fusion over vector and lexical search, plus scalar filters over the stored metadata), followed by context synthesis that only cites clauses that exist.
+- **Analysis** — engines and scorers that run over conversations, documentation and knowledge bases.
+- **Eval** — Langfuse datasets and a runner that evaluates on *unseen* conversations, held out on purpose.
+
+Everything below this line is operational reference.
 
 ## Glossary
 
@@ -74,6 +97,8 @@ Search (`/` to type, `Enter` to run) uses the stored-clause retrieval and shows 
 
 `Enter` runs `exe/sfl-analyze ingest PATH --collection NAME [flags]` under a new `SFL_RUN_ID`; `Esc` closes the launcher. Inside kitty (`KITTY_WINDOW_ID` set and `KITTY_LISTEN_ON` reachable, which needs `allow_remote_control yes` and `listen_on` in `kitty.conf`) the ingest opens in a new kitty tab, where it draws its dashboard, and the tab stays open after it exits. Outside kitty, or when kitty refuses, the ingest runs as a detached child with its output in `SFL_INGEST_LOG_DIR/ingest-<run id>.log` (default `./output/logs`), and the TUI moves to the Runs tab, where the run appears.
 
+The TUI is a pure update over immutable state — a deliberate design, kept simple on purpose: there is no desktop GUI, and review happens here, in the Browse tab.
+
 ## Setup
 
 1. Start Postgres and Redis with `docker compose up -d`.
@@ -104,6 +129,8 @@ Logging is configured with environment variables. See `.env.example`.
 - On a terminal, a foreground ingest or annotation run shows a full-screen dashboard: run id, collection, models per task, elapsed time, ingest and annotation progress, the log, and Ctrl-C for a graceful stop. The final screen stays until a key is pressed.
 - When stdout or stderr is not a terminal, the CLI writes `progress turn=N total=M` to stderr after each finished turn, regardless of `SFL_LOG_TARGET`.
 
+Every line carries a run id because a run is the unit of accountability here: what happened, under which model, in which collection — findable in one query.
+
 Examples:
 
 ```
@@ -116,6 +143,17 @@ journalctl SFL_RUN_ID=<id>
 - `rake eval:build_narrative_dataset` loads the narrative digests into Langfuse.
 - `rake eval:setup_langfuse` creates score configs and annotation queues.
 - `rake eval:run_unseen` runs Pass 2 on unseen conversations and writes `output/eval/nd-<n>/`.
+
+Eval runs on unseen conversations deliberately — a held-out set, so the score is evidence rather than rehearsal.
+
+## Where the reasoning lives
+
+The README carries the summary; the design record lives where it can be checked:
+
+- `goals/` — feature goals, fact lists, and per-goal `decisions.md` rationale files.
+- `features/` — the Gherkin acceptance scenarios and `features/qa-procedure.md`, the manual QA procedure that verifies them.
+- `docs/ingest-review/` — the loader-draft review trail: each draft's provenance, gates and supersession record.
+- `docs/gem-inventory.md` — the dependency audit.
 
 ## Directory layout
 
