@@ -1,6 +1,6 @@
 # SFL Engine
 
-SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata and uses that metadata when retrieving text for an LLM. The mechanism fits in one sentence; the convictions behind it take a page, and the page comes first because it explains most of the unusual decisions the operational sections below build on.
+SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata, and retrieval filters on that metadata before the model's context is assembled. The mechanism fits in one sentence; the convictions behind it take a page, and the page comes first because it explains most of the unusual decisions the operational sections below build on.
 
 ## Why this engine exists
 
