@@ -1,9 +1,22 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe SFL::Core::Pipeline do
   subject(:pipeline) { described_class.new(pass_one:, pass_two:, ideational_extractor:) }
+
+  def build_zero_word_clause
+    SFL::Core::Types::SyntacticClause.new(
+      id: "c-zero", text: "...", tokens: [], root_index: 0, sentence_index: 0, section_id: "doc-1"
+    )
+  end
+
+  def build_zero_word_ideational
+    SFL::Core::Types::IdeationalPayload.new(
+      clause_id: "c-zero", process_type: "material", participants: [], circumstances: [], raw_transitivity: {}
+    )
+  end
 
   let(:syntactic_clause) do
     SFL::Core::Types::SyntacticClause.new(
@@ -232,6 +245,46 @@ RSpec.describe SFL::Core::Pipeline do
         pipeline.compile("text", section_id: "doc-1", store: false, embed: false, resume: true)
 
         expect(cache).to have_received(:partition).once
+      end
+    end
+
+    # Regression for the JSON::GeneratorError "NaN not allowed in JSON" crash:
+    # a zero-word clause (code fence, emoji, bare punctuation — common in a
+    # Claude Code export) makes Lingua::EN::Readability return NaN (0.0/0),
+    # which reached FileCache#write's JSON.generate via this exact path.
+    context "with a zero-word clause on a real FileCache" do
+      subject(:file_cache_pipeline) do
+        described_class.new(pass_one:, pass_two:, ideational_extractor:,
+          cache: SFL::Core::Ports::FileCache.new(cache_dir:))
+      end
+
+      let(:cache_dir) { Dir.mktmpdir }
+      let(:zero_word_clause) { build_zero_word_clause }
+      let(:zero_word_ideational) { build_zero_word_ideational }
+
+      before do
+        allow(pass_one).to receive(:process).and_return([zero_word_clause])
+        allow(ideational_extractor).to receive(:extract).with(zero_word_clause)
+          .and_return(zero_word_ideational)
+      end
+
+      after { FileUtils.remove_entry(cache_dir) }
+
+      it "caches the clause without NaN reaching FileCache#write" do
+        result = file_cache_pipeline.compile("...", section_id: "doc-1", store: false, embed: false,
+          resume: true)
+
+        expect(result).to be_success
+        readability = result.value!.first.syntactic.readability
+        expect(readability.flesch).to be_nil
+        expect(readability.kincaid).to be_nil
+        expect(readability.fog).to be_nil
+
+        # The written entry must survive a --resume hit: the second compile
+        # is served from cache, so the annotator ran exactly once overall.
+        file_cache_pipeline.compile("...", section_id: "doc-1", store: false, embed: false, resume: true)
+
+        expect(pass_two).to have_received(:annotate_batch).once
       end
     end
   end
