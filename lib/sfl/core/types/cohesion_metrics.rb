@@ -5,9 +5,9 @@ module SFL
     module Types
       # Cohesion metrics for a group of clauses.
       class CohesionMetrics < Dry::Struct
-        attribute :repetition_score, Types::Float.constrained(gteq: 0.0, lteq: 1.0).default(0.0)
-        attribute :conjunction_density, Types::Float.constrained(gteq: 0.0, lteq: 1.0).default(0.0)
-        attribute :pronoun_density, Types::Float.constrained(gteq: 0.0, lteq: 1.0).default(0.0)
+        attribute :repetition_score, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0).default(0.0)
+        attribute :conjunction_density, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0).default(0.0)
+        attribute :pronoun_density, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0).default(0.0)
       end
     end
   end

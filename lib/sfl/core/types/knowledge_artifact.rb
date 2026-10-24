@@ -13,14 +13,14 @@ module SFL
         attribute :source_file,         Types::String
         attribute :section_path,        Types::String.optional.default(nil)
         attribute :content_type,        KBContentType
-        attribute :quality_score,       Types::Float.constrained(gteq: 0.0, lteq: 1.0)
+        attribute :quality_score,       FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0)
         attribute :migration_action,    MigrationAction
         attribute :migration_reason,    Types::String.default("")
         attribute :tags,                Types::Array.of(Types::String).default([].freeze)
         attribute :last_updated,        Types::Nominal::Time.optional.default(nil)
         attribute :clauses,             Types::Array.of(AnnotatedClause).default([].freeze)
-        attribute :avg_tenor,           Types::Float.constrained(gteq: 0.0, lteq: 1.0)
-        attribute :avg_modality,        Types::Float.constrained(gteq: 0.0, lteq: 1.0)
+        attribute :avg_tenor,           FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0)
+        attribute :avg_modality,        FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0)
         attribute :dominant_mood,       Types::MoodType
         attribute :process_types,       Types::Hash.default({}.freeze)
         attribute :annotation_coverage, Types::Hash.default({}.freeze)

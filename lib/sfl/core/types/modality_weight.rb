@@ -8,7 +8,7 @@ module SFL
       # clause's annotation over a type it can't meaningfully distinguish
       # from the float — live-verified failure mode (2026-08-02), same
       # class of bug Premise#type's own comment documents.
-      ModalityWeight = Types::Coercible::Float.constrained(gteq: 0.0, lteq: 1.0)
+      ModalityWeight = FiniteFloat.constrained(Types::Coercible::Float, gteq: 0.0, lteq: 1.0)
     end
   end
 end

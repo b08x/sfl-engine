@@ -18,6 +18,33 @@ RSpec.describe SFL::Core::Pipeline do
     )
   end
 
+  # The exact entry shape a pre-fix checkout wrote for a normal clause:
+  # readability floats present and finite (the scorer only began mapping
+  # non-finite to nil with the NaN fix — finite floats were and remain the
+  # common shape), dumped through Wire exactly as FileCache#write always
+  # has. The spec, not a pipeline, puts it on disk.
+  def build_prefixed_entry
+    SFL::Core::Types::AnnotatedClause.new(
+      id: "prefixed-1",
+      text: syntactic_clause.text,
+      syntactic: SFL::Core::Types::SyntacticClause.new(
+        id: "c-1", text: syntactic_clause.text, tokens: [], root_index: 0,
+        sentence_index: 0, section_id: "doc-1",
+        readability: SFL::Core::Types::Readability.new(
+          flesch: 63.9, kincaid: 7.5, fog: 11.4, word_count: 5
+        )
+      ),
+      ideational: ideational_payload,
+      interpersonal: SFL::Core::Types::InterpersonalPayload.new(
+        clause_id: "c-1", mood: "declarative", modality_weight: 0.5, tenor: 0.5,
+        speaker_attitude: nil, reasoning: nil, annotation_source: "llm"
+      ),
+      textual: nil,
+      section_id: "doc-1",
+      compiled_at: Time.now.round(0)
+    )
+  end
+
   let(:syntactic_clause) do
     SFL::Core::Types::SyntacticClause.new(
       id: "c-1", text: "The committee approved the budget.",
@@ -285,6 +312,49 @@ RSpec.describe SFL::Core::Pipeline do
         file_cache_pipeline.compile("...", section_id: "doc-1", store: false, embed: false, resume: true)
 
         expect(pass_two).to have_received(:annotate_batch).once
+      end
+    end
+
+    # Backward-compat regression for the Types::FiniteFloat guard
+    # (lib/sfl/core/types/finite_float.rb): a pre-fix-shaped
+    # annotation-cache entry — readability floats present and finite, the
+    # shape every pre-fix checkout wrote for a normal clause (JSON.generate
+    # can never persist NaN/Infinity, so no legacy entry can contain one) —
+    # must still load, round-trip, and serve --resume hits after the
+    # constrained float types tightened. The entry is hand-written to disk
+    # by this spec: it never passes through a Pipeline run or FileCache#write.
+    context "with a hand-written pre-fix-shaped (finite-float readability) cache entry" do
+      subject(:file_cache_pipeline) do
+        described_class.new(pass_one:, pass_two:, ideational_extractor:,
+          cache: SFL::Core::Ports::FileCache.new(cache_dir:))
+      end
+
+      let(:cache_dir) { Dir.mktmpdir }
+      let(:prefixed_entry) { build_prefixed_entry }
+
+      before do
+        # Pipeline#cache_key_for's contract (lib/sfl/core/pipeline.rb):
+        # sha256 of section_id + sentence_index + text — the key a
+        # --resume run computes for the stubbed Pass 1 clause below.
+        key = Digest::SHA256.hexdigest("doc-1#{syntactic_clause.sentence_index}#{syntactic_clause.text}")
+        File.write(File.join(cache_dir, "#{key}.json"), JSON.generate(SFL::Core::Wire.dump(prefixed_entry)))
+      end
+
+      after { FileUtils.remove_entry(cache_dir) }
+
+      it "round-trips the pre-fix entry and serves both --resume compiles from cache" do
+        first = file_cache_pipeline.compile("text", section_id: "doc-1", store: false, embed: false, resume: true)
+        second = file_cache_pipeline.compile("text", section_id: "doc-1", store: false, embed: false, resume: true)
+
+        expect(pass_two).not_to have_received(:annotate_batch)
+        expect(second.value!).to eq(first.value!)
+
+        readability = second.value!.first.syntactic.readability
+        expect(readability).to be_a(SFL::Core::Types::Readability)
+        expect(readability.flesch).to eq(prefixed_entry.syntactic.readability.flesch)
+        expect(readability.kincaid).to eq(7.5)
+        expect(readability.fog).to eq(11.4)
+        expect(readability.word_count).to eq(5)
       end
     end
   end

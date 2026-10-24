@@ -12,7 +12,7 @@ module SFL
         attribute :source_file,   Types::String
         attribute :action,        MigrationAction
         attribute :reason,        Types::String
-        attribute :quality_score, Types::Float.constrained(gteq: 0.0, lteq: 1.0)
+        attribute :quality_score, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0)
         attribute :content_type,  KBContentType
       end
     end

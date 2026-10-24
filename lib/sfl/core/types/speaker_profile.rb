@@ -14,10 +14,10 @@ module SFL
       class SpeakerProfile < Dry::Struct
         attribute :speaker_name, Types::String
         attribute :turn_count, Types::Integer
-        attribute :avg_tenor, Types::Float.constrained(gteq: 0.0, lteq: 1.0).optional
-        attribute :tenor_range, Types::Array.of(Types::Float).constrained(size: 2).optional
-        attribute :tenor_variance, Types::Float.constrained(gteq: 0.0).optional
-        attribute :avg_modality, Types::Float.constrained(gteq: 0.0, lteq: 1.0).optional
+        attribute :avg_tenor, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0).optional
+        attribute :tenor_range, Types::Array.of(FiniteFloat.value(Types::Float)).constrained(size: 2).optional
+        attribute :tenor_variance, FiniteFloat.constrained(Types::Float, gteq: 0.0).optional
+        attribute :avg_modality, FiniteFloat.constrained(Types::Float, gteq: 0.0, lteq: 1.0).optional
         attribute :mood_distribution, Types::Hash.default({}.freeze)
         attribute :dominant_processes, Types::Hash.default({}.freeze)
       end

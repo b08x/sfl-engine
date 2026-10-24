@@ -15,7 +15,7 @@ module SFL
         attribute :conclusion, Types::Hash
         # Coercible, not strict Float — see ModalityWeight's comment for why
         # (same LLM-boundary-integer failure mode, live-verified 2026-08-02).
-        attribute :confidence, Types::Coercible::Float.constrained(gteq: 0.0, lteq: 1.0)
+        attribute :confidence, FiniteFloat.constrained(Types::Coercible::Float, gteq: 0.0, lteq: 1.0)
         attribute :derivation_hash, Types::String
         attribute :generated_at, Types::Time
       end

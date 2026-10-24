@@ -21,7 +21,7 @@ module SFL
         attribute :mode, Types::String.optional
         # Coercible, not strict Float — same LLM-boundary-integer rationale as
         # ReasoningTrace#confidence (lib/sfl/core/types/reasoning_trace.rb:16-18).
-        attribute :confidence, Types::Coercible::Float.constrained(gteq: 0.0, lteq: 1.0)
+        attribute :confidence, FiniteFloat.constrained(Types::Coercible::Float, gteq: 0.0, lteq: 1.0)
         attribute :reasoning, Types::String
       end
     end
