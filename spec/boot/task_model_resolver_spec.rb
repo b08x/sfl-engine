@@ -8,7 +8,7 @@ RSpec.describe SFL::Boot::TaskModelResolver do
     {
       "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "env/model",
       "SFL_TASK_PASS_TWO_ANNOTATION_TEMPERATURE" => "0.2",
-      "EMBEDDING_MODEL" => "embeddinggemma:latest",
+      "SFL_TASK_EMBEDDING_MODEL" => "embeddinggemma:latest",
     }
   end
   let(:store) do
@@ -27,7 +27,7 @@ RSpec.describe SFL::Boot::TaskModelResolver do
       pass_two_batch_annotation: [:openrouter, "db/batch", :db, nil],
       context_synthesis: [:openrouter, "env/model", :default, nil],
       narrative_generation: [:openrouter, "env/model", :default, nil],
-      embedding: [:ollama, "embeddinggemma:latest", :env, "EMBEDDING_MODEL"],
+      embedding: [:ollama, "embeddinggemma:latest", :env, "SFL_TASK_EMBEDDING_MODEL"],
       ingest_classification: [:ollama, "embeddinggemma:latest", :default, nil],
       loader_drafting: [:mistral, "db/drafter", :db, nil]
     )
@@ -37,7 +37,36 @@ RSpec.describe SFL::Boot::TaskModelResolver do
     resolutions = described_class.new(env:).resolve
 
     expect(resolutions.values.map(&:source).uniq).to contain_exactly(:env, :default)
-    expect(resolutions[:pass_two_batch_annotation]).to have_attributes(provider: :openrouter, model: nil, source: :default)
+    expect(resolutions[:pass_two_batch_annotation]).to have_attributes(provider: :openrouter,
+      model: "google/gemma-4-26b-a4b-it:free", source: :default)
+  end
+
+  it "defaults every LLM task with no override to the free OpenRouter gemma model" do
+    llm_tasks = described_class.new(env: {}).resolve.except(:embedding, :ingest_classification)
+
+    expect(llm_tasks.values).to all(have_attributes(provider: :openrouter, model: "google/gemma-4-26b-a4b-it:free",
+      source: :default))
+  end
+
+  it "keeps the embedding default and the derived ingest_classification default unchanged" do
+    resolutions = described_class.new(env: {}).resolve
+
+    expect(resolutions[:embedding]).to have_attributes(provider: :ollama, model: "embeddinggemma-2:440m", source: :default)
+    expect(resolutions[:ingest_classification]).to have_attributes(provider: :ollama, model: "embeddinggemma-2:440m")
+  end
+
+  it "ignores the legacy EMBEDDING_MODEL and EMBEDDING_PROVIDER names for the embedding task" do
+    resolver = described_class.new(env: { "EMBEDDING_MODEL" => "legacy", "EMBEDDING_PROVIDER" => "mistral" })
+
+    expect(resolver.resolve[:embedding]).to have_attributes(provider: :ollama, model: "embeddinggemma-2:440m",
+      source: :default, env_var: nil)
+  end
+
+  it "takes SFL_TASK_EMBEDDING_MODEL over the embeddinggemma-2:440m default" do
+    resolver = described_class.new(env: { "SFL_TASK_EMBEDDING_MODEL" => "new-model" })
+
+    expect(resolver.resolve[:embedding]).to have_attributes(model: "new-model", source: :env,
+      env_var: "SFL_TASK_EMBEDDING_MODEL")
   end
 
   it "keeps the env provider and params whatever the source" do

@@ -53,17 +53,25 @@ module SFL
       # scoped to a single seed clause rather than a text query.
       #
       # @param clause_id [String] AnnotatedClause#id
+      # With a model filter, the seed and the candidates both come from the
+      # selected models, so every cosine comparison stays inside one model's
+      # vector space.
+      #
+      # @param clause_id [String] AnnotatedClause#id
       # @param k [Integer] max neighbors to return
       # @param min_similarity [Float] 1 - cosine_distance floor
+      # @param family [String, nil] restrict to stored models of this family
+      # @param model [String, nil] restrict to this exact stored model (wins over family:)
       # @return [Array<Core::Types::GraphEdge>]
-      def semantic_neighbors(clause_id, k: 5, min_similarity: 0.75)
-        seed = @db[:embeddings].where(clause_id:).first
+      def semantic_neighbors(clause_id, k: 5, min_similarity: 0.75, family: nil, model: nil)
+        models = PgHybridRetriever::ModelFilter.models_matching(@db, family:, model:)
+        seed = embeddings_for(models).where(clause_id:).first
         return [] unless seed
 
-        @db[:embeddings]
+        embeddings_for(models)
           .exclude(clause_id:)
           .select(:clause_id, Sequel.lit("1 - (embedding <=> ?) AS similarity", seed[:embedding]))
-          .having { Sequel.lit("1 - (embedding <=> ?)", seed[:embedding]) >= min_similarity }
+          .where(Sequel.lit("1 - (embedding <=> ?) >= ?", seed[:embedding], min_similarity))
           .order(Sequel.lit("embedding <=> ?", seed[:embedding]))
           .limit(k)
           .all
@@ -71,6 +79,13 @@ module SFL
             Core::Types::GraphEdge.new(from_id: clause_id, to_id: row[:clause_id],
               edge_type: "semantic_similarity", weight: row[:similarity])
           end
+      end
+
+      # All embeddings, or only those of the selected models (nil = no filter).
+      private def embeddings_for(models)
+        return @db[:embeddings] unless models
+
+        @db[:embeddings].where(model: models)
       end
 
       private def joined_scope

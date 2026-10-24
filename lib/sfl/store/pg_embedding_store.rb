@@ -34,8 +34,8 @@ module SFL
     class PgEmbeddingStore
       include Core::Ports::EmbeddingStore
 
-      # Boot resolves EMBEDDING_MODEL over this (Boot::Result#embedding_model).
-      DEFAULT_MODEL = "embeddinggemma:latest"
+      # Boot resolves SFL_TASK_EMBEDDING_MODEL over this (Boot::Result#embedding_model).
+      DEFAULT_MODEL = "embeddinggemma-2:440m"
 
       # Must match db/migrations/004_create_embeddings.rb's `vector(768)`
       # column exactly. Root cause of a real failure (2026-08-02): pgvector

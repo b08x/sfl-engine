@@ -11,7 +11,6 @@ RSpec.describe SFL::Boot do
       "OPENROUTER_API_KEY" => "or-key",
       "SFL_TASK_PASS_TWO_ANNOTATION_MODEL" => "openrouter/gemini-pro",
       "SFL_TASK_PASS_TWO_BATCH_ANNOTATION_MODEL" => "openrouter/gemini-pro",
-      "EMBEDDING_MODEL" => "embeddinggemma:latest",
     }
   end
 
@@ -94,12 +93,18 @@ RSpec.describe SFL::Boot do
       expect(result.llm_config.for(:context_synthesis).model).to eq("openrouter/different-model")
     end
 
-    it "prefers SFL_TASK_EMBEDDING_MODEL over EMBEDDING_MODEL" do
-      env = base_env.merge("EMBEDDING_MODEL" => "legacy-var-model", "SFL_TASK_EMBEDDING_MODEL" => "new-var-model")
+    it "takes the embedding model from SFL_TASK_EMBEDDING_MODEL over the store default" do
+      result = boot(env: base_env.merge("SFL_TASK_EMBEDDING_MODEL" => "new-var-model"))
+
+      expect(result.llm_config.for(:embedding).model).to eq("new-var-model")
+    end
+
+    it "ignores the legacy EMBEDDING_MODEL and EMBEDDING_PROVIDER names" do
+      env = base_env.merge("EMBEDDING_MODEL" => "legacy-var-model", "EMBEDDING_PROVIDER" => "mistral")
 
       result = boot(env:)
 
-      expect(result.llm_config.for(:embedding).model).to eq("new-var-model")
+      expect(result.llm_config.for(:embedding)).to have_attributes(provider: :ollama, model: "embeddinggemma-2:440m")
     end
 
     it "applies SFL_TASK_<NAME>_TEMPERATURE as a params[:temperature]" do
@@ -318,11 +323,11 @@ RSpec.describe SFL::Boot do
 
   describe "ingest_classification and loader_drafting task configs" do
     it "defaults ingest_classification to the embedding task's default provider/model" do
-      result = boot(env: base_env.merge("EMBEDDING_MODEL" => "embeddinggemma:latest"))
+      result = boot(env: base_env)
 
       task = result.llm_config.for(:ingest_classification)
       expect(task.provider).to eq(:ollama)
-      expect(task.model).to eq("embeddinggemma:latest")
+      expect(task.model).to eq("embeddinggemma-2:440m")
     end
 
     it "honors SFL_TASK_INGEST_CLASSIFICATION_MODEL/_PROVIDER overrides" do
@@ -469,10 +474,19 @@ RSpec.describe SFL::Boot do
 
   # Fact 72: the values other code used to read from ENV itself.
   describe "settings read for other code" do
-    it "resolves the embedding store's model from EMBEDDING_MODEL, else the store default" do
-      expect(boot(env: base_env.merge("EMBEDDING_MODEL" => "nomic")).embedding_model).to eq("nomic")
-      expect(boot(env: base_env.except("EMBEDDING_MODEL"), require_llm: false).embedding_model)
+    it "resolves the embedding store's model from SFL_TASK_EMBEDDING_MODEL, else the store default" do
+      expect(boot(env: base_env.merge("SFL_TASK_EMBEDDING_MODEL" => "nomic")).embedding_model).to eq("nomic")
+      expect(boot(env: base_env, require_llm: false).embedding_model)
         .to eq(SFL::Store::PgEmbeddingStore::DEFAULT_MODEL)
+    end
+
+    it "ignores the legacy EMBEDDING_MODEL for the embedding store's model" do
+      expect(boot(env: base_env.merge("EMBEDDING_MODEL" => "nomic"), require_llm: false).embedding_model)
+        .to eq("embeddinggemma-2:440m")
+    end
+
+    it "defaults the store model to embeddinggemma-2:440m" do
+      expect(SFL::Store::PgEmbeddingStore::DEFAULT_MODEL).to eq("embeddinggemma-2:440m")
     end
 
     it "returns DATABASE_URL, raising when it is unset" do

@@ -57,6 +57,11 @@ module SFL
                                       pipelines — or queue low-confidence/
                                       unrecognized files for review. Stores
                                       clauses, documents and sections.
+        json-records <file> [...]    Ingest JSON records files (a Claude
+                                      conversations.json, ChatGPT
+                                      conversations-NNN.json) into --collection,
+                                      one file at a time. Prints the run
+                                      summary; exits 1 if any file failed.
         context "<query>"            Query stored clauses, synthesize an answer
 
       Common options:
@@ -92,6 +97,11 @@ module SFL
         --resume                     Reuse cached Pass 2 results from previous runs
         --annotated                  Also write annotated/*.md
 
+      json-records:
+        --collection NAME            Collection to add documents to; created
+                                      if missing [basename of the first file's
+                                      directory]
+
       context:
         --mood MOOD                  declarative|interrogative|imperative|exclamative
         --min-tenor F  --max-tenor F
@@ -116,9 +126,10 @@ module SFL
     module_function def parse(argv)
       argv = argv.dup
       command = argv.shift&.tr("-", "_")&.to_sym
-      unless %i[conversation documentation knowledge_base ingest context].include?(command)
+      unless %i[conversation documentation knowledge_base ingest json_records context].include?(command)
         raise UsageError, "Unknown subcommand: #{command}\n\n#{USAGE}"
       end
+      return parse_json_records(argv) if command == :json_records
 
       input = argv.shift
       raise UsageError, "#{command} requires an input argument\n\n#{USAGE}" if input.nil? || input.start_with?("--")
@@ -204,6 +215,24 @@ module SFL
       options = { output_dir: DEFAULT_OUTPUT_DIR, collection: nil }
       OptionParser.new do |opt|
         opt.on("--output-dir DIR") { |v| options[:output_dir] = v }
+        opt.on("--collection NAME") { |v| options[:collection] = v }
+        add_tracing_option(opt, options)
+      end.parse!(argv)
+      options
+    end
+
+    # json-records takes one or more files, not a single input, so the
+    # positional arguments are what the options parser leaves in argv.
+    module_function def parse_json_records(argv)
+      options = parse_json_records_options(argv)
+      raise UsageError, "json-records requires one or more JSON files\n\n#{USAGE}" if argv.empty?
+
+      { command: :json_records, input: argv.dup, options: resolve_collection(options, File.dirname(argv.first)) }
+    end
+
+    module_function def parse_json_records_options(argv)
+      options = { collection: nil, disable_tracing: false }
+      OptionParser.new do |opt|
         opt.on("--collection NAME") { |v| options[:collection] = v }
         add_tracing_option(opt, options)
       end.parse!(argv)
@@ -474,6 +503,32 @@ module SFL
       Signal.trap("INT", "DEFAULT")
     end
     # write-file sequence, ported verbatim from legacy's own run_context.
+    # Ingests each JSON records file through one PgSectionRegistry per file, so a
+    # failed file leaves nothing behind. Returns 1 when any file failed.
+    module_function def run_json_records(files, options)
+      files.each { |path| raise UsageError, "json-records: no such file: #{path}" unless File.file?(path) }
+      boot_result = Boot.call(require_llm: false, require_tracing: !options[:disable_tracing], require_schema: true)
+      logger, = build_collaborators(options)
+      batch = Core::Loaders::JsonRecordsBatch.new(
+        registry_factory: -> { Store::PgSectionRegistry.new(boot_result.db, collection: options[:collection], logger:) },
+        logger:
+      )
+      refs = files.map { |path| Core::Refs::FileRefBuilder.call(path, source_id: File.expand_path(path)) }
+      summary = batch.call(refs)
+      print_json_records_summary(summary)
+      summary[:failed].empty? ? 0 : 1
+    end
+
+    module_function def print_json_records_summary(summary)
+      puts "Ingested files: #{summary[:ingested]}"
+      summary[:failed].each { |e| puts "  failed #{e[:file]} byte_offset=#{e[:byte_offset]} reason=#{e[:reason]}" }
+      summary[:redundant].each { |e| puts "  redundant #{e[:file]} byte_offset=#{e[:byte_offset]} reason=#{e[:reason]}" }
+      summary[:skipped].each { |e| puts "  skipped #{e[:file]} record_index=#{e[:record_index]} reason=#{e[:reason]}" }
+      by_reason = summary[:skipped].group_by { |e| e[:reason] }.map { |reason, list| "#{reason} #{list.size}" }
+      puts "processed #{summary[:processed]}, skipped #{by_reason.empty? ? 'none' : by_reason.join(', ')}, " \
+        "failed #{summary[:failed].size}, stale_removed #{summary[:stale_removed]}"
+    end
+
     module_function def run_context(query, options)
       boot_result = Boot.call(require_llm: true, require_tracing: !options[:disable_tracing])
       logger, instrumenter, breaker = build_collaborators

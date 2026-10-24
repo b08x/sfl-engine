@@ -27,6 +27,7 @@ module SFL
     "kb_annotated_doc_formatter" => "KBAnnotatedDocFormatter",
     "lm_factory" => "LMFactory",
     "ruby_llm_catalog" => "RubyLLMCatalog",
+    "sillytavern_source" => "SillyTavernSource",
   }.freeze
   private_constant :INFLECTIONS
 

@@ -202,4 +202,108 @@ RSpec.describe SFL::Store::PgHybridRetriever do
       expect(results.first.annotation_source).to eq("human")
     end
   end
+
+  describe ".model_family" do
+    it "removes the :tag and one trailing -<digits>" do
+      expect(described_class::ModelFilter.model_family("embeddinggemma:latest")).to eq("embeddinggemma")
+      expect(described_class::ModelFilter.model_family("embeddinggemma-2:440m")).to eq("embeddinggemma")
+    end
+
+    it "keeps a model name that has no tag and no trailing -<digits>" do
+      expect(described_class::ModelFilter.model_family("google/gemma-4-26b-a4b-it:free")).to eq("google/gemma-4-26b-a4b-it")
+      expect(described_class::ModelFilter.model_family("llama3")).to eq("llama3")
+    end
+  end
+
+  describe "#retrieve model filter (family:, model:)" do
+    subject(:retriever) do
+      described_class.new(db:, embedder: SFL::Core::Ports::Fake::Embedder.new(vectors: { "widget" => zero_vector(hot_index: 0) }))
+    end
+
+    let(:query) { SFL::Core::Types::RetrievalQuery.new(query: "widget") }
+
+    before do
+      seed_clause(external_id: "c-old", text: "widget one")
+      seed_clause(external_id: "c-new", text: "widget two")
+      seed_clause(external_id: "c-other", text: "widget three")
+      seed_clause(external_id: "c-unembedded", text: "widget four")
+      seed_embedding(clause_id: "c-old", vector: zero_vector(hot_index: 0), model: "embeddinggemma:latest")
+      seed_embedding(clause_id: "c-new", vector: zero_vector(hot_index: 0), model: "embeddinggemma-2:440m")
+      seed_embedding(clause_id: "c-other", vector: zero_vector(hot_index: 0), model: "other-model:latest")
+    end
+
+    it "returns rows from every model when neither keyword is given (no filter)" do
+      expect(retriever.retrieve(query).map(&:clause_id))
+        .to contain_exactly("c-old", "c-new", "c-other", "c-unembedded")
+    end
+
+    it "keeps only the stored models of the family when family: is given" do
+      expect(retriever.retrieve(query, family: "embeddinggemma").map(&:clause_id)).to contain_exactly("c-old", "c-new")
+    end
+
+    it "keeps only the exact stored model when model: is given" do
+      expect(retriever.retrieve(query, model: "embeddinggemma:latest").map(&:clause_id)).to eq(["c-old"])
+    end
+
+    it "does not treat a family name as an exact model" do
+      expect(retriever.retrieve(query, model: "embeddinggemma")).to eq([])
+    end
+
+    it "lets model: win over family: when both are given" do
+      expect(retriever.retrieve(query, family: "embeddinggemma", model: "other-model:latest").map(&:clause_id))
+        .to eq(["c-other"])
+    end
+
+    it "returns no rows for a family with no stored models" do
+      expect(retriever.retrieve(query, family: "nothing-here")).to eq([])
+    end
+  end
+
+  describe "archived documents are excluded by default" do
+    subject(:retriever) { described_class.new(db:, embedder: SFL::Core::Ports::Null::Embedder.new) }
+
+    # One document with one section per key; the clause's section_id points at it.
+    def seed_document(key, archived:)
+      doc_id = db[:documents].insert(
+        collection_id: db[:collections].get(:id) || db[:collections].insert(name: "claude-chats"),
+        document_key: key,
+        source_path: "/x/#{key}.json", archived_at: (Time.now if archived)
+      )
+      db[:sections].insert(section_id: "#{key}#turn-0", document_id: doc_id, ordinal: 0, kind: "turn")
+    end
+
+    before do
+      seed_document("doc-archived", archived: true)
+      seed_document("doc-live", archived: false)
+      seed_clause(external_id: "c-archived", text: "a lighthouse keeper", section_id: "doc-archived#turn-0")
+      seed_clause(external_id: "c-live", text: "the lighthouse at dusk", section_id: "doc-live#turn-0")
+    end
+
+    it "keeps the clause of an archived document out of the keyword arm" do
+      results = retriever.retrieve(SFL::Core::Types::RetrievalQuery.new(query: "lighthouse"))
+
+      expect(results.map(&:clause_id)).to eq(["c-live"])
+    end
+
+    it "keeps the clause of an archived document out of the semantic arm" do
+      semantic = described_class.new(
+        db:,
+        embedder: SFL::Core::Ports::Fake::Embedder.new(vectors: { "lighthouse" => zero_vector(hot_index: 0) })
+      )
+      seed_embedding(clause_id: "c-archived", vector: zero_vector(hot_index: 0))
+      seed_embedding(clause_id: "c-live", vector: zero_vector(hot_index: 1))
+
+      results = semantic.retrieve(SFL::Core::Types::RetrievalQuery.new(query: "lighthouse"))
+
+      expect(results.map(&:clause_id)).to eq(["c-live"])
+    end
+
+    it "returns the archived clause again once its document is unarchived" do
+      db[:documents].where(document_key: "doc-archived").update(archived_at: nil)
+
+      results = retriever.retrieve(SFL::Core::Types::RetrievalQuery.new(query: "lighthouse"))
+
+      expect(results.map(&:clause_id)).to contain_exactly("c-archived", "c-live")
+    end
+  end
 end

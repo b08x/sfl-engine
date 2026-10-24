@@ -55,9 +55,9 @@ RSpec.describe SFL::Core::Loaders::Catalog do
       expect(loader).to be_a(SFL::Core::Loaders::ChatgptExportSource)
     end
 
-    it "resolves :claude_export to a ClaudeExportSource" do
+    it "resolves :claude_export to a JsonRecordsSource" do
       loader = registry.resolve!(:claude_export, ref: fake_ref)
-      expect(loader).to be_a(SFL::Core::Loaders::ClaudeExportSource)
+      expect(loader).to be_a(SFL::Core::Loaders::JsonRecordsSource)
     end
 
     it "resolves :mistral_export to a MistralExportSource" do
@@ -143,7 +143,7 @@ RSpec.describe SFL::Core::Loaders::Catalog do
         transcription: [SFL::Core::Loaders::TranscriptionSource, { file_id: "qa" }],
         image_meta: [SFL::Core::Loaders::ImageMetaSource, { file_id: "qa" }],
         chatgpt_export: [SFL::Core::Loaders::ChatgptExportSource, {}],
-        claude_export: [SFL::Core::Loaders::ClaudeExportSource, { memories_ref: nil }],
+        claude_export: [SFL::Core::Loaders::JsonRecordsSource, {}],
         mistral_export: [SFL::Core::Loaders::MistralExportSource, {}],
       }
     end

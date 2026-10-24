@@ -12,8 +12,14 @@ module SFL
       CAPABILITY_BY_TASK = { embedding: "embedding" }.freeze
       DEFAULT_CAPABILITY = "chat"
 
+      # Model for every LLM task with no env var, no task_models row and no
+      # derived default. A free OpenRouter model (zero prompt and completion
+      # pricing), so no call defaults to a paid model.
+      DEFAULT_LLM_MODEL = "google/gemma-4-26b-a4b-it:free"
+
       # Tasks whose default is another task's effective model, resolved
-      # after that task. The rest default to a fixed provider.
+      # after that task. The rest default to DEFAULT_PROVIDER and
+      # DEFAULT_LLM_MODEL (or the embedding default for :embedding).
       DERIVED_DEFAULTS = {
         context_synthesis: :pass_two_annotation,
         narrative_generation: :context_synthesis,
@@ -63,16 +69,16 @@ module SFL
       private def default_for(task, resolved)
         base = DERIVED_DEFAULTS[task]
         return [resolved.fetch(base).provider, resolved.fetch(base).model] if base
-        return [DEFAULT_EMBEDDING_PROVIDER, nil] if task == :embedding
+        return [DEFAULT_EMBEDDING_PROVIDER, Store::PgEmbeddingStore::DEFAULT_MODEL] if task == :embedding
 
-        [DEFAULT_PROVIDER, nil]
+        [DEFAULT_PROVIDER, DEFAULT_LLM_MODEL]
       end
 
       private def resolve_task(task, assignment, (default_provider, default_model))
         prefix = "SFL_TASK_#{task.to_s.upcase}_"
         params = Boot.task_params_from_env(prefix, @env)
         env_provider = Boot.presence(@env["#{prefix}PROVIDER"])&.to_sym
-        env_var = model_var(task, prefix)
+        env_var = model_var(prefix)
         if env_var
           return Resolution.new(task:, provider: env_provider || default_provider, model: @env[env_var], source: :env,
             env_var:, params:)
@@ -86,11 +92,9 @@ module SFL
           env_var: nil, params:)
       end
 
-      # EMBEDDING_MODEL is the older name for the embedding task's model.
-      private def model_var(task, prefix)
-        names = ["#{prefix}MODEL"]
-        names << "EMBEDDING_MODEL" if task == :embedding
-        names.find { |name| Boot.presence(@env[name]) }
+      private def model_var(prefix)
+        name = "#{prefix}MODEL"
+        name if Boot.presence(@env[name])
       end
     end
   end

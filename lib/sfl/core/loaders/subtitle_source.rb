@@ -7,7 +7,7 @@ module SFL
     module Loaders
       # Normalizes SRT/VTT/ASS subtitle files into Types::Unit turns.
       # Ported from legacy SubtitleLoader (logic unchanged) — see
-      # ChatgptExportSource/ClaudeExportSource for the sibling convention
+      # ChatgptExportSource/JsonRecordsSource for the sibling convention
       # this follows for turn-shaped sources. Unlike those, a subtitle
       # file is inherently one conversation (no multi-conversation
       # bundling), so #each_unit yields turns directly.

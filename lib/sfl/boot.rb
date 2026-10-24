@@ -36,8 +36,8 @@ module SFL
     # context_synthesis defaults to pass_two_annotation's provider/model when not
     # explicitly configured, as it's a trusted starting point.
 
-    # embedding defaults to :ollama provider, with model from EMBEDDING_MODEL env var
-    # (or SFL_TASK_EMBEDDING_MODEL as override).
+    # embedding defaults to :ollama provider and Store::PgEmbeddingStore::DEFAULT_MODEL,
+    # overridden by SFL_TASK_EMBEDDING_PROVIDER and SFL_TASK_EMBEDDING_MODEL.
     DEFAULT_EMBEDDING_PROVIDER = :ollama
 
     # ENV var names for providers that require API keys. :ollama is excluded
@@ -128,7 +128,7 @@ module SFL
 
     module_function def resolve_spacy_model(env) = env["SPACY_MODEL"] || DEFAULT_SPACY_MODEL
 
-    module_function def resolve_embedding_model(env) = presence(env["EMBEDDING_MODEL"]) || Store::PgEmbeddingStore::DEFAULT_MODEL
+    module_function def resolve_embedding_model(env) = presence(env["SFL_TASK_EMBEDDING_MODEL"]) || Store::PgEmbeddingStore::DEFAULT_MODEL
     # rubocop:enable Metrics/ParameterLists
 
     # Langfuse REST client for the evaluation harness (datasets, scores, queues).

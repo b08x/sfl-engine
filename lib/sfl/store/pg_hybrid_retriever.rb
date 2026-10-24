@@ -25,6 +25,35 @@ module SFL
       RRF_K = 60 # Standard RRF constant, same as legacy.
       CANDIDATE_MULTIPLIER = 3
 
+      # Model-filter rules shared by the retriever and PgGraphRepository.
+      module ModelFilter
+        # Family of a stored embedding model string: the ":tag" removed, then
+        # one trailing "-<digits>" removed. "embeddinggemma:latest" and
+        # "embeddinggemma-2:440m" both give "embeddinggemma".
+        #
+        # @param model [String] embeddings.model as stored
+        # @return [String]
+        def self.model_family(model)
+          model.sub(/:.*\z/m, "").sub(/-\d+\z/, "")
+        end
+
+        # The stored embedding models a model filter selects. nil means no
+        # filter (every model). `model:` is an exact match and wins when both
+        # keywords are given; `family:` matches every stored model whose
+        # model_family equals it.
+        #
+        # @param db [Sequel::Database]
+        # @param family [String, nil]
+        # @param model [String, nil]
+        # @return [Array<String>, nil] nil when neither keyword is given
+        def self.models_matching(db, family: nil, model: nil)
+          return nil if family.nil? && model.nil?
+          return [model] if model
+
+          db[:embeddings].distinct.select_map(:model).select { |stored| model_family(stored) == family }
+        end
+      end
+
       # @param db [Sequel::Database]
       # @param embedder [Core::Ports::Embedder] injected, not a global/singleton
       #   (this app's DI convention) — unlike legacy's optional `embedder: nil`
@@ -37,13 +66,16 @@ module SFL
       end
 
       # @param query [Core::Types::RetrievalQuery]
+      # @param family [String, nil] restrict to stored models of this family
+      # @param model [String, nil] restrict to this exact stored model (wins over family:)
       # @return [Array<Core::Types::RetrievalResult>] sorted by rrf_score
       #   descending, at most query.limit rows
-      def retrieve(query)
+      def retrieve(query, family: nil, model: nil)
         candidate_limit = query.limit * CANDIDATE_MULTIPLIER
+        models = ModelFilter.models_matching(@db, family:, model:)
 
-        semantic_rows = semantic_search(query.query, candidate_limit, query.filters)
-        keyword_rows = keyword_search(query.query, candidate_limit, query.filters)
+        semantic_rows = semantic_search(query.query, candidate_limit, query.filters, models)
+        keyword_rows = keyword_search(query.query, candidate_limit, query.filters, models)
 
         reciprocal_rank_fusion(semantic_rows, keyword_rows)
           .first(query.limit)
@@ -55,13 +87,14 @@ module SFL
       # gracefully rather than sending a malformed `<=>` comparison to
       # Postgres — the same defensive posture as legacy's guard, just keyed
       # off the vector itself instead of an optional embedder.
-      private def semantic_search(query_text, limit, filters)
+      private def semantic_search(query_text, limit, filters, models)
         vector_values = @embedder.embed(query_text)
         return [] if vector_values.empty?
 
         vector = Pgvector.encode(vector_values)
 
         scope = ClauseFilters.apply(joined_from_embeddings, filters)
+        scope = scope.where(Sequel[:embeddings][:model] => models) if models
 
         scope
           .order(Sequel.lit("embedding <=> ?", vector))
@@ -70,9 +103,12 @@ module SFL
           .to_a.each_with_index.map { |row, idx| row.merge(semantic_rank: idx + 1) }
       end
 
-      private def keyword_search(query_text, limit, filters)
+      # The keyword arm has no embeddings join, so a model filter becomes a
+      # subquery: only clauses with an embedding from the selected models.
+      private def keyword_search(query_text, limit, filters, models)
         scope = ClauseFilters.apply(joined_from_clauses, filters)
           .where(Sequel.lit("to_tsvector('simple', clauses.text) @@ plainto_tsquery('simple', ?)", query_text))
+        scope = scope.where(Sequel[:clauses][:external_id] => @db[:embeddings].where(model: models).select(:clause_id)) if models
 
         scope
           .order(Sequel.lit("ts_rank(to_tsvector('simple', clauses.text), plainto_tsquery('simple', ?)) DESC",
@@ -82,17 +118,25 @@ module SFL
           .to_a.each_with_index.map { |row, idx| row.merge(keyword_rank: idx + 1) }
       end
 
+      # Both arms exclude archived documents (documents.archived_at not null).
       private def joined_from_embeddings
         @db[:embeddings]
           .join(:clauses, external_id: :clause_id)
           .join(:interpersonal_payloads, clause_id: Sequel[:clauses][:external_id])
           .join(:ideational_payloads, clause_id: Sequel[:clauses][:external_id])
+          .exclude(Sequel[:clauses][:section_id] => archived_section_ids)
       end
 
       private def joined_from_clauses
         @db[:clauses]
           .join(:interpersonal_payloads, clause_id: Sequel[:clauses][:external_id])
           .join(:ideational_payloads, clause_id: Sequel[:clauses][:external_id])
+          .exclude(Sequel[:clauses][:section_id] => archived_section_ids)
+      end
+
+      # section_id of every section whose document is archived.
+      private def archived_section_ids
+        @db[:documents].exclude(archived_at: nil).join(:sections, document_id: :id).select(:section_id)
       end
 
       # Same columns for both arms, so RRF merge sees identically-shaped

@@ -5,7 +5,7 @@ require "spec_helper"
 # Facts 8, 12, 13, 14, 16 and 17 against Postgres.
 RSpec.describe SFL::Store::PgSectionRegistry do
   let(:db) { SFL::Store::StoreTestDb.db }
-  let(:logger) { instance_double(SFL::Core::Ports::Logger, warn: nil) }
+  let(:logger) { instance_double(SFL::Core::Ports::Logger, warn: nil, info: nil) }
 
   before { SFL::Store::StoreTestDb.clean! }
 
@@ -61,20 +61,72 @@ RSpec.describe SFL::Store::PgSectionRegistry do
       .with("document moved", document_key: "/p/doc.md", from_collection: "old", to_collection: "new")
   end
 
-  it "replaces sections and clauses on re-ingest into the same collection and bumps updated_at (fact 17)" do
+  it "updates a re-ingested section in place, keeping its surrogate id, and bumps updated_at (fact 17)" do
     first = registry("c")
     store(first, unit("doc#a"))
     store(first, unit("doc#b"))
+    ids = db[:sections].select_hash(:section_id, :id)
     before = db[:documents].get(:updated_at)
 
     store(registry("c"), unit("doc#a"), clauses: 3)
 
-    expect(db[:sections].select_map(:section_id)).to eq(["doc#a"])
-    expect(db[:clauses].select_map(:section_id).uniq).to eq(["doc#a"])
-    expect(db[:clauses].count).to eq(3)
-    expect(db[:documents].first).to include(section_count: 1)
+    expect(db[:sections].select_hash(:section_id, :id)).to eq(ids)
     expect(db[:documents].get(:updated_at)).to be > before
     expect(logger).not_to have_received(:warn)
+  end
+
+  it "keeps the surrogate id of every section across a re-ingest of the whole document" do
+    store(registry("c"), unit("doc#a"))
+    store(registry("c"), unit("doc#b"))
+    ids = db[:sections].select_hash(:section_id, :id)
+
+    reg = registry("c")
+    store(reg, unit("doc#a"), clauses: 2)
+    store(reg, unit("doc#b"), clauses: 2)
+
+    expect(db[:sections].select_hash(:section_id, :id)).to eq(ids)
+    expect(db[:sections].order(:ordinal).select_map(%i[section_id ordinal])).to eq([["doc#a", 1], ["doc#b", 2]])
+    expect(db[:documents].first).to include(section_count: 2)
+  end
+
+  it "removes the section a shrunk document no longer has, with its clauses, keeps the others' ids, and counts the rows (fact 17)" do
+    first = registry("c")
+    store(first, unit("doc#a"), clauses: 2)
+    store(first, unit("doc#b"), clauses: 3)
+    store(first, unit("doc#c"), clauses: 1)
+    ids = db[:sections].select_hash(:section_id, :id)
+    expect([db[:documents].count, db[:sections].count, db[:clauses].count]).to eq([1, 3, 6])
+
+    reg = registry("c")
+    store(reg, unit("doc#a"), clauses: 2)
+    store(reg, unit("doc#b"), clauses: 3)
+    expect(reg.reconcile(reg.written)).to eq(1)
+
+    expect(db[:sections].select_hash(:section_id, :id)).to eq(ids.except("doc#c"))
+    expect([db[:documents].count, db[:sections].count, db[:clauses].count]).to eq([1, 2, 5])
+    expect(db[:clauses].where(section_id: "doc#c").count).to eq(0)
+    expect(db[:documents].get(:section_count)).to eq(2)
+  end
+
+  it "replaces a re-ingested section's clauses rather than adding to them" do
+    store(registry("c"), unit("doc#a"), clauses: 2)
+    store(registry("c"), unit("doc#a"), clauses: 3)
+    expect(db[:clauses].where(section_id: "doc#a").count).to eq(3)
+
+    store(registry("c"), unit("doc#a"), clauses: 1)
+    expect(db[:clauses].where(section_id: "doc#a").count).to eq(1)
+    expect(db[:sections].where(section_id: "doc#a").count).to eq(1)
+  end
+
+  it "still refuses another document's section id after the owner is re-ingested" do
+    store(registry("alpha"), unit("README#intro", key: "/a/README.md"), clauses: 2)
+    id = db[:sections].where(section_id: "README#intro").get(:id)
+    store(registry("alpha"), unit("README#intro", key: "/a/README.md"), clauses: 2)
+
+    expect { store(registry("beta"), unit("README#intro", key: "/b/README.md")) }
+      .to raise_error(SFL::Core::Ports::SectionRegistry::ConflictError)
+    expect(db[:sections].where(section_id: "README#intro").get(:id)).to eq(id)
+    expect(db[:sections].where(section_id: "README#intro").get(:document_id)).to eq(db[:documents].where(document_key: "/a/README.md").get(:id))
   end
 
   it "rolls the section write back with the clauses when the transaction fails" do
@@ -118,6 +170,47 @@ RSpec.describe SFL::Store::PgSectionRegistry do
 
     expect(db[:collections].select_map(:name)).to include("outer")
     expect(db[:documents].count).to eq(0)
+  end
+
+  describe "#written and #reconcile" do
+    it "reports the section ids each run wrote, by document_key, once each" do
+      reg = registry("c")
+      store(reg, unit("doc#a"))
+      store(reg, unit("doc#a"))
+      store(reg, unit("other#x", key: "/p/other.md"))
+
+      expect(reg.written).to eq("/p/doc.md" => ["doc#a"], "/p/other.md" => ["other#x"])
+    end
+
+    it "removes only the given document's sections that the run did not write" do
+      store(registry("c"), unit("doc#a"))
+      store(registry("c"), unit("doc#b"))
+      store(registry("c"), unit("other#x", key: "/p/other.md"))
+
+      reg = registry("c")
+      store(reg, unit("doc#a"))
+      expect(reg.reconcile("/p/doc.md" => ["doc#a"])).to eq(1)
+      expect(db[:sections].select_map(:section_id)).to contain_exactly("doc#a", "other#x")
+    end
+
+    it "removes every section of a document given an empty list, and sets its section_count to 0" do
+      store(registry("c"), unit("doc#a"), clauses: 2)
+
+      expect(registry("c").reconcile("/p/doc.md" => [])).to eq(1)
+      expect([db[:sections].count, db[:clauses].count, db[:documents].get(:section_count)]).to eq([0, 0, 0])
+    end
+
+    it "skips a document key that is not stored" do
+      expect(registry("c").reconcile("/p/none.md" => ["none#a"])).to eq(0)
+    end
+
+    it "logs each removal with keyword fields and no section text" do
+      store(registry("c"), unit("doc#a"))
+      store(registry("c"), unit("doc#b"))
+
+      registry("c").reconcile("/p/doc.md" => ["doc#b"])
+      expect(logger).to have_received(:info).with("stale sections removed", document_key: "/p/doc.md", removed: 1)
+    end
   end
 
   describe "a section id stored under another document" do

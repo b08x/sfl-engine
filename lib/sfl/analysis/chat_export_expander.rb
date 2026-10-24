@@ -14,7 +14,7 @@ module SFL
     # Closes a gap ConversationSource's own doc comment anticipated but
     # nothing ever actually wired: "pass e.g. chat_claude/chat_chatgpt
     # source_type for exports normalized by a chat-export loader
-    # upstream." Core::Loaders::ChatgptExportSource/ClaudeExportSource
+    # upstream." Core::Loaders::ChatgptExportSource/JsonRecordsSource
     # existed and worked; CLI.run_conversation never called either.
     # Live-verified gap (2026-08-02): pointing `sfl-analyze conversation`
     # directly at a raw conversations.json raised deep inside
@@ -77,7 +77,7 @@ module SFL
         ref = Core::Refs::FileRefBuilder.call(path)
         case format
         when :chatgpt then [Core::Loaders::ChatgptExportSource.new(ref), "chat_chatgpt"]
-        when :claude then [Core::Loaders::ClaudeExportSource.new(ref), "chat_claude"]
+        when :claude then [Core::Loaders::JsonRecordsSource.new(ref), "chat_claude"]
         when :mistral then [Core::Loaders::MistralExportSource.new(ref), "chat_mistral"]
         else raise ArgumentError, "unknown format #{format.inspect}"
         end
