@@ -583,6 +583,7 @@ DEPENDENCIES
   csv (~> 3.3)
   cucumber (~> 12.0)
   decode (~> 0.30.0)
+  docker-api (~> 2.4)
   dotenv (~> 3.2)
   dry-monads (~> 1.6)
   dry-struct (~> 1.6)

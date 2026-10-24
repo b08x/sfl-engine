@@ -258,3 +258,5 @@ gem "rllama", "~> 1.2"
 gem "bake", "~> 0.25.0", group: :development
 gem "decode", "~> 0.30.0", group: :development
 gem "rubydex", "~> 0.4.2", group: :development
+
+gem "docker-api", "~> 2.4", group: :development

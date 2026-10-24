@@ -1,0 +1,181 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Builds the Pass 1 spaCy sidecar image from sidecar/Dockerfile and
+# smoke-tests it, both through the docker-api gem over the docker socket
+# (no docker CLI): build with streamed progress, then one throwaway
+# container from the fresh image fed a single real parse request over the
+# NDJSON protocol SFL::Core::PassOne::SpacySidecarParser speaks, asserting
+# the ready line and response shape. Then prints the parser snippet.
+#
+#   bin/build-sidecar                 # print usage, then build + smoke test
+#   bin/build-sidecar --no-smoke --no-cache --tag TAG --model MODEL
+#   bin/build-sidecar --help
+
+require "bundler/setup"
+require "docker"
+require "json"
+require "optparse"
+require "securerandom"
+require "tempfile"
+
+ROOT = File.expand_path("..", __dir__)
+DEFAULT_TAG = "sfl-spacy-sidecar"
+SMOKE_TEXT = "The quick brown fox jumps over the lazy dog."
+TOKEN_KEYS = %w[text lemma pos tag dep morphology].freeze
+
+# The only spaCy model guaranteed to exist inside the image is the one its
+# Dockerfile downloads, so the default --model is parsed from that RUN line
+# (the Dockerfile's baked CMD default diverges from the downloaded model).
+def default_model
+  dockerfile = File.read(File.join(ROOT, "sidecar", "Dockerfile"))
+  dockerfile[/spacy download (\S+)/, 1]
+end
+
+def fail!(message)
+  warn "build-sidecar: #{message}"
+  exit 1
+end
+
+def parse_options
+  options = { model: default_model, no_cache: false, smoke: true, tag: DEFAULT_TAG }
+  parser = OptionParser.new do |opts|
+    opts.banner = "Usage: bin/build-sidecar [options]"
+    opts.on("--model MODEL", "spaCy model to run (default: parsed from sidecar/Dockerfile)") do |model|
+      options[:model] = model
+    end
+    opts.on("--tag TAG", "Docker image tag (default: #{DEFAULT_TAG})") { |tag| options[:tag] = tag }
+    opts.on("--no-smoke", "Skip the post-build NDJSON protocol smoke test") { options[:smoke] = false }
+    opts.on("--no-cache", "Rebuild without docker's layer cache") { options[:no_cache] = true }
+  end
+  warn parser if ARGV.empty?
+  parser.parse!
+  options
+rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+  fail!(e.message)
+end
+
+def docker_socket_available?
+  Docker.version
+  true
+rescue Excon::Errors::SocketError, Errno::ENOENT, Docker::Error::TimeoutError
+  false
+end
+
+# Streams the daemon's /build JSON progress events to the terminal; nil on
+# success, a failure description otherwise.
+def build_image(tag:, no_cache:)
+  build_opts = { "t" => tag }
+  build_opts["nocache"] = true if no_cache
+  buffer = +""
+  failure = nil
+  Docker::Image.build_from_dir(File.join(ROOT, "sidecar"), build_opts) do |chunk|
+    buffer << chunk
+    while (newline = buffer.index("\n"))
+      line = buffer.slice!(0, newline + 1)
+      next if line.strip.empty?
+
+      event = JSON.parse(line)
+      print event["stream"] if event["stream"]
+      puts event["status"] if event["status"] && event["progress"].nil?
+      failure = event["error"] if event["error"]
+    end
+  end
+  failure ? "docker build failed for #{tag}: #{failure}" : nil
+rescue Docker::Error::ServerError => e
+  "docker build failed for #{tag}: #{failure || e.message}"
+end
+
+# Runs one throwaway container from the image and returns its stdout lines
+# plus the request id. The parse request is pre-written and streamed in via
+# Docker::Container#attach (stdin hijack) — the sidecar buffers stdin until
+# it is ready — and asserting against the container's full post-exit log
+# (not live attach output) sidesteps the race where the ready line lands
+# before the attach call.
+def run_sidecar_once(tag, model)
+  request_id = SecureRandom.uuid
+  request = Tempfile.new("build-sidecar-smoke")
+  container = nil
+  begin
+    request.write(JSON.generate({ id: request_id, text: SMOKE_TEXT, section_id: "build-sidecar-smoke" }))
+    request.rewind
+    container = Docker::Container.create("Image" => tag, "Cmd" => ["--model", model], "OpenStdin" => true, "AttachStdin" => true)
+    container.start!
+    begin
+      container.attach(stdin: request)
+    rescue Docker::Error::ConflictError
+      nil # container already exited before the attach call landed
+    end
+    exit_status = container.wait["StatusCode"].to_i
+    unless exit_status.zero?
+      detail = container.streaming_logs("stderr" => 1).lines.last.to_s.strip
+      raise "container exited with status #{exit_status}: #{detail}"
+    end
+
+    [container.streaming_logs("stdout" => 1).lines.map(&:strip).reject(&:empty?), request_id]
+  ensure
+    request.close!
+    container&.remove(force: true)
+  end
+end
+
+def smoke_test(tag:, model:)
+  stdout_lines, request_id = run_sidecar_once(tag, model)
+  ready_line, response_line = stdout_lines
+  raise "sidecar produced no ready line" if ready_line.nil?
+
+  ready = JSON.parse(ready_line)
+  raise "sidecar never signaled ready: #{ready_line}" unless ready["type"] == "ready"
+  raise "sidecar produced no response line" if response_line.nil?
+
+  response = JSON.parse(response_line)
+  raise "sidecar returned an error: #{response['error']}" if response["error"]
+  raise "response id #{response['id'].inspect} does not match the request id" unless response["id"] == request_id
+
+  clause = response.fetch("clauses").first
+  raise "sidecar parsed the smoke sentence into zero clauses" if clause.nil?
+
+  assert_well_formed(clause)
+end
+
+def assert_well_formed(clause)
+  tokens = clause.fetch("tokens")
+  raise "clause has no tokens" if tokens.empty?
+
+  tokens.each do |token|
+    TOKEN_KEYS.each { |key| token.fetch(key) }
+    raise "token #{token['text'].inspect} has a non-integer head_index" unless token["head_index"].is_a?(Integer)
+    raise "token #{token['text'].inspect} has a non-integer index" unless token["index"].is_a?(Integer)
+  end
+
+  root_index = clause.fetch("root_index")
+  raise "root_index #{root_index} is outside the token range" unless root_index.between?(0, tokens.length - 1)
+
+  %w[text sentence_index].each { |key| clause.fetch(key) }
+end
+
+options = parse_options
+fail!("docker socket at #{Docker.url} is unreachable — is the docker daemon running?") unless docker_socket_available?
+fail!('could not find the "spacy download" line in sidecar/Dockerfile; pass --model explicitly') unless options[:model]
+
+puts "build-sidecar: building image #{options[:tag]} from sidecar/ (model: #{options[:model]})"
+failure = build_image(tag: options[:tag], no_cache: options[:no_cache])
+fail!(failure) if failure
+
+if options[:smoke]
+  begin
+    smoke_test(tag: options[:tag], model: options[:model])
+    puts "build-sidecar: smoke test passed — image responds correctly over the NDJSON protocol"
+  rescue => e
+    fail!("smoke test failed: #{e.message}")
+  end
+end
+
+puts <<~SNIPPET
+  Image "#{options[:tag]}" is ready. Construct the parser with:
+
+    SFL::Core::PassOne::SpacySidecarParser.new(
+      model: "#{options[:model]}",
+      command: ["docker", "run", "-i", "--rm", "#{options[:tag]}", "--model", "#{options[:model]}"]
+    )
+SNIPPET
