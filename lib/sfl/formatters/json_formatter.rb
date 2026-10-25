@@ -140,16 +140,18 @@ module SFL
           }
         end
       end
-      # Per-clause reasoning_trace, the only clause-level field this report
-      # exposes today. `nil` for fallback/stub clauses (no trace was ever
-      # computed) as well as for llm clauses where the trace itself failed
-      # Dry::Struct validation (the Pass 2 engine leaves reasoning_trace nil
-      # in that case without defaulting the rest of the clause).
+      # Per-clause fields: id, annotation_source, process_type (from the
+      # ideational payload) and reasoning_trace. `reasoning_trace` is `nil`
+      # for fallback/stub clauses (no trace was ever computed) as well as for
+      # llm clauses where the trace itself failed Dry::Struct validation (the
+      # Pass 2 engine leaves reasoning_trace nil in that case without
+      # defaulting the rest of the clause).
       private def format_clauses(clauses)
         clauses.map do |clause|
           {
             id: clause.id,
             annotation_source: clause.interpersonal.annotation_source,
+            process_type: clause.ideational.process_type,
             reasoning_trace: serialize_reasoning_trace(clause.interpersonal.reasoning_trace),
           }
         end

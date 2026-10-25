@@ -80,8 +80,128 @@ namespace :eval do
           path,
           "--output-dir",
           out_dir,
+          "--topics",
+          "0",
 ])
       abort("nd-#{number} failed; see #{result[:log_path]}") unless result[:success]
     end
+  end
+
+  # The three analysis tasks below read the four unseen-conversation reports
+  # that eval:run_unseen writes. Each report is one conversation. Fields read
+  # (lib/sfl/formatters/json_formatter.rb, format_turns at line 123 and
+  # format_clauses at line 148):
+  #   turns[].turn_id                    (line 126)
+  #   turns[].speaker                    (line 127)
+  #   turns[].timestamp                  (line 128, ISO 8601 with offset)
+  #   turns[].avg_tenor                  (line 130)
+  #   turns[].tenor_shift                (line 133, nil on turn 1)
+  #   turns[].semantic_coherence_score   (line 138, nil unless topics are enabled)
+  #   turns[].clauses[].annotation_source (line 152)
+  #   turns[].clauses[].process_type     (NOT written by format_clauses today;
+  #                                       eval:process_mix aborts on it)
+  # The reports keep no speaker or process_type per clause in the same place;
+  # the speaker comes from the turn, and the clause source is annotation_source.
+  eval_report_labels = (11..14).map { |number| "output/eval/nd-#{number}/conversation_analysis.json" }
+  eval_root = File.expand_path("..", __dir__)
+  eval_out_dir = File.join(eval_root, "output", "eval")
+  eval_turn_row = Struct.new(:turn_id, :speaker, :avg_tenor, :tenor_shift)
+
+  eval_load_reports = lambda do
+    require "json"
+    missing = eval_report_labels.reject { |label| File.exist?(File.join(eval_root, label)) }
+    abort("missing eval reports:\n  #{missing.join("\n  ")}\nrun eval:run_unseen first") unless missing.empty?
+
+    eval_report_labels.map do |label|
+      [label, JSON.parse(File.read(File.join(eval_root, label)))]
+    rescue JSON::ParserError => e
+      abort("#{label}: not valid JSON (#{e.message})")
+    end
+  end
+
+  # Aborts naming the file and field when a turn lacks one of the keys.
+  eval_turns = lambda do |label, report, fields|
+    turns = report["turns"]
+    abort("#{label}: missing required field turns") unless turns.is_a?(Array)
+    turns.each do |turn|
+      fields.each do |field|
+        abort("#{label}: missing required field turns[].#{field}") unless turn.is_a?(Hash) && turn.key?(field)
+      end
+    end
+    turns
+  end
+
+  eval_write = lambda do |name, rendered|
+    require "fileutils"
+    FileUtils.mkdir_p(eval_out_dir)
+    File.write(File.join(eval_out_dir, "#{name}.md"), rendered[:markdown])
+    File.write(File.join(eval_out_dir, "#{name}.json"), rendered[:json])
+    puts "wrote output/eval/#{name}.md and output/eval/#{name}.json"
+  end
+
+  desc "Spearman correlation of avg_tenor vs semantic_coherence_score across nd-11..14 into output/eval/tenor_coherence.{md,json}"
+  task :tenor_coherence do
+    require_relative "../lib/sfl"
+
+    reports = eval_load_reports.call
+    rows = reports.flat_map do |label, report|
+      eval_turns.call(label, report, %w[avg_tenor semantic_coherence_score]).map do |turn|
+        { avg_tenor: turn["avg_tenor"], semantic_coherence_score: turn["semantic_coherence_score"] }
+      end
+    end
+    result = SFL::Analysis::TenorCoherenceCorrelation.new(rows).call
+    eval_write.call("tenor_coherence", SFL::Analysis::EvalReports.render(:tenor_coherence, result, sources: eval_report_labels))
+  end
+
+  desc "Process-type mix per speaker against the trusted-clause baseline across nd-11..14 into output/eval/process_mix.{md,json}"
+  task :process_mix do
+    require_relative "../lib/sfl"
+
+    reports = eval_load_reports.call
+    clause_fields = %w[annotation_source process_type]
+    clauses = reports.flat_map do |label, report|
+      eval_turns.call(label, report, %w[speaker clauses]).flat_map do |turn|
+        turn["clauses"].map do |clause|
+          clause_fields.each do |field|
+            abort("#{label}: missing required field turns[].clauses[].#{field}") unless clause.is_a?(Hash) && clause.key?(field)
+          end
+          { speaker: turn["speaker"], process_type: clause["process_type"], source: clause["annotation_source"] }
+        end
+      end
+    end
+    result = SFL::Analysis::ProcessMixAnalyzer.new(clauses).call
+    eval_write.call("process_mix", SFL::Analysis::EvalReports.render(:process_mix, result, sources: eval_report_labels))
+  end
+
+  desc "Tenor spikes after long pauses (GapAnalyzer) across nd-11..14 into output/eval/gap_analysis.{md,json}"
+  task :gap_analysis do
+    require "time"
+    require_relative "../lib/sfl"
+
+    reports = eval_load_reports.call
+    conversations = reports.map do |label, report|
+      turns = eval_turns.call(label, report, %w[turn_id timestamp avg_tenor tenor_shift speaker])
+      turns.each do |turn|
+        next if turn["turn_id"] <= 1 || !turn["tenor_shift"].nil?
+
+        abort("#{label}: missing required field turns[].tenor_shift (turn_id #{turn['turn_id']})")
+      end
+      rows = turns.map do |turn|
+        eval_turn_row.new(turn["turn_id"], turn["speaker"], turn["avg_tenor"], turn["tenor_shift"])
+      end
+      spike_ids = SFL::Analysis::TenorTracker.new(rows).detect_significant_shifts.to_set { |shift| shift[:turn_id] }
+      {
+        turns: turns.map do |turn|
+          timestamp = begin
+            Time.iso8601(turn["timestamp"])
+          rescue ArgumentError, TypeError
+            abort("#{label}: missing required field turns[].timestamp")
+          end
+          { timestamp:, spike: spike_ids.include?(turn["turn_id"]) }
+        end,
+      }
+    end
+    result = SFL::Analysis::GapAnalyzer.new(conversations).call
+    eval_write.call("gap_analysis", SFL::Analysis::EvalReports.render(:gap_analysis, result, sources: eval_report_labels))
   end
 end

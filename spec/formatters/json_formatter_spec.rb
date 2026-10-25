@@ -66,6 +66,18 @@ RSpec.describe SFL::Formatters::JSONFormatter do
       expect(untraced[:reasoning_trace]).to be_nil
     end
 
+    it "writes each clause's ideational process_type into its clause object" do
+      mental_clause = build_annotated_clause(id: "mental-1", process_type: "mental", annotation_source: "llm")
+      mental_turn = build_turn(turn_id: 2, speaker: "Bob", clauses: [mental_clause], timestamp: Time.new(2024, 1, 1, 12, 1, 0))
+      mental_result = build_analysis_result(metadata:, turns: [turn, mental_turn],
+        speaker_profiles: { "Alice" => build_speaker_profile })
+
+      clauses = JSON.parse(described_class.new(mental_result).render, symbolize_names: true)[:turns]
+        .flat_map { |t| t[:clauses] }
+      expect(clauses.find { |c| c[:id] == traced_clause.id }[:process_type]).to eq("material")
+      expect(clauses.find { |c| c[:id] == "mental-1" }[:process_type]).to eq("mental")
+    end
+
     it "renames metadata/profiles keys per unit_label/actor_label/id_label/actors_list_label" do
       doc_metadata = metadata.merge(
         unit_label: "Section", actor_label: "heading", actors_list_label: "Headings", id_label: "section_id"
