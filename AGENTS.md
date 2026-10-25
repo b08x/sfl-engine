@@ -19,6 +19,7 @@ Instructions for coding agents working in this repository. See `README.md` for t
 - `SFL::Boot` is the only code that reads `ENV`. Other classes receive configuration as arguments. `spec/tui/consolidation_spec.rb` fails on an `ENV` read under `lib/`, `exe/` or `rakelib/` outside `lib/sfl/boot*`, and on an `SFL_*` name missing from `.env.example`.
 - `SFL_LOG_TARGET` is a comma-separated list (`stderr`, `journald`). The default is `stderr`. Every log call goes to every listed target. An unknown name, or `journald` without `/run/systemd/journal/socket`, raises `Boot::Error`.
 - Task models resolve as env var, then `task_models` row, then default (`Boot::TaskModelResolver`). Without the database only env and defaults apply.
+- Topic modeling (`--topics N`) runs the BERTopic sidecar: `SFL_BERTOPIC_PYTHON` (default `python3`) runs `sidecar/bertopic/bertopic_sidecar.py`, and `SFL_BERTOPIC_SPEAKER_NAMES` is a comma-separated list of speaker labels stripped from turns before embedding (`Analysis::TopicInputCleaner`).
 - `SFL_RUN_ID` is attached to every log line. It is generated per process when unset. `rake eval:run_unseen` sets one per item. Query it with `journalctl SFL_RUN_ID=<id>`.
 - When stdout and stderr are both terminals, a foreground ingest or annotation run draws a full-screen dashboard (`SFL::Dashboard`). The stderr log target then goes to the dashboard's log panel; journald is unaffected. Ctrl-C sets the stop flag; a second Ctrl-C quits at once.
 - Otherwise the CLI writes `progress turn=N total=M` to stderr after each finished turn.

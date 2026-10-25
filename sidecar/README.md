@@ -8,6 +8,12 @@ talks to this subprocess over a line-delimited JSON protocol on
 stdin/stdout — see the docstring in `spacy_sidecar.py` for the exact
 message shapes.
 
+A second sidecar lives in `bertopic/`: BERTopic topic modelling over
+precomputed embeddings, spawned by `SFL::Analysis::BertopicSidecar`.
+`bertopic/README.md` documents its NDJSON protocol. `bertopic/Dockerfile`
+also builds it as a standalone image (`docker build -t sfl-bertopic-sidecar
+sidecar/bertopic/`); the Docker section below is about the spaCy image only.
+
 **Note on the containerized API (issue #34):** `docker/api.Dockerfile`
 bakes spaCy directly into the `sfl-api` image's system Python (mirroring
 this directory's own `pip install spacy && spacy download` approach)

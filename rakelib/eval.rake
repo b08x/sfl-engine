@@ -97,10 +97,9 @@ namespace :eval do
   #   turns[].avg_tenor                  (line 130)
   #   turns[].tenor_shift                (line 133, nil on turn 1)
   #   turns[].semantic_coherence_score   (line 138, nil unless topics are enabled)
-  #   turns[].clauses[].annotation_source (line 152)
-  #   turns[].clauses[].process_type     (NOT written by format_clauses today;
-  #                                       eval:process_mix aborts on it)
-  # The reports keep no speaker or process_type per clause in the same place;
+  #   turns[].clauses[].annotation_source (line 153)
+  #   turns[].clauses[].process_type     (line 154, ideational payload)
+  # The reports keep no speaker per clause in the same place;
   # the speaker comes from the turn, and the clause source is annotation_source.
   eval_report_labels = (11..14).map { |number| "output/eval/nd-#{number}/conversation_analysis.json" }
   eval_root = File.expand_path("..", __dir__)

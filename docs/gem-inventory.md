@@ -55,7 +55,7 @@ where a comment and the code disagree, the table says so.
 |---|---|---|
 | `csv` | CSV parsing for `CsvSource` and the CSV output formatter | `lib/sfl/core/loaders/csv_source.rb:50` |
 | `inkmark` | Markdown → heading-chunked sections for `MarkdownSource` | `lib/sfl/core/loaders/markdown_source.rb:88` |
-| `pragmatic_tokenizer` | Prose tokenization for MarkdownSource and the topic modeler | `markdown_source.rb:162`; `topic_modeler.rb:337` |
+| `pragmatic_tokenizer` | Prose tokenization for MarkdownSource (the topic modeler no longer tokenizes; BERTopic's sidecar does it in Python) | `lib/sfl/core/loaders/markdown_source.rb:162` |
 | `yajl-ruby` | Streaming JSON/JSONL parsing for the chat-export and JSON sources | `lib/sfl/core/loaders/chatgpt_export_source.rb:42` |
 | `json_canvas` | Obsidian `.canvas` node-graph parsing for `CanvasSource` | `lib/sfl/core/loaders/canvas_source.rb:50` |
 | `kreuzberg` | PDF text extraction with sentence-aware chunking for `PdfSource` | `lib/sfl/core/loaders/pdf_source.rb:44` |

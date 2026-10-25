@@ -41,3 +41,5 @@ tui-implementation-plan.md
 drafts/
 session-ses_*
 .specs/scratchpad/
+__pycache__/
+*.pyc

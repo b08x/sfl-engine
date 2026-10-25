@@ -20,13 +20,13 @@ Two storage decisions follow from that bet:
 Each principle below is enforced somewhere checkable — a spec, a gate or a code path — noted inline.
 
 1. **Defense is structural, not behavioral.** Retrieval filters run against stored metadata, before the model's context is assembled. A clause that fails the filter never enters the context window (spec/store/pg_hybrid_retriever_spec.rb).
-2. **LLM output is untrusted data, never code.** When ingest meets a file shape no loader recognizes, the LLM's candidate loader is parsed (never `eval`'d), gated on three checks, and written into a quarantine directory the runtime never loads. Promotion into `lib/` is a human copy, never a code path. Incident `4a53727` — one bad draft dropped into the autoloaded tree, failing the whole test suite — is why this is a permanent constraint rather than a preference.
-3. **One bad input never halts the run.** Ingest isolates failure per file: a file that fails is recorded in the review queue, and the rest of the run continues.
+2. **LLM output is untrusted data, never code.** When ingest meets a file shape no loader recognizes, the LLM's candidate loader is parsed (never `eval`'d), gated, and written into a quarantine directory the runtime never loads; the gates and the promotion recipe are in the Collections section below. Promotion into `lib/` is a human copy, never a code path. Incident `4a53727` — one bad draft dropped into the autoloaded tree, failing the whole test suite — is why this is a permanent constraint rather than a preference.
+3. **One bad input does not halt an ingest run.** Ingest isolates failure per file for the error classes it catches — analysis, loader, registry-conflict, store and system-call errors — and a file that fails is recorded in the review queue while the rest of the run continues; an error outside that list still stops the run.
 4. **Degradation is truthful, never silently fudged.** An out-of-range annotation value is rejected by contract and degraded with recorded provenance, not rescaled to fit. Fallback annotations are marked as fallback and excluded by default from what the synthesis LLM sees and cites — `include_fallback: true` (exposed by the HTTP API) opts back in, and the result reports the exclusion, so a fallback never silently grounds an answer (spec/llm/degradation_spec.rb).
 5. **Determinism where rules work; models where semantics need them.** Pass 1 is deterministic syntactic parsing; Pass 2 is LLM annotation. Annotation provenance is recorded — a fallback value is marked as fallback — so a degraded value is never mistaken for a finding (spec/llm/degradation_spec.rb).
-6. **Citations are checked, not trusted.** The context synthesizer maps the model's citation numbers to real clause ids and drops the out-of-range ones.
-7. **Configuration flows one way.** `SFL::Boot` is the only code that reads `ENV`; every other class receives its configuration as injected arguments, and a spec fails on any other `ENV` read under `lib/`, `exe/` or `rakelib/`.
-8. **Review is human and named.** Review decisions are refused without `SFL_REVIEWER_NAME`, and annotation review is read-only in the UI — the decision trail is not editable from the review screen.
+6. **Citations are checked, not trusted.** The context synthesizer maps the model's citation numbers to real clause ids and drops the out-of-range ones (spec/analysis/citation_grounding_checker_spec.rb).
+7. **Configuration flows one way.** `SFL::Boot` is the only code that reads `ENV`; every other class receives its configuration as injected arguments, and `spec/tui/consolidation_spec.rb` fails on any `ENV` read under `lib/`, `exe/`, `rakelib/`, `app/` or the root launchers outside `lib/sfl/boot*` — and on an `SFL_*` name missing from `.env.example` (a static scan, not runtime instrumentation).
+8. **Review is human and named.** Review decisions are refused without `SFL_REVIEWER_NAME` (lib/sfl/tui/browse/commands.rb), and annotation review is read-only in the UI — the decision trail is not editable from the review screen.
 9. **Naming is vocabulary.** *Document*, *section* and *clause* mean specific things (see the Glossary), everywhere — code, specs, CLI output and docs.
 10. **Docs are audit, not brochure.** `docs/gem-inventory.md` records what every dependency does — and which ones do nothing — with cited call sites; documentation commits pin claims to verified behavior.
 
@@ -35,11 +35,11 @@ Each principle below is enforced somewhere checkable — a spec, a gate or a cod
 The engine compiles text into annotated clauses in two passes with a hard boundary between them:
 
 - **Pass 1** — deterministic syntactic parsing that finds clauses, process types, participants and circumstances. It runs as a Python spaCy sidecar over NDJSON, behind a typed port, so the rest of the codebase never sees the transport and tests can swap in fakes. The pipeline composes the passes through a Result ladder: a Pass 1 failure short-circuits straight past everything downstream.
-- **Pass 2** — LLM annotation of mood, modality, tenor and attitude, producing the interpersonal payload. The model is set per task through `SFL_TASK_*` variables. Batches are bounded (40 clauses per Pass 2 request), and provider-side failures back off and retry instead of filling the run with placeholders.
+- **Pass 2** — LLM annotation of mood, modality, tenor and attitude, producing the interpersonal payload. The model is set per task through `SFL_TASK_*` variables. Batches are bounded (40 clauses per Pass 2 request), and provider-side failures retry with bounded backoff — three attempts, five on a 429 honoring the provider's Retry-After up to 30 s — and a batch that still fails degrades only its own clauses to fallback values.
 - **Store** — Postgres with pgvector holds the clauses, their separated payloads, embeddings and review queues. One database, one place to filter and search within a transaction.
 - **Retrieval** — hybrid retrieval (reciprocal-rank fusion over vector and lexical search, plus scalar filters over the stored metadata), followed by context synthesis that only cites clauses that exist.
-- **Analysis** — engines and scorers that run over conversations, documentation and knowledge bases.
-- **Eval** — Langfuse datasets and a runner that evaluates on *unseen* conversations, held out on purpose.
+- **Analysis** — engines and scorers that write a per-conversation analysis report (`conversation_analysis.json` and companions) under `--output-dir`, over conversations, documentation and knowledge bases. Topic modeling (`--topics N`) runs BERTopic in a second Python sidecar over embeddings from the run's embedder; `--topics 0` lets BERTopic choose the topic count. Topics need the embedding task, so they cannot run with `--pass1-only`.
+- **Eval** — a Langfuse dataset built from narrative digests, and a runner that annotates conversations the Pass 2 model has never seen, held out on purpose.
 
 Everything below this line is operational reference.
 
@@ -48,14 +48,14 @@ Everything below this line is operational reference.
 - Collection: a named group of documents.
 - Document: one whole item, such as a paper, a transcript or one chat conversation.
 - Section: a segment of a document, such as a heading block or one speaker turn. Identified by `section_id`, for example `notes-3f9a1c2e#turn-3`. A file loader's prefix before `#` is the basename plus the first 8 hex digits of the SHA-256 of the file path (`Core::Loaders::FileId`), so two files with the same basename get different section ids and re-ingesting a file keeps its ids.
-- Clause: what annotation produces from a section. Each clause row carries the `section_id` of its section. Retrieval filters on `mood` (a closed set), `tenor` and `modality` (each 0.0-1.0), `process_type` (ideational payload) and `source_type`; the free-text `speaker_attitude` is stored but not filterable. Each row also stores `annotation_source` — `llm`, `human`, `fallback`, `stub` or `chunk_artifact` — provenance that drives the default citation exclusion, not a scalar filter.
+- Clause: what annotation produces from a section. Each clause row carries the `section_id` of its section. Retrieval filters on `mood` (a closed set), `tenor` and `modality` (each 0.0-1.0), `process_type` (ideational payload) and `source_type`; the free-text `speaker_attitude` is stored but not filterable. Each row also stores `annotation_source` — `llm`, `human`, `fallback`, `stub` or `chunk_artifact` — provenance that drives the default citation exclusion, not a scalar filter. The CLI `context` subcommand exposes only the `mood`/`tenor`/`modality` subset; the HTTP API accepts all of these filters.
 
 ## Collections, documents, sections and runs
 
-- `sfl-analyze ingest <path> --collection NAME` stores clauses and records each document and section in collection NAME. The collection is created when it does not exist. Without `--collection`, the name is the basename of `<path>`. `conversation --store` and `documentation --store` take the same option.
-- A file shape no loader recognizes is drafted: the review queue records `loader_drafted` with a candidate loader `.rb` in `docs/ingest-review/candidates/` (a quarantine outside the autoloaded `lib/` tree) and a review doc in `docs/ingest-review/`. Nothing is registered automatically; promoting a draft is a manual review (see the recipe in the draft's review doc). A draft must pass three gates before it is written — class-name pattern, `RubyVM::AbstractSyntaxTree.parse` (parse, never `eval`) and a declared class under `SFL::Core::Loaders`. A gate failure records `draft_failed` and raises; the syntax-parse and declared-class gates also leave a `<stem>-invalid.md` evidence doc naming the gate.
+- `sfl-analyze ingest <path> --collection NAME` stores clauses and records each document and section in collection NAME. The collection is created when it does not exist. Without `--collection`, the name is the basename of `<path>`. `conversation --store`, `documentation --store` and `knowledge-base --store` take the same option.
+- A file shape no loader recognizes is drafted: the review queue records `loader_drafted` with a candidate loader `.rb` in `docs/ingest-review/candidates/` (a quarantine outside the autoloaded `lib/` tree) and a review doc in `docs/ingest-review/`. Nothing is registered automatically; promoting a draft is a manual review (see the recipe in the draft's review doc). A draft must pass three gates before it is written — class-name pattern, `RubyVM::AbstractSyntaxTree.parse` (parse, never `eval`) and a declared class under `SFL::Core::Loaders`. A gate failure raises inside the drafter; ingest catches it, records a `draft_failed` review entry and continues with the next file. The syntax-parse and declared-class gates also leave a `<stem>-invalid.md` evidence doc naming the gate.
 - Collection names are trimmed, keep their case and are unique ignoring case. An empty name is rejected.
-- Tables: `collections`, `documents` (one row per `document_key`), `sections` (one row per `section_id`, nested through `parent_section_id`) and `runs`.
+- Tables: `collections`, `documents` (one row per `document_key`), `sections` (one row per `section_id`, nested through `parent_section_id`), `runs` and `topic_models` (one row per topic-model fit of a document, read latest-by-highest-`id` by a store the CLI does not yet wire, so `--topics` fits are reported and not written).
 - Markdown and canvas sections nest by heading level. A heading is the parent of the sections that follow it until a heading of the same or a higher level. Turn sections have no parent, and their label is the speaker.
 - A JSON records file — a Claude `conversations.json` or a ChatGPT conversations export — is streamed by `JsonRecordsSource` (catalog key `:claude_export`): one document per conversation record, keyed by the record's `uuid`, with the export file as its source path; each yielded message is one section, `section_id` `<uuid>#turn-N` with N counting from 0. A SillyTavern session file is one document keyed by its file path; each physical line is one complete JSON record and yields one section.
 - `sfl-analyze json-records <file> [...] --collection NAME` ingests JSON records files one file at a time; without `--collection` the name is the basename of the first file's directory. Each file's units are written inside one transaction, so a failed file leaves nothing behind. The run summary lists each failed, redundant and skipped record with its byte offset, record index and reason, then `processed N, skipped ..., failed N, stale_removed N`; the exit status is 1 when any file failed. A failed file whose conversation uuids all appear intact in another file of the same batch is reported redundant, not failed. At the end of the run, sections of a re-ingested document that this run did not write are removed.
@@ -64,8 +64,7 @@ Everything below this line is operational reference.
 - Migration 016 puts clauses stored before collections existed into a collection named `legacy`: one document per section id prefix before `#`, one section per section id.
 - `bundle exec rake db:purge_collection[NAME]` deletes a collection with its documents, sections and clauses and prints the counts.
 - `bundle exec rake db:archive_document[KEY]` sets `archived_at` on a document, by exact `document_key`; `db:unarchive_document[KEY]` clears it. Hybrid retrieval (`PgHybridRetriever`) excludes archived documents; `db:prune_missing_sources[dry-run]` deletes documents whose source file is gone, with their sections and clauses, unless they are archived — pass `dry-run` to change nothing and print the counts only. Archiving changes two behaviors — hybrid retrieval stops returning the document's clauses, and `db:prune_missing_sources` spares it; the document itself stays visible in the TUI's Browse tab.
-- `bundle exec rake models:refresh` fills the `models` table from the `ruby_llm` registry and the Ollama and OpenRouter listings. A model missing from its provider's latest listing is marked unavailable; its row is kept. A provider whose listing fails is left unchanged, and the task exits non-zero.
-- Stored runs (`ingest`, and `conversation`/`documentation` with `--store`) write one `runs` row keyed by `SFL_RUN_ID`, with kind, collection, status, total, done, failed, current item, pid, the effective model per task (the `models` column) and start, heartbeat and finish times. The heartbeat is written every 5 seconds. A running row whose heartbeat is older than 30 seconds is shown as stalled; one whose process no longer exists is shown as dead.
+- Stored runs (`ingest`, and `conversation`/`documentation`/`knowledge-base` with `--store`, kind `annotate`) write one `runs` row keyed by `SFL_RUN_ID`, with kind, collection, status, total, done, failed, current item, pid, the effective model per task (the `models` column) and start, heartbeat and finish times. The heartbeat is written every 5 seconds. A running row whose heartbeat is older than 30 seconds is shown as stalled; one whose process no longer exists is shown as dead.
 
 ## Entry points
 
@@ -79,9 +78,13 @@ Run `exe/sfl-analyze --help` for options.
 
 On a terminal, a foreground ingest or annotation run shows a full-screen dashboard: run id, collection, models per task, elapsed time, ingest and annotation progress, the log, and Ctrl-C for a graceful stop; a second Ctrl-C aborts immediately. The final screen stays until a key is pressed.
 
+Exit codes: a run whose report contains any fallback or stub clause exits 1 even though its artifacts were written; `--allow-fallback` accepts that, and `--pass1-only` is exempt.
+
 ## Terminal UI
 
-`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models. Runs lists the newest 50 runs in the `runs` table (ingest, annotate, export, recompile), re-read every 2 seconds; stalled and dead runs are marked. Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model is the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable), else its `task_models` row, else the built-in default: the free OpenRouter model (`google/gemma-4-26b-a4b-it:free`) for most chat tasks, Ollama's `embeddinggemma-2:440m` for the embedding task, and another task's effective model for context synthesis, narrative generation, loader drafting and ingest classification — so a task with nothing assigned makes no paid call. `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back; `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`. Each run row records the effective model per task in its `models` column. `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
+`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models. Runs lists the newest 50 runs in the `runs` table (ingest, annotate, export, recompile), re-read every 2 seconds; stalled and dead runs are marked. Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model is the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable), else its `task_models` row, else the built-in default: the OpenRouter model (`google/gemma-4-26b-a4b-it:free`, free at the time of writing; `rake models:refresh` marks it unavailable if the listing changes) for most chat tasks, Ollama's `embeddinggemma-2:440m` for the embedding task, and another task's effective model for context synthesis, narrative generation, loader drafting and ingest classification — so only a task that falls through to the built-in default is guaranteed unpaid; the four derived tasks inherit another task's effective model, paid or free. `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back; `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`. Each run row records the effective model per task in its `models` column. `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
+
+`bundle exec rake models:refresh` fills the `models` table from the `ruby_llm` registry and the Ollama and OpenRouter listings. A model missing from its provider's latest listing is marked unavailable; its row is kept. A provider whose listing fails is left unchanged, and the task exits non-zero.
 
 Browse shows collections, documents and nested sections on the left, the focused section's clauses in the middle and detail on the right.
 
@@ -102,14 +105,16 @@ Search (`/` to type, `Enter` to run) uses the hybrid retriever (`PgHybridRetriev
 
 `Enter` runs `exe/sfl-analyze ingest PATH --collection NAME [flags]` under a new `SFL_RUN_ID`; `Esc` closes the launcher. Inside kitty (`KITTY_WINDOW_ID` set and `KITTY_LISTEN_ON` reachable, which needs `allow_remote_control yes` and `listen_on` in `kitty.conf`) the ingest opens in a new kitty tab, where it draws its dashboard, and the tab stays open after it exits. Outside kitty, or when kitty refuses, the ingest runs as a detached child with its output in `SFL_INGEST_LOG_DIR/ingest-<run id>.log` (default `./output/logs`), and the TUI moves to the Runs tab, where the run appears.
 
-The TUI is a pure update over immutable state; there is no desktop GUI — review happens here, in the Browse tab.
+There is no desktop GUI — review happens in the Browse tab.
 
 ## Setup
 
 1. Install the Ruby version pinned in `.ruby-version`, then `bundle install`.
-2. Start Postgres and Redis with `docker compose up -d`.
+2. Start Postgres and Redis with `docker compose up -d`. The engine's own code reads only Postgres; no engine code reads Redis today — it is part of the compose stack and a dependency of the containerized `api` profile.
 3. Copy `.env.example` to `.env` and set the values you need. The store's vector column is fixed at 768 dimensions, so any model assigned to the embedding task (`SFL_TASK_EMBEDDING_MODEL`) must emit 768-dim vectors.
 4. Apply migrations with `bundle exec rake db:migrate`. `sfl-tui`, `sfl-analyze ingest` and `--store` runs exit with the current and latest schema versions when this step is missing.
+
+Topic modeling (`--topics N`) also needs a Python with the packages pinned in `sidecar/bertopic/requirements.txt` (BERTopic and friends) installed; `SFL_BERTOPIC_PYTHON` names the interpreter and defaults to `python3`. Without them, the first fit fails on import. It cannot run with `--pass1-only`, which runs no embedding task (see How the engine works).
 
 `SFL::Boot` loads `.env`. With `SFL_AUTO_START_DOCKER=1` in the shell environment, `exe/sfl-analyze` and `exe/sfl-tui` start the Docker services when they are not running; `exe/sfl-api` does not, so it needs the services up first.
 
@@ -131,10 +136,9 @@ Logging is configured with environment variables. See `.env.example`.
 - If `journald` is listed and `/run/systemd/journal/socket` is missing, startup raises `Boot::Error`. There is no fallback to stderr. In the Docker `app` profile, mount the socket into the container.
 - `SFL_LOG_LEVEL` sets the minimum level: `debug`, `info`, `warn`, `error` or `fatal`.
 - `SFL_RUN_ID` is attached to every log line. It is shown as `run_id=...` on stderr and as the `SFL_RUN_ID` field in journald. When it is unset, a new id is generated per process.
-- `rake eval:run_unseen` sets one run id per item.
-- When stdout or stderr is not a terminal — so no dashboard is drawn — the CLI writes `progress turn=N total=M` to stderr after each finished turn, regardless of `SFL_LOG_TARGET`.
+- When stdout or stderr is not a terminal — so no dashboard is drawn — the CLI writes `progress turn=N total=M` to stderr after each finished section — `turn=` is the engine's literal label — regardless of `SFL_LOG_TARGET`.
 
-Every line carries a run id because a run is the unit of accountability here: what happened, under which model, in which collection — findable in one query.
+The run id ties every log line to its `runs` row: what happened, under which model, in which collection.
 
 Examples:
 
@@ -147,7 +151,10 @@ journalctl SFL_RUN_ID=<id>
 
 - `rake eval:build_narrative_dataset` loads the narrative digests — from `output/`, a sibling `sfl-compiler` checkout's `output/` and `output/eval/` — into Langfuse.
 - `rake eval:setup_langfuse` creates score configs and annotation queues.
-- `rake eval:run_unseen` runs Pass 2 on unseen conversations and writes `output/eval/nd-<n>/`.
+- `rake eval:run_unseen` runs Pass 2 (with topics: `--topics 0`) on the four held-out conversations, whose raw exports come from the `SFL_EVAL_*` variables (`.env.example`), using the `.env` Pass 2 model, one run id per item, and writes `output/eval/nd-<n>/`; an existing report is skipped.
+- `rake eval:tenor_coherence` correlates `avg_tenor` with `semantic_coherence_score` (Spearman) across the unseen-conversation reports and writes `output/eval/tenor_coherence.{md,json}`.
+- `rake eval:process_mix` compares each speaker's process-type mix against the baseline over trusted clauses (`annotation_source` `llm` or `human`) in the same reports and writes `output/eval/process_mix.{md,json}`.
+- `rake eval:gap_analysis` tests whether turns whose tenor shift exceeds 0.15 follow gaps longer than both the conversation's 75th-percentile gap and 600 seconds (two-sided Fisher exact, permutation fallback), and writes `output/eval/gap_analysis.{md,json}`.
 
 ## Where the reasoning lives
 
@@ -162,7 +169,7 @@ The README carries the summary; the design record lives where it can be checked:
 
 ```
 exe/             executables
-sidecar/         Python spaCy Pass 1 sidecar
+sidecar/         Python sidecars (spaCy Pass 1, BERTopic topics)
 lib/sfl/boot.rb  configuration and wiring (only code that accesses ENV)
 lib/sfl/core/    types, ports, Pass 1, pipeline, loaders
 lib/sfl/llm/     LLM engines, signatures, model configuration

@@ -241,15 +241,16 @@ eval dataset.
 24. Run `bundle exec ruby -e 'require "sfl/analysis/topic_modeler"'`.
     Expected: loads with no error.
 
-25. Run `python3 -m py_compile sidecar/spacy_sidecar.py`.
+25. Run `python3 -m py_compile sidecar/spacy_sidecar.py
+    sidecar/bertopic/bertopic_sidecar.py`.
     Expected: exit code 0 and no output.
 
 26. Pipe one synthetic bertopic request into the sidecar, with fake
     vectors and no Ollama:
     ```
-    { printf '%s\n' '{"id":"t1","type":"bertopic","texts":["alpha beta","alpha gamma","delta epsilon","delta zeta","alpha beta gamma","delta epsilon zeta"],"embeddings":[[0.1,0.9,0.0],[0.2,0.8,0.1],[0.9,0.1,0.0],[0.8,0.2,0.1],[0.15,0.85,0.05],[0.85,0.15,0.0]],"nr_topics":2,"min_topic_size":2,"seed":42}'; sleep 5; } | python3 sidecar/spacy_sidecar.py --model <model named in sidecar/README.md>
+    { printf '%s\n' '{"id":"t1","type":"bertopic","texts":["alpha beta","alpha gamma","delta epsilon","delta zeta","alpha beta gamma","delta epsilon zeta"],"embeddings":[[0.1,0.9,0.0],[0.2,0.8,0.1],[0.9,0.1,0.0],[0.8,0.2,0.1],[0.15,0.85,0.05],[0.85,0.15,0.0]],"nr_topics":2,"min_topic_size":2,"seed":42}'; sleep 5; } | python3 sidecar/bertopic/bertopic_sidecar.py
     ```
-    Expected: the first line is `{"type": "ready", "model": "<name>"}`.
+    Expected: the first line is `{"type": "ready", "model": "bertopic"}`.
     The next line has `"id": "t1"`, `"topics"` as an array of 6
     integers, `"topic_words"` as an object whose values are arrays of
     strings, and `"outlier_topic": -1`. JSON object keys arrive as
@@ -259,7 +260,7 @@ eval dataset.
 27. Pipe a malformed line followed by a valid request into the same
     command:
     ```
-    { printf '%s\n' '{"id":"x","type":"bertopic","texts":['; printf '%s\n' '<the valid request from step 26>'; sleep 5; } | python3 sidecar/spacy_sidecar.py --model <model>
+    { printf '%s\n' '{"id":"x","type":"bertopic","texts":['; printf '%s\n' '<the valid request from step 26>'; sleep 5; } | python3 sidecar/bertopic/bertopic_sidecar.py
     ```
     Expected: one error line with `"id": null` and an `"error"`
     message that does not repeat the malformed text. The valid request
@@ -291,9 +292,10 @@ eval dataset.
 
 31. Run `bundle exec rake db:migrate`, then query the table with
     `psql "$DATABASE_URL" -c '\d topic_models'`.
-    Expected: the migration applies. The table has a document key, a
-    JSONB `topics`, a JSONB `topic_words`, `coverage`, a run id, and
-    `created_at` and `updated_at`. Record the row count, run a
+    Expected: the migration applies. The table has an `id` primary key,
+    a `collection_key` and a `document_key`, a JSONB `topics`, a JSONB
+    `topic_words`, `coverage`, `attempts`, a nullable `run_id`, and
+    `created_at` (there is no `updated_at`). Record the row count, run a
     coverage-failing fit (the spec fixture in step 30 is the simplest
     source), and confirm the row count is unchanged.
 
