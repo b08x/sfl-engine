@@ -260,3 +260,5 @@ gem "decode", "~> 0.30.0", group: :development
 gem "rubydex", "~> 0.4.2", group: :development
 
 gem "docker-api", "~> 2.4", group: :development
+
+gem "ruby_llm", "~> 2.1"

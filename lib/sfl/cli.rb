@@ -325,7 +325,7 @@ module SFL
       end
       defaulted = finish_report(result, output_dir)
       degraded = "#{file[:label]} (#{defaulted} fallback clauses)" if fail_on_fallback?(options, defaulted)
-      write_narrative(result, output_dir, boot_result) if options[:narrative]
+      write_narrative(result, output_dir, boot_result, options) if options[:narrative]
       print_interrupt_status(result, file[:path], :conversation) if result.metadata[:interrupted]
       degraded
     end
@@ -402,7 +402,7 @@ module SFL
         end
       end
       finish_report(result, options[:output_dir])
-      write_narrative(result, options[:output_dir], boot_result) if options[:narrative]
+      write_narrative(result, options[:output_dir], boot_result, options) if options[:narrative]
       print_interrupt_status(result, input, :documentation) if result.metadata[:interrupted]
     ensure
       Signal.trap("INT", "DEFAULT")
@@ -764,7 +764,9 @@ module SFL
     # :context_synthesis). Unlike :pass_two_annotation, it is free-form, not
     # schema-shaped. The narrative is checked against the digest, not against
     # clause ids, which the narrator never receives.
-    module_function def write_narrative(result, output_dir, boot_result)
+    # The narrator's logger comes from #build_collaborators, so it follows the
+    # run's log targets and the dashboard's log panel.
+    module_function def write_narrative(result, output_dir, boot_result, options)
       unless boot_result.lm_factory
         warn "[WARN] narrative generation skipped: --narrative requires an LLM (omit --pass1-only)"
         return
@@ -772,8 +774,10 @@ module SFL
 
       digest = Analysis::NarrativeGenerator::Digest.from_result(result)
       narrator = LLM::Narrators::NarrativeGenerator.new(
-        lm: boot_result.lm_factory.for(:narrative_generation),
-        variant: boot_result.narrative_variant || LLM::Narrators::NarrativeGenerator::DEFAULT_VARIANT
+        **boot_result.lm_factory.credentials_for(:narrative_generation),
+        variant: boot_result.narrative_variant || LLM::Narrators::NarrativeGenerator::DEFAULT_VARIANT,
+        params: boot_result.llm_config.for(:narrative_generation).params,
+        logger: build_collaborators(options).first
       )
       report = Analysis::NarrativeGenerator.new(narrator:).generate(digest)
       grounding = Analysis::DigestGroundingChecker.new.check(report_sections(report), digest)

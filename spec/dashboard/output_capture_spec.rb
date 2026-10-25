@@ -34,6 +34,20 @@ RSpec.describe SFL::Dashboard::OutputCapture do
     expect([io.tty?, io.isatty, io.sync, io.fileno, io.flush]).to eq([false, false, true, nil, io])
   end
 
+  it "is accepted by Logger as an IO device, not a filename" do
+    logger = Logger.new(io)
+    logger.info("from logger")
+
+    expect(board.state.log.last).to include("from logger")
+  end
+
+  it "ignores close, so a Logger closing its device leaves the capture writable" do
+    expect(io.close).to be_nil
+    io.puts("after close")
+
+    expect(board.state.log).to eq(["after close"])
+  end
+
   it "drops a line written from a trap handler, which cannot take the board's lock" do
     allow(board).to receive(:update).and_raise(ThreadError)
 

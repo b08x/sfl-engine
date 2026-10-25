@@ -629,6 +629,7 @@ DEPENDENCIES
   rubocop-thread_safety
   ruby-lsp
   ruby-spacy
+  ruby_llm (~> 2.1)
   ruby_llm-docker
   ruby_llm-template
   rubydex (~> 0.4.2)

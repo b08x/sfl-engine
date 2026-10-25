@@ -8,9 +8,9 @@ module SFL
     #
     # This class does not depend on DSPy. Legacy's default SFLNarrator and its
     # multi-model Achilles/Tortoise/Genie variant are not ported here.
-    # `narrator:` is a required keyword argument. The DSPy-backed narrator
-    # lives in lib/sfl/llm/narrators/narrative_generator.rb and is injected by
-    # the CLI. All this class needs from a narrator is the duck contract:
+    # `narrator:` is a required keyword argument. The narrator, a RubyLLM chat
+    # call, lives in lib/sfl/llm/narrators/narrative_generator.rb and is
+    # injected by the CLI. All this class needs from a narrator is the duck contract:
     # `#call(digest_text) -> Hash` keyed by (a subset/superset of) SECTION_KEYS.
     class NarrativeGenerator
       SECTION_KEYS = %i[

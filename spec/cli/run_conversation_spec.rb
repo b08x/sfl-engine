@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "dspy"
+require "tmpdir"
 
 # There was no coverage for run_conversation at all, which is how a run that
 # annotated 0 of 134 clauses could exit 0 with a green suite. The contract
@@ -175,11 +176,70 @@ RSpec.describe SFL::CLI do
   # failed batch with no other test noticing.
   describe ".run_conversation with --narrative" do
     let(:digest) { instance_double(SFL::Analysis::NarrativeGenerator::Digest, to_text: "digest", source: "a") }
+    let(:task_config) do
+      SFL::LLM::TaskConfig.new(provider: :test_provider, model: "test-model",
+        params: { temperature: 0.3, max_tokens: 900 })
+    end
+    let(:run_logger) { SFL::Core::Ports::Null::Logger.new }
+    let(:credentials) { { provider: "test_provider", model: "test-model", api_key: "test-key" } }
 
     before do
       allow(engine).to receive(:analyze).and_return(result_with("llm", "llm"))
       allow(SFL::Analysis::NarrativeGenerator::Digest).to receive(:from_result).and_return(digest)
-      allow(boot_result.lm_factory).to receive(:for).with(:narrative_generation).and_return(:lm)
+      allow(boot_result.lm_factory).to receive(:credentials_for).with(:narrative_generation).and_return(credentials)
+      allow(boot_result.llm_config).to receive(:for).with(:narrative_generation).and_return(task_config)
+      allow(SFL::Boot).to receive(:logger).and_return(run_logger)
+    end
+
+    # lm_factory is an instance_double with no #for stub, so a DSPy LM build fails the example.
+    it "builds the narrator from the task's credentials without building a DSPy LM" do
+      narrator = -> (_digest_text) { raise IOError, "stop after construction" }
+      allow(SFL::LLM::Narrators::NarrativeGenerator).to receive(:new).and_return(narrator)
+
+      expect { described_class.run_conversation("spec/fixtures/inputs/sample.jsonl", options.merge(narrative: true)) }
+        .to output(/narrative generation failed/).to_stderr
+
+      expect(SFL::LLM::Narrators::NarrativeGenerator).to have_received(:new)
+        .with(hash_including(provider: "test_provider", model: "test-model", api_key: "test-key"))
+    end
+
+    it "warns instead of aborting the run when the narrator rejects its configuration" do
+      allow(RubyLLM).to receive(:context)
+
+      status = nil
+      expect { status = described_class.run_conversation("spec/fixtures/inputs/sample.jsonl", options.merge(narrative: true)) }
+        .to output(/\[WARN\] narrative generation failed: RubyLLM has no provider :test_provider/).to_stderr
+
+      expect(status).to eq(0)
+      expect(RubyLLM).not_to have_received(:context)
+    end
+
+    it "writes narrative_report.md when the narrator returns all six sections" do
+      sections = SFL::Analysis::NarrativeGenerator::SECTION_KEYS.to_h { |key| [key, "Body of #{key}."] }
+      allow(SFL::LLM::Narrators::NarrativeGenerator).to receive(:new).and_return(-> (_digest_text) { sections })
+      grounding = SFL::Analysis::DigestGroundingChecker::Result.new(findings: [], claim_count: 0,
+        weighted_total: 0, weighted_failed: 0)
+      allow(SFL::Analysis::DigestGroundingChecker).to receive(:new)
+        .and_return(instance_double(SFL::Analysis::DigestGroundingChecker, check: grounding))
+
+      Dir.mktmpdir do |dir|
+        described_class.run_conversation("spec/fixtures/inputs/sample.jsonl", options.merge(narrative: true, output_dir: dir))
+
+        path = File.join(dir, "narrative_report.md")
+        expect(File).to exist(path)
+        expect(File.read(path)).to include("Body of overview.", "Body of takeaways.")
+      end
+    end
+
+    it "passes the task's configured params and the run's logger to the narrator" do
+      narrator = -> (_digest_text) { raise IOError, "stop after construction" }
+      allow(SFL::LLM::Narrators::NarrativeGenerator).to receive(:new).and_return(narrator)
+
+      expect { described_class.run_conversation("spec/fixtures/inputs/sample.jsonl", options.merge(narrative: true)) }
+        .to output(/narrative generation failed/).to_stderr
+
+      expect(SFL::LLM::Narrators::NarrativeGenerator).to have_received(:new)
+        .with(hash_including(params: { temperature: 0.3, max_tokens: 900 }, logger: run_logger))
     end
 
     it "warns instead of failing the run when the narrator raises a provider error" do

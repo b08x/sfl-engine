@@ -41,6 +41,11 @@ module SFL
       alias isatty tty?
       def fileno = nil
 
+      # Logger::LogDevice treats an object as an IO only when it answers both
+      # write and close; without close it calls File.open on it. Closing does
+      # nothing: the capture lives as long as the dashboard that owns it.
+      def close = nil
+
       private def flush_lines
         while (index = @buffer.index("\n"))
           line = @buffer.slice!(0..index).chomp
