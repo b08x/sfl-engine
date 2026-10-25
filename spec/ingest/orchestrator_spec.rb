@@ -466,6 +466,48 @@ RSpec.describe SFL::Ingest::Orchestrator do
     end
   end
 
+  describe "Claude export dispatch" do
+    # A real Analysis::Engine over a real Pipeline. Pass One is stubbed to one clause per
+    # call and Pass Two is the Null annotator, so no LLM runs and nothing persists.
+    def claude_export_json
+      messages = [{ "sender" => "human", "text" => "hello there" }, { "sender" => "assistant", "text" => "hi back" }]
+      JSON.generate([{ "uuid" => "c-alpha", "name" => "Chat", "chat_messages" => messages }])
+    end
+
+    def real_engine
+      pass_one = instance_double(SFL::Core::PassOne::Engine)
+      allow(pass_one).to receive(:process) do |text, section_id:|
+        clause = SFL::Core::Types::SyntacticClause.new(id: "#{section_id}-syn-0", text:, tokens: [], root_index: 0,
+          sentence_index: 0, section_id:)
+        [clause]
+      end
+      ideational = instance_double(SFL::Core::PassOne::IdeationalExtractor)
+      allow(ideational).to receive(:extract) do |clause|
+        SFL::Core::Types::IdeationalPayload.new(clause_id: clause.id, process_type: "material",
+          participants: [], circumstances: [], raw_transitivity: {})
+      end
+      pipeline = SFL::Core::Pipeline.new(pass_one:, pass_two: SFL::Core::Ports::Null::Annotator.new,
+        ideational_extractor: ideational)
+      SFL::Analysis::Engine.new(pipeline:)
+    end
+
+    it "runs a real Analysis::Engine over a real JsonRecordsSource for a Claude export without NoMethodError" do
+      write("conversations.json", claude_export_json)
+      engine = real_engine
+      results = []
+      allow(engine).to receive(:analyze).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap { |result| results << result }
+      end
+      real = described_class.new(conversation_engine: engine, kb_source:, classifier:, loader_drafter:, review_repo:)
+
+      summary = real.run(tmpdir)
+
+      expect(summary[:dispatched]).to eq(1)
+      expect(results.size).to eq(1)
+      expect(results.first.turns.map(&:turn_id)).not_to be_empty
+    end
+  end
+
   describe "loaders registry" do
     it "defaults loaders: to a Core::Registry populated via Catalog.register_into" do
       loaders = orchestrator.__send__(:loaders)

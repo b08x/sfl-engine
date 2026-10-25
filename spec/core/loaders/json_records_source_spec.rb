@@ -118,4 +118,60 @@ RSpec.describe SFL::Core::Loaders::JsonRecordsSource do
     expect { described_class.new(file_ref(path), logger:).each_unit.to_a }
       .to raise_error(SFL::Core::Loaders::Error, /bad name\.json: truncated/)
   end
+
+  it "answers a public #units with the same units #each_unit yields, in order, with the same skipped entries" do
+    path = write("conversations.json", [{ "name" => "no uuid" }, convo("c-alpha", msg("first"), msg("second", sender: "assistant"))])
+    from_units = described_class.new(file_ref(path), logger:)
+    from_each = described_class.new(file_ref(path), logger:)
+
+    units = from_units.units
+    expected = from_each.each_unit.to_a
+
+    expect(units).to be_an(Array)
+    expect(units).not_to be_empty
+    expect(units).to all(be_a(SFL::Core::Types::Unit))
+    expect(units.map(&:section_id)).to eq(expected.map(&:section_id))
+    expect(units.map(&:text)).to eq(expected.map(&:text))
+    expect(from_units.skipped).to eq(from_each.skipped)
+  end
+
+  it "responds publicly to #extra_metadata and #review_entry, with an empty metadata Hash and no review entry" do
+    source = described_class.new(file_ref(write("conversations.json", [convo("c-alpha", msg("one"))])), logger:)
+    unit = source.units.first
+
+    expect(source).to respond_to(:extra_metadata)
+    expect(source).to respond_to(:review_entry)
+    expect(source.extra_metadata([unit])).to eq({})
+    expect(source.review_entry(unit:, clauses: [])).to be_nil
+  end
+
+  it "yields the same units and the same skipped list on a second #each_unit call on one instance" do
+    path = write("c.json", [convo("c-alpha", msg("one"), msg("  ")), convo("c-beta", msg("two"))])
+    source = described_class.new(file_ref(path), logger:)
+
+    first_units = source.each_unit.to_a
+    first_skipped = source.skipped.dup
+    second_units = source.each_unit.to_a
+
+    expect(first_units.map(&:section_id)).to eq(%w[c-alpha#turn-0 c-beta#turn-0])
+    expect(second_units.map(&:section_id)).to eq(first_units.map(&:section_id))
+    expect(second_units.map(&:text)).to eq(first_units.map(&:text))
+    expect(source.skipped).to eq(first_skipped)
+    expect(source.skipped).to eq([{ record_index: 0, reason: "text_empty" }])
+  end
+
+  it "reports a repeated uuid as a duplicate on every #each_unit call, not only the first" do
+    path = write("c.json", [convo("c-alpha", msg("one")), convo("c-alpha", msg("two"))])
+    source = described_class.new(file_ref(path), logger:)
+
+    first_units = source.each_unit.to_a
+    first_skipped = source.skipped.dup
+    second_units = source.each_unit.to_a
+
+    expect(second_units.map(&:section_id)).to eq(first_units.map(&:section_id))
+    expect(second_units.map(&:section_id)).to eq(["c-alpha#turn-0"])
+    expect(source.skipped).to eq(first_skipped)
+    expect(source.skipped).to eq([{ record_index: 1, reason: "duplicate_document_key" }])
+    expect(logger).to have_received(:warn).twice.with("json record skipped", hash_including(reason: "duplicate_document_key", document_key: "c-alpha"))
+  end
 end

@@ -29,7 +29,11 @@ module SFL
 
       # Registered deterministic source_types (features/registration.feature)
       # resolved straight to their Core::Loaders::Catalog factory name.
-      CATALOG_LOADER_SOURCE_TYPES = { "transcription" => :transcription, "vault_image_meta" => :image_meta }.freeze
+      CATALOG_LOADER_SOURCE_TYPES = {
+        "transcription" => :transcription,
+        "vault_image_meta" => :image_meta,
+        "chat_claude" => :claude_export,
+      }.freeze
 
       # Below this, a classifier verdict is treated the same as "no
       # confident match" even when format/mode are both present. Start as

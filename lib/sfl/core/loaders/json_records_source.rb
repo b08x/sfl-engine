@@ -38,26 +38,41 @@ module SFL
         def initialize(ref, logger: Core::Ports::Null::Logger.new)
           @ref = ref
           @logger = logger
-          @document_keys = []
-          @skipped = []
-          @keys = {}
+          reset_run
         end
 
+        # Each call starts a fresh pass over the file, so repeated calls on one
+        # instance return the same units and the same #skipped list.
+        #
         # @yield [Types::Unit] one unit per yielded message, in file order
         # @return [Enumerator] when no block is given
         # @raise [Failure] when the file is not an array or is malformed or truncated
         def each_unit(&block)
           return to_enum(:each_unit) unless block
 
-          @pending = []
-          @records = false
-          @documents = false
+          reset_run
           File.open(@ref.path_hint, "rb") do |io|
             ArraySplitter.new(io, file: file_name).each_element do |text, offset, index|
               record(text, offset, index, &block)
             end
           end
           no_known_shape if @records && !@documents
+        end
+
+        # The JSON records source adds no per-conversation metadata and no review-queue entries.
+        def extra_metadata(_turns) = {}
+
+        def review_entry(unit:, clauses:) = nil # rubocop:disable Lint/UnusedMethodArgument -- shared Source#review_entry contract
+
+        # Per-run state: the document keys seen, the skipped list, and the
+        # pending shape faults and record-kind flags of the current pass.
+        private def reset_run
+          @document_keys = []
+          @skipped = []
+          @keys = {}
+          @pending = []
+          @records = false
+          @documents = false
         end
 
         private def record(text, offset, index, &)
@@ -106,7 +121,7 @@ module SFL
 
           @keys[uuid] = true
           @document_keys << uuid
-          units(record, index, &)
+          record_units(record, index, &)
         end
 
         private def key_fault(uuid) = (uuid.empty? || uuid.match?(/[#\r\n]/)) ? "invalid_document_key" : nil
@@ -116,22 +131,23 @@ module SFL
           warn_record(reason, index, document_key: SafeText.key(uuid))
         end
 
-        private def units(record, index, &)
+        private def record_units(record, index, &)
           number = 0
           record["chat_messages"].each_with_index do |message, message_index|
             text = MessageText.extract(message)
-            fault = text.nil? ? "text_missing" : nil
-            fault ||= "text_empty" if text && text.strip.empty?
+            fault = text_fault(text)
             if fault
               warn_message(fault, index, message_index)
               @skipped << { record_index: index, reason: fault }
-              next
+            else
+              yield(unit(record, number, text, message))
+              number += 1
             end
-
-            yield(unit(record, number, text, message))
-            number += 1
           end
         end
+
+        # A message with no text, or only whitespace, is a fault; it takes no turn number.
+        private def text_fault(text) = text.nil? ? "text_missing" : ("text_empty" if text.strip.empty?)
 
         private def unit(record, number, text, message)
           UnitFor.call(record:, number:, text:, message:, path: @ref.path_hint)
