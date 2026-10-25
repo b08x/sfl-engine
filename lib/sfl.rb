@@ -30,18 +30,16 @@ module SFL
   }.freeze
   private_constant :INFLECTIONS
 
-  def self.loader
-    @loader ||= build_loader # rubocop:disable ThreadSafety/ClassInstanceVariable -- set once at require-time, before any threads exist
+  LOADER = Zeitwerk::Loader.new.tap do |loader|
+    loader.tag = "sfl"
+    loader.push_dir(__dir__)
+    loader.inflector.inflect(INFLECTIONS)
   end
+  private_constant :LOADER
 
-  def self.build_loader
-    Zeitwerk::Loader.new.tap do |loader|
-      loader.tag = "sfl"
-      loader.push_dir(__dir__)
-      loader.inflector.inflect(INFLECTIONS)
-    end
+  def self.loader
+    LOADER
   end
-  private_class_method :build_loader
 end
 
 SFL.loader.setup
