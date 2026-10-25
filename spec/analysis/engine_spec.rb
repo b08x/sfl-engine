@@ -346,8 +346,6 @@ RSpec.describe SFL::Analysis::Engine do
       factory = double("topic_modeler_factory") # rubocop:disable RSpec/VerifiedDoubles
       allow(factory).to receive(:call).with(k: 3).and_return(fake_modeler)
       engine = described_class.new(pipeline:, topic_modeler_factory: factory)
-      # 9 units keeps k: 3 at exactly MIN_DOCS_PER_TOPIC documents per topic, so the
-      # requested k passes the clamp through untouched — see the clamp specs below.
       units = Array.new(9) { |i| build_unit("d#{i + 1}") }
       source = FakeAnalysisSource.new(units)
 
@@ -371,11 +369,9 @@ RSpec.describe SFL::Analysis::Engine do
     end
   end
 
-  # A requested topic count larger than the corpus can support is the failure that produced ten
-  # near-random partitions (two of them near-duplicates) from an 8-turn conversation. The clamp
-  # must reduce k *and* say so — a silently-different k is exactly the invisible-degradation bug
-  # this codebase is trying to stop shipping.
-  describe "#analyze -> topic_k clamping" do
+  # The factory receives the requested topic count unchanged. Zero means "no fixed k": the factory
+  # gets k: nil and BERTopic chooses the topic count. There is no document-count clamp.
+  describe "#analyze -> topic_k passthrough" do
     before { allow(pipeline).to receive(:compile).and_return(Success([])) }
 
     let(:fake_modeler) do
@@ -384,47 +380,31 @@ RSpec.describe SFL::Analysis::Engine do
     let(:factory) do
       instance_double(Proc, call: fake_modeler)
     end
-    let(:logger) { instance_double(SFL::Core::Ports::StderrLogger, warn: nil) }
 
     def analyze_with(unit_count, topics)
-      engine = described_class.new(pipeline:, topic_modeler_factory: factory, logger:)
+      engine = described_class.new(pipeline:, topic_modeler_factory: factory)
       source = FakeAnalysisSource.new(Array.new(unit_count) { |i| build_unit("d#{i + 1}") })
       engine.analyze(source, label: "x", topics:)
     end
 
-    it "clamps a requested k that exceeds one topic per MIN_DOCS_PER_TOPIC documents" do
+    it "passes a requested k through unchanged, even when the corpus is small" do
       analyze_with(8, 10)
-
-      expect(factory).to have_received(:call).with(k: 2)
-    end
-
-    it "warns with both the requested and the applied k so the reduction is never silent" do
-      analyze_with(8, 10)
-
-      expect(logger).to have_received(:warn).with(
-        a_string_including("topic count reduced"), requested: 10, applied: 2, doc_count: 8,
-        min_docs_per_topic: described_class::MIN_DOCS_PER_TOPIC
-      )
-    end
-
-    it "never clamps below MIN_TOPIC_K, since k=1 yields no dominant topic at all" do
-      analyze_with(3, 5)
-
-      expect(factory).to have_received(:call).with(k: 2)
-    end
-
-    it "passes a k the corpus can support through untouched and stays silent" do
-      analyze_with(30, 10)
 
       expect(factory).to have_received(:call).with(k: 10)
-      expect(logger).not_to have_received(:warn)
     end
 
-    it "leaves HDP mode (topics: 0) unclamped — HDP infers its own topic count" do
+    it "passes k: nil for topics: 0 so BERTopic chooses the topic count" do
       analyze_with(3, 0)
 
       expect(factory).to have_received(:call).with(k: nil)
-      expect(logger).not_to have_received(:warn)
+    end
+
+    it "raises a clear error when the default factory is used, because the factory must be injected" do
+      engine = described_class.new(pipeline:)
+      source = FakeAnalysisSource.new(Array.new(4) { |i| build_unit("d#{i + 1}") })
+
+      expect { engine.analyze(source, label: "x", topics: 3) }
+        .to raise_error(SFL::Analysis::Error, /topic_modeler_factory must be injected/)
     end
   end
 

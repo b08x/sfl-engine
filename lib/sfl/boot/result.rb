@@ -47,8 +47,14 @@ module SFL
     #   require_llm: false.
     # - `embedding_model`: SFL_TASK_EMBEDDING_MODEL, else Store::PgEmbeddingStore::DEFAULT_MODEL;
     #   the model PgEmbeddingStore files vectors under.
+    # - `bertopic_command`: the argv for TopicModeler's sidecar_command: — SFL_BERTOPIC_PYTHON
+    #   (default python3) followed by sidecar/bertopic/bertopic_sidecar.py in this repo.
+    # - `topic_speaker_names`: SFL_BERTOPIC_SPEAKER_NAMES split on commas; empty when unset.
+    # - `embedder_info`: {provider:, model:} of the embedding task, plus endpoint: for ollama;
+    #   nil when require_llm: false.
     Result = Struct.new(:db, :llm_config, :lm_factory, :embedder, :classifier, :pass1_command, :pass1_env,
       :spacy_model, :api_debug_errors, :api_cors_origins, :narrative_variant, :model_resolver, :embedding_model,
+      :bertopic_command, :topic_speaker_names, :embedder_info,
       keyword_init: true)
   end
 end

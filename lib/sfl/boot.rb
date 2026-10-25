@@ -62,6 +62,10 @@ module SFL
     PYTHON_TARGET_DIR = File.join(APP_ROOT, ".sfl-python", "python")
     MIGRATIONS_DIR = File.join(APP_ROOT, "db", "migrations")
 
+    # BERTopic sidecar: the Python executable (SFL_BERTOPIC_PYTHON) runs this repo's script.
+    DEFAULT_BERTOPIC_PYTHON = "python3"
+    BERTOPIC_SIDECAR_SCRIPT = File.join(APP_ROOT, "sidecar", "bertopic", "bertopic_sidecar.py")
+
     # rubocop:disable Metrics/ParameterLists -- each flag controls a distinct
     # startup concern, plus DI seams (env, tty, input, ruby_llm) for testability
     # @param env [#[], #fetch] environment source, injectable for tests
@@ -106,9 +110,13 @@ module SFL
       api_cors_origins = resolve_api_cors_origins(env)
       narrative_variant = resolve_narrative_variant(env)
       embedding_model = resolve_embedding_model(env)
+      bertopic_command = resolve_bertopic_command(env)
+      topic_speaker_names = resolve_topic_speaker_names(env)
+      embedder_info = resolve_embedder_info(llm_config, env)
 
       Result.new(db:, llm_config:, lm_factory:, embedder:, classifier:, pass1_command:, pass1_env:, spacy_model:,
-        api_debug_errors:, api_cors_origins:, narrative_variant:, model_resolver:, embedding_model:)
+        api_debug_errors:, api_cors_origins:, narrative_variant:, model_resolver:, embedding_model:,
+        bertopic_command:, topic_speaker_names:, embedder_info:)
     end
 
     # Connects only when require_db; checks the schema after connecting only
@@ -529,6 +537,27 @@ module SFL
       return nil if interpreter.empty?
 
       [interpreter, Core::PassOne::SpacySidecarParser::DEFAULT_SCRIPT_PATH, "--model", spacy_model]
+    end
+
+    # argv that starts the BERTopic sidecar: SFL_BERTOPIC_PYTHON (default python3) and this repo's script.
+    module_function def resolve_bertopic_command(env)
+      [presence(env["SFL_BERTOPIC_PYTHON"]) || DEFAULT_BERTOPIC_PYTHON, BERTOPIC_SIDECAR_SCRIPT]
+    end
+
+    # SFL_BERTOPIC_SPEAKER_NAMES, comma-separated; the TopicInputCleaner strips these labels before embedding.
+    module_function def resolve_topic_speaker_names(env)
+      env.fetch("SFL_BERTOPIC_SPEAKER_NAMES", "").split(",").map(&:strip).reject(&:empty?)
+    end
+
+    # Provider, model and (for ollama) endpoint of the embedding task, named in TopicModeler's probe errors.
+    # nil when require_llm: false, because no embedding task is built then.
+    module_function def resolve_embedder_info(llm_config, env)
+      return nil unless llm_config
+
+      task = llm_config.for(:embedding)
+      info = { provider: task.provider.to_s, model: task.model.to_s }
+      info[:endpoint] = env["OLLAMA_BASE_URL"] || DEFAULT_OLLAMA_BASE_URL if task.provider.to_s == "ollama"
+      info
     end
   end
   # rubocop:enable Metrics/ModuleLength

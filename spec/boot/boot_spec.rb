@@ -559,4 +559,53 @@ RSpec.describe SFL::Boot do
       expect(described_class.rack_environment(env: { "RACK_ENV" => "production" })).to eq("production")
     end
   end
+
+  describe "BERTopic sidecar and embedder settings" do
+    let(:env_example) { File.read(File.expand_path("../../.env.example", __dir__)) }
+
+    it "defaults the sidecar executable to python3 and runs the repo's sidecar script" do
+      expect(boot(env: base_env).bertopic_command)
+        .to eq(["python3", described_class::BERTOPIC_SIDECAR_SCRIPT])
+    end
+
+    it "resolves the sidecar script under sidecar/bertopic in the repo root" do
+      expect(described_class::BERTOPIC_SIDECAR_SCRIPT).to end_with("sidecar/bertopic/bertopic_sidecar.py")
+      expect(File.exist?(described_class::BERTOPIC_SIDECAR_SCRIPT)).to be(true)
+    end
+
+    it "takes the sidecar executable from SFL_BERTOPIC_PYTHON" do
+      result = boot(env: base_env.merge("SFL_BERTOPIC_PYTHON" => "/opt/py/bin/python"))
+
+      expect(result.bertopic_command).to eq(["/opt/py/bin/python", described_class::BERTOPIC_SIDECAR_SCRIPT])
+    end
+
+    it "treats a blank SFL_BERTOPIC_PYTHON as unset" do
+      result = boot(env: base_env.merge("SFL_BERTOPIC_PYTHON" => "   "))
+
+      expect(result.bertopic_command.first).to eq("python3")
+    end
+
+    it "splits SFL_BERTOPIC_SPEAKER_NAMES on commas and drops blank entries" do
+      result = boot(env: base_env.merge("SFL_BERTOPIC_SPEAKER_NAMES" => "Alice, Bob,,"))
+
+      expect(result.topic_speaker_names).to eq(%w[Alice Bob])
+    end
+
+    it "defaults topic_speaker_names to an empty array" do
+      expect(boot(env: base_env).topic_speaker_names).to eq([])
+    end
+
+    it "names the embedding task's provider and endpoint in embedder_info" do
+      expect(boot(env: base_env).embedder_info)
+        .to include(provider: "ollama", endpoint: described_class::DEFAULT_OLLAMA_BASE_URL)
+    end
+
+    it "leaves embedder_info nil when require_llm: false" do
+      expect(boot(env: base_env, require_llm: false).embedder_info).to be_nil
+    end
+
+    it "documents every BERTopic variable in .env.example" do
+      expect(env_example).to include("SFL_BERTOPIC_PYTHON=python3", "SFL_BERTOPIC_SPEAKER_NAMES=")
+    end
+  end
 end

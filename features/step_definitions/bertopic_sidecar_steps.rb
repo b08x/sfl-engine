@@ -171,12 +171,12 @@ Then("the bertopic request carries {string}: {int}") do
   raise NotImplementedError, "the bertopic request carries \"nr_topics\": 5"
 end
 
-Then("Gemfile and Gemfile.lock name no tomoto gem") do
-  raise NotImplementedError, "Gemfile and Gemfile.lock name no tomoto gem"
+Then("Gemfile and Gemfile.lock name no LDA or HDP topic gem") do
+  raise NotImplementedError, "Gemfile and Gemfile.lock name no LDA or HDP topic gem"
 end
 
-Then("the TopicModeler spec passes with tomoto not installed") do
-  raise NotImplementedError, "the TopicModeler spec passes with tomoto not installed"
+Then("the TopicModeler spec passes without that gem installed") do
+  raise NotImplementedError, "the TopicModeler spec passes without that gem installed"
 end
 
 Then("calling save on a TopicModeler raises NoMethodError") do

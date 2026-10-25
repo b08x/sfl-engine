@@ -91,12 +91,6 @@ gem "kreuzberg" # PDF text + sentence-aware chunking, for PdfSource
 # TOPIC MODELING & ANALYSIS (Phase 3)
 # =============================================================================
 # lib/sfl/analysis: topic modeling pre-pass, shared by every Analysis::Source.
-# Legacy's gemspec pinned "~> 0.3"; only 0.6.2 is available in this sandbox and its
-# Ruby-level LDA/HDP API (documented kwargs, #add_doc/#make_doc/#infer/#train/
-# #topic_words/#burn_in=) matches what legacy's TopicModeler calls, verified by
-# reading the installed gem's source directly (lib/tomoto/{lda,hdp}.rb).
-
-gem "tomoto"
 
 # Language detection
 gem "lingua"

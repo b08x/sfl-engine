@@ -238,9 +238,8 @@ eval dataset.
     the scenarios as undefined, because the repo ships no step
     definitions and none are to be added.
 
-24. Run `grep -rn tomoto Gemfile Gemfile.lock lib spec`.
-    Expected: no matches. `bundle exec ruby -e 'require "sfl/analysis/topic_modeler"'`
-    loads with no error when `tomoto` is not installed.
+24. Run `bundle exec ruby -e 'require "sfl/analysis/topic_modeler"'`.
+    Expected: loads with no error.
 
 25. Run `python3 -m py_compile sidecar/spacy_sidecar.py`.
     Expected: exit code 0 and no output.

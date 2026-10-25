@@ -64,7 +64,6 @@ where a comment and the code disagree, the table says so.
 
 | Gem | What it does here | Evidence |
 |---|---|---|
-| `tomoto` | LDA/HDP topic modeling pre-pass shared by every analysis source | `lib/sfl/analysis/topic_modeler.rb:294` |
 | `lingua` | English readability scoring | `lib/sfl/analysis/readability_scorer.rb:14` |
 
 ### Retrieval

@@ -72,7 +72,22 @@ RSpec.describe "Analysis::Engine conversation golden master" do
   let(:pass_two) { instance_double(SFL::Core::Ports::Annotator) }
 
   let(:pipeline) { SFL::Core::Pipeline.new(pass_one:, pass_two:, ideational_extractor:) }
-  let(:engine) { SFL::Analysis::Engine.new(pipeline:) }
+  # The topic pre-pass is stubbed: TopicModeler needs an embedder and the BERTopic sidecar, and this
+  # spec runs neither. The stub's per-turn values are the golden master's topic-stage output:
+  # dominant_topic is nil on every turn, and semantic_coherence_score is nil for turns 1-2 and 1.0
+  # for turns 3-5.
+  let(:pre_turn_class) { Struct.new(:dominant_topic, :topic_distribution, :semantic_coherence_score) }
+
+  let(:topic_modeler_factory) do
+    pre_turns = [nil, nil, 1.0, 1.0, 1.0].map { |score| pre_turn_class.new(nil, nil, score) }
+    modeler = instance_double(
+      SFL::Analysis::TopicModeler,
+      fit: {}, turns: pre_turns, topic_labels: {}, detect_topic_shifts: []
+    )
+    -> (**_options) { modeler }
+  end
+
+  let(:engine) { SFL::Analysis::Engine.new(pipeline:, topic_modeler_factory:) }
   let(:source) { SFL::Analysis::ConversationSource.new(SFL::Core::Refs::FileRefBuilder.call("spec/fixtures/inputs/sample.jsonl")) }
 
   it "never calls Pass 2 (proves the documentation golden-master bug's fix generalizes)" do

@@ -527,7 +527,6 @@ GEM
       readline
       sync
     tokenizers (0.7.0-x86_64-linux)
-    tomoto (0.6.2-x86_64-linux)
     tool_forge (0.2.0)
       zeitwerk
     tree_sitter_language_pack (1.22.1-x86_64-linux)
@@ -640,7 +639,6 @@ DEPENDENCIES
   stackprof
   terrapin
   tf-idf-similarity
-  tomoto
   tree_sitter_language_pack (~> 1.20)
   tty-command
   tty-progressbar
@@ -859,7 +857,6 @@ CHECKSUMS
   timeout (0.6.1) sha256=78f57368a7e7bbadec56971f78a3f5ecbcfb59b7fcbb0a3ed6ddc08a5094accb
   tins (1.61.0) sha256=66cc9b24ce02ae3ea89684f6d20b10223667402337a5396f3ca1e467583f1266
   tokenizers (0.7.0-x86_64-linux) sha256=a795e5026ccf6f6340195789c48ff8c9c26462c75feb3b2971e26aef3118d842
-  tomoto (0.6.2-x86_64-linux) sha256=9e6d6930a0dcd3f2ecbb09e4475fb54027c109d70c05e81596af2b9b0dd914d2
   tool_forge (0.2.0) sha256=e6855c9c2df69c8ea0abd1601377e923127d4fe3bbb5b41c14b0fba2ee7f3384
   tree_sitter_language_pack (1.22.1-x86_64-linux) sha256=bef548daeb5e1c4857f554339bd0723ef1230fea3345b0c6d592c11336c91f06
   tsort (0.2.0) sha256=9650a793f6859a43b6641671278f79cfead60ac714148aabe4e3f0060480089f

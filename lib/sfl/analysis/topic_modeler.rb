@@ -1,177 +1,83 @@
 # frozen_string_literal: true
 
-require "tomoto"
-require "pragmatic_tokenizer"
-
 module SFL
   module Analysis
-    # Assigns topic distributions to conversation turns or documentation
-    # sections using tomoto (LDA/HDP). Ported faithfully from legacy's
-    # TopicModeler — logic unchanged; only the namespace moved.
+    # Assigns topics to conversation turns with the BERTopic sidecar
+    # (BertopicSidecar) over embeddings from an injected Core::Ports::Embedder.
     #
-    # Gem-API note: legacy pinned "tomoto ~> 0.3"; only 0.6.2 is available
-    # in this sandbox. Verified directly against the installed gem's
-    # source (lib/tomoto/lda.rb, lib/tomoto/hdp.rb) that LDA.new(k:,
-    # min_cf:, rm_top:, seed:), HDP.new(min_cf:, rm_top:, seed:),
-    # #add_doc, #make_doc, #infer, #train, #topic_words, #k, and #burn_in=
-    # all still exist with the same call shape this class uses — not
-    # assumed from memory.
+    # Each turn gets a one-hot topic distribution over its topic. Outlier
+    # turns (topic -1) get an empty distribution, so their coherence is nil.
     #
-    # Uses PragmaticTokenizer for lightweight tokenization (no spaCy
-    # round-trip) with topic-modeling-specific preprocessing: lowercase,
-    # stem, strip stopwords, drop punctuation/numbers.
+    # Topic-path input passes through TopicInputCleaner before embedding and
+    # before the sidecar call. Coverage is the non-outlier share of turns. A
+    # first fit at or below COVERAGE_GATE is retried once with a smaller
+    # nr_topics and min_topic_size; a second miss raises TopicCoverageError.
     #
-    # Two operating modes:
-    #   - Fixed-k LDA: caller specifies number of topics
-    #   - HDP: hierarchical Dirichlet process auto-discovers topic count
-    # rubocop:disable Metrics/ClassLength -- ported verbatim from legacy; one topic-modeling
-    # adapter around tomoto, each responsibility (fit/tokenize/coherence/shifts) its own method.
+    # Reads no ENV. Every dependency is a constructor argument.
+    # rubocop:disable Metrics/ClassLength -- one adapter around the sidecar: fit with the
+    # coverage gate, one-hot assignment, coherence and shift detection; each its own method.
     class TopicModeler
-      # PragmaticTokenizer's `en` stoplist (Languages::English::STOP_WORDS,
-      # read directly from the installed gem — not assumed) spells its
-      # contractions with the ASCII apostrophe: "it's", "don't", "that's".
-      # LLM-generated prose uses U+2019 RIGHT SINGLE QUOTATION MARK
-      # throughout, so "it’s" never matched and survived into the topic
-      # terms (it appeared in two different topics of a real run).
-      #
-      # The fix normalizes the *input* rather than adding curly-apostrophe
-      # variants to a second stoplist: the gem's list stays the single
-      # authoritative source of what counts as a stopword, and one mapping
-      # table fixes every entry in it at once (plus the curly quotes,
-      # dashes, ellipsis, and non-breaking spaces that defeat token
-      # boundaries the same way). `expand_contractions: true` was the
-      # alternative considered and rejected — it only rewrites the
-      # ~100-entry CONTRACTIONS hash, leaving every other curly-punctuation
-      # failure in place.
-      #
-      # Deliberately NOT Unicode NFKC: NFKC leaves U+2019 alone, so it does
-      # not solve the problem this map exists for.
-      UNICODE_PUNCTUATION_MAP = {
-        "\u2018" => "'",  # left single quote
-        "\u2019" => "'",  # right single quote — the LLM apostrophe
-        "\u201A" => "'",  # single low-9 quote
-        "\u201B" => "'",  # single high-reversed-9 quote
-        "\u02BC" => "'",  # modifier letter apostrophe
-        "\u2032" => "'",  # prime
-        "\u201C" => '"',  # left double quote
-        "\u201D" => '"',  # right double quote
-        "\u201E" => '"',  # double low-9 quote
-        "\u2033" => '"',  # double prime
-        "\u2013" => " - ",  # en dash
-        "\u2014" => " - ",  # em dash
-        "\u2015" => " - ",  # horizontal bar
-        "\u2212" => " - ",  # minus sign
-        "\u2026" => "...",  # horizontal ellipsis
-        "\u00A0" => " ",  # no-break space
-        "\u2007" => " ",  # figure space
-        "\u202F" => " ",  # narrow no-break space
-        "\u200B" => "", # zero-width space
-      }.freeze
+      COVERAGE_GATE = 0.30
+      MIN_TOPIC_SIZE_FLOOR = 2
+      MIN_TOPIC_COUNT = 2
+      PROBE_TEXT = "topic model embedder probe"
 
-      UNICODE_PUNCTUATION_RE = Regexp.union(UNICODE_PUNCTUATION_MAP.keys).freeze
-
-      # No domain stoplist is applied on purpose. The contentless-looking
-      # terms observed in a real run ("sound", "result", "terms", "thing")
-      # are not safe to hard-code away in a *linguistics* corpus tool:
-      # "sound" is phonology, "terms" is terminology, "result" is a
-      # findings word — deleting them destroys real signal in exactly the
-      # conversations this tool exists to analyze. ("thing"/"things" is
-      # already in the gem's own stoplist and needs no help.) Those terms
-      # became salient because k=10 over 8 documents forced the model to
-      # pad topics with whatever vocabulary was left — the `k` clamp below
-      # removes that pressure. The principled, corpus-derived lever for
-      # genuinely ubiquitous terms already exists and is caller-tunable:
-      # `rm_top:`, which drops the N globally most frequent words as
-      # measured on the corpus at hand rather than guessed in advance.
-      TOKENIZER_OPTIONS = {
-        language: "en",
-        remove_urls: true,
-        hashtags: :remove,
-        mentions: :remove,
-        clean: true,
-        punctuation: :none,
-        numbers: :none,
-        downcase: true,
-        stem: :porter,
-        remove_stop_words: true,
-        min_length: 3,
-      }.freeze
-
-      # See legacy's TopicModeler for the full derivation of this
-      # normalized-excess-over-uniform calibration; ported unchanged.
-      DEFAULT_DOMINANT_THRESHOLD = 0.35
-
-      # rubocop:disable Metrics/ParameterLists -- kwarg list ported verbatim from legacy;
-      # seven independently-meaningful tomoto training knobs, no natural grouping to extract.
-      # rubocop:disable Naming/MethodParameterName -- k: matches Tomoto::LDA's own k: kwarg
-      # (topic count) exactly; renaming it here would just require translating back at every
-      # Tomoto::LDA.new(k: @k) call site for no clarity gain.
-      def initialize(k: nil, min_cf: 3, rm_top: 2, iterations: 100, seed: 42, burn_in: nil,
-        dominant_threshold: DEFAULT_DOMINANT_THRESHOLD
+      # @param embedder [Core::Ports::Embedder] embeds every turn and the probe string
+      # @param sidecar_command [Array<String>] argv that starts the BERTopic sidecar
+      # @param k [Integer, nil] requested topic count (nr_topics); nil lets BERTopic choose
+      # @param seed [Integer]
+      # @param speaker_names [Array<String>] speaker labels stripped by TopicInputCleaner
+      # @param embedder_info [Hash] :provider, :model and :endpoint, named in probe errors
+      # @param sidecar [#fit, nil] a client to use instead of one built from sidecar_command
+      # @param store [SFL::Store::PgTopicModelStore, nil] when set, each successful fit is saved
+      # @param collection_key [String, nil] required with store
+      # @param document_key [String, nil] required with store
+      # @param run_id [String, nil] SFL_RUN_ID stored with the fit
+      # @param logger [Core::Ports::Logger]
+      # rubocop:disable Metrics/ParameterLists, Naming/MethodParameterName -- every keyword is an
+      # independent injected collaborator or setting; k: is the sidecar's nr_topics under the name the
+      # engine's factory call uses.
+      def initialize(embedder:, sidecar_command:, k: nil, seed: 42, speaker_names: [], embedder_info: {},
+        sidecar: nil, store: nil, collection_key: nil, document_key: nil, run_id: nil,
+        logger: Core::Ports::Null::Logger.new
       )
         # rubocop:enable Metrics/ParameterLists, Naming/MethodParameterName
+        raise Error, "a topic model store requires collection_key and document_key" if store && (collection_key.nil? || document_key.nil?)
+
+        @embedder = embedder
+        @embedder_info = embedder_info
         @k = k
-        @min_cf = min_cf
-        @rm_top = rm_top
-        @iterations = iterations
-        @burn_in = burn_in
         @seed = seed
-        @dominant_threshold = dominant_threshold
-        @model = nil
+        @cleaner = TopicInputCleaner.new(speaker_names:)
+        @sidecar = sidecar || BertopicSidecar.new(command: sidecar_command, logger:)
+        @store = store
+        @collection_key = collection_key
+        @document_key = document_key
+        @run_id = run_id
+        @logger = logger
+        @probed = false
         @topic_labels = {}
+        @turns = nil
         @fitted = false
       end
 
-      # Pre-pass fit: trains directly on raw text, with no ConversationTurn
-      # struct required.
-      # @param texts [Array<String>]
-      # @return [Array<Integer, nil>] dominant topic id per text, parallel to +texts+
-      def fit_texts(texts)
-        @model = build_model
-        docs = texts.map { |t| tokenize(t) }
-        docs.each { |tokens| @model.add_doc(tokens) unless tokens.empty? }
-
-        train_model
-        build_topic_labels
-
-        docs.map { |tokens| dominant_topic_for(tokens) }
-      end
-
-      private def dominant_topic_for(tokens)
-        return nil if tokens.empty?
-
-        doc = @model.make_doc(tokens)
-        topic_dist, = @model.infer(doc)
-        dominant_topic_id(topic_dist)
-      end
-
-      private def dominant_topic_id(topic_dist)
-        return nil if topic_dist.nil? || topic_dist.size < 2
-        return nil if topic_dist.any?(&:nan?)
-
-        top_prob, idx = topic_dist.each_with_index.max_by { |prob, _idx| prob }
-        uniform = 1.0 / topic_dist.size
-        excess = (top_prob - uniform) / (1.0 - uniform)
-        (excess >= @dominant_threshold) ? idx : nil
-      end
-
-      # Train the topic model on an array of ConversationTurn structs.
       # @param turns [Array<Core::Types::ConversationTurn>]
-      # @return [self]
+      # @return [Hash] :topics (Array<Integer>), :topic_words (Hash<Integer, Array<String>>),
+      #   :coverage (Float) and :attempts (Integer)
+      # @raise [TopicCoverageError] when both attempts are at or below the coverage gate
       def fit(turns)
         @turns = turns
-        docs = turns.map { |t| tokenize(t.message_text) }
+        texts = @cleaner.call(turns.map(&:message_text))
+        embeddings = embed_turns(texts)
 
-        @model = build_model
-        docs.each { |tokens| @model.add_doc(tokens) unless tokens.empty? }
+        result = fit_with_gate(texts, embeddings)
+        @store&.save(collection_key: @collection_key, document_key: @document_key, result:, run_id: @run_id)
 
-        train_model
-        build_topic_labels
-        assign_topics_to_turns
-        assign_coherence_scores_to_turns
-
+        @topic_labels = result.fetch(:topic_words)
+        @turns = assign_topics_to_turns(turns, result.fetch(:topics))
         @fitted = true
-        self
+        assign_coherence_scores_to_turns
+        result
       end
 
       # @return [Hash{Integer => Array<String>}] topic_id => top words
@@ -198,43 +104,6 @@ module SFL
         shifts
       end
 
-      # ported verbatim from legacy's detect_topic_shifts loop body.
-      private def topic_shift_for(prev, curr, threshold)
-        prev_dominant = prev.dominant_topic
-        curr_dominant = curr.dominant_topic
-        return [] if prev_dominant.nil? || curr_dominant.nil?
-        return [] if prev_dominant == curr_dominant
-
-        distance = cosine_distance(prev.topic_distribution || {}, curr.topic_distribution || {})
-        return [] if distance < threshold
-
-        shift = {
-          turn_id: curr.turn_id,
-          type: "topic_shift",
-          from_topic: prev_dominant,
-          to_topic: curr_dominant,
-          magnitude: distance.round(4),
-          description: "Topic shifted from #{topic_name(prev_dominant)} " \
-            "to #{topic_name(curr_dominant)} (distance: #{distance.round(3)})",
-        }
-        [shift]
-      end
-      # @param path [String]
-      def save(path)
-        raise Error, "No model to save — call fit first" unless @model
-
-        @model.save(path)
-      end
-
-      # @param path [String]
-      # @return [self]
-      def load_model(path)
-        @model = Tomoto::LDA.load(path)
-        build_topic_labels
-        @fitted = true
-        self
-      end
-
       # @param turn_dist [Hash{Integer => Float}, nil]
       # @param baseline_dist [Hash{Integer => Float}, nil]
       # @return [Float, nil]
@@ -248,6 +117,7 @@ module SFL
         similarity.clamp(0.0, 1.0).round(4)
       end
 
+      # Mean of the non-empty per-turn distributions.
       # @return [Hash{Integer => Float}]
       def conversation_baseline
         return {} unless @fitted && @turns && !@turns.empty?
@@ -267,20 +137,83 @@ module SFL
 
         sum.transform_values { |v| (v / count).round(4) }
       end
-      # ported verbatim from legacy.
-      private def assign_coherence_scores_to_turns
-        was_fitted = @fitted
-        @fitted = true
-        begin
-          baseline_dist = conversation_baseline
-          @turns = @turns.each_with_index.map do |turn, idx|
-            score = coherence_score_for(turn, idx, baseline_dist)
-            turn.new(semantic_coherence_score: score)
-          end
-        ensure
-          @fitted = was_fitted
+
+      private def fit_with_gate(texts, embeddings)
+        first_min = default_min_topic_size(texts.size)
+        first = sidecar_fit(texts, embeddings, nr_topics: @k, min_topic_size: first_min)
+        return first.merge(attempts: 1) if passes_gate?(first)
+
+        first_count = topic_count(first)
+        retry_k = [MIN_TOPIC_COUNT, first_count / 2].max
+        retry_min = [MIN_TOPIC_SIZE_FLOOR, first_min / 2].max
+        @logger.warn("topic coverage at or below gate, retrying once with smaller settings",
+          coverage: first[:coverage], topics: first_count, gate: COVERAGE_GATE,
+          retry_k:, retry_min_topic_size: retry_min)
+
+        second = sidecar_fit(texts, embeddings, nr_topics: retry_k, min_topic_size: retry_min)
+        return second.merge(attempts: 2) if passes_gate?(second)
+
+        raise TopicCoverageError,
+          "topic coverage gate (> #{COVERAGE_GATE}) failed after 2 attempts: " \
+            "attempt 1 coverage #{first[:coverage]} with #{first_count} topics, " \
+            "attempt 2 coverage #{second[:coverage]} with #{topic_count(second)} topics"
+      end
+
+      private def sidecar_fit(texts, embeddings, nr_topics:, min_topic_size:)
+        @sidecar.fit(texts:, embeddings:, seed: @seed, k: nr_topics, min_topic_size:)
+      end
+
+      private def passes_gate?(result) = result[:coverage] > COVERAGE_GATE
+
+      private def topic_count(result) = result[:topics].reject { |topic| topic == BertopicSidecar::OUTLIER_TOPIC }.uniq.size
+
+      # Single place that mirrors the sidecar client's own default.
+      private def default_min_topic_size(text_count) = [MIN_TOPIC_SIZE_FLOOR, text_count / 10].max
+
+      private def embed_turns(texts)
+        probe_embedder!
+        vectors = @embedder.embed_batch(texts)
+        return vectors if vectors.size == texts.size
+
+        raise Error, "#{embedder_label} returned #{vectors.size} vectors for #{texts.size} turns"
+      end
+
+      private def probe_embedder!
+        return if @probed
+
+        vector = begin
+          @embedder.embed(PROBE_TEXT)
+        rescue => e
+          raise Error, "#{embedder_label} probe failed: #{e.class}: #{e.message}"
+        end
+        raise Error, "#{embedder_label} probe returned an empty vector" if vector.nil? || vector.empty?
+
+        @probed = true
+      end
+
+      private def embedder_label
+        provider = @embedder_info.fetch(:provider, "unknown")
+        model = @embedder_info.fetch(:model, "unknown")
+        endpoint = @embedder_info.fetch(:endpoint, "unknown")
+        "topic embedder (provider: #{provider}, model: #{model}, endpoint: #{endpoint})"
+      end
+
+      private def assign_topics_to_turns(turns, topics)
+        turns.zip(topics).map do |turn, topic|
+          outlier = topic == BertopicSidecar::OUTLIER_TOPIC
+          turn.new(topic_distribution: outlier ? {} : { topic => 1.0 }, dominant_topic: outlier ? nil : topic)
         end
       end
+
+      # ported verbatim from legacy.
+      private def assign_coherence_scores_to_turns
+        baseline_dist = conversation_baseline
+        @turns = @turns.each_with_index.map do |turn, idx|
+          score = coherence_score_for(turn, idx, baseline_dist)
+          turn.new(semantic_coherence_score: score)
+        end
+      end
+
       private def coherence_score_for(turn, idx, baseline_dist)
         return nil if idx < 2
         return nil if baseline_dist.empty?
@@ -289,62 +222,27 @@ module SFL
         calculate_coherence(turn.topic_distribution, baseline_dist)
       end
 
-      private def build_model
-        model = if @k
-          Tomoto::LDA.new(k: @k, min_cf: @min_cf, rm_top: @rm_top, seed: @seed)
-        else
-          Tomoto::HDP.new(min_cf: @min_cf, rm_top: @rm_top, seed: @seed)
-        end
+      # ported verbatim from legacy's detect_topic_shifts loop body.
+      private def topic_shift_for(prev, curr, threshold)
+        prev_dominant = prev.dominant_topic
+        curr_dominant = curr.dominant_topic
+        return [] if prev_dominant.nil? || curr_dominant.nil?
+        return [] if prev_dominant == curr_dominant
 
-        model.burn_in = @burn_in if @burn_in
-        model
-      end
+        distance = cosine_distance(prev.topic_distribution || {}, curr.topic_distribution || {})
+        return [] if distance < threshold
 
-      private def train_model
-        @iterations.times { @model.train(1) }
-      end
-
-      private def build_topic_labels
-        num_topics = @model.k
-        @topic_labels = {}
-
-        num_topics.times do |topic_id|
-          words = @model.topic_words(topic_id)
-          @topic_labels[topic_id] = words.map(&:first)
-        end
-      end
-
-      private def assign_topics_to_turns
-        @turns = @turns.map { |turn| assign_topic(turn) }
-      end
-
-      private def assign_topic(turn)
-        tokens = tokenize(turn.message_text)
-        return turn.new(topic_distribution: {}, dominant_topic: nil) if tokens.empty?
-
-        doc = @model.make_doc(tokens)
-        topic_dist, = @model.infer(doc)
-
-        distribution = {}
-        topic_dist.each_with_index { |prob, idx| distribution[idx] = prob.round(4) if prob > 0.01 }
-
-        turn.new(topic_distribution: distribution, dominant_topic: dominant_topic_id(topic_dist))
-      end
-
-      private def tokenize(text)
-        return [] if text.nil? || text.strip.empty?
-
-        PragmaticTokenizer::Tokenizer.new(TOKENIZER_OPTIONS).tokenize(normalize_punctuation(text))
-      end
-
-      # Maps Unicode punctuation to the ASCII forms the stoplist and the
-      # tokenizer's own token-boundary rules are written against. See
-      # UNICODE_PUNCTUATION_MAP for why this is normalization rather than a
-      # second stoplist. Upstream (DynamicFormatExpander) already handles
-      # escape decoding and newline normalization; this is only about
-      # characters that defeat *lexical* matching.
-      private def normalize_punctuation(text)
-        text.gsub(UNICODE_PUNCTUATION_RE, UNICODE_PUNCTUATION_MAP)
+        [
+{
+  turn_id: curr.turn_id,
+  type: "topic_shift",
+  from_topic: prev_dominant,
+  to_topic: curr_dominant,
+  magnitude: distance.round(4),
+  description: "Topic shifted from #{topic_name(prev_dominant)} " \
+    "to #{topic_name(curr_dominant)} (distance: #{distance.round(3)})",
+},
+]
       end
 
       private def cosine_distance(dist_a, dist_b)
@@ -359,6 +257,7 @@ module SFL
 
         (1.0 - (dot / (mag_a * mag_b))).round(4)
       end
+
       private def topic_name(topic_id)
         words = @topic_labels[topic_id] || []
         words.empty? ? "topic #{topic_id}" : words.first(3).join("/")

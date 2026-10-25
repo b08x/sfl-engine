@@ -113,9 +113,9 @@ Feature: BERTopic sidecar topic model and its three analyses
     When TopicModeler is built with k 5 and fit is called
     Then the bertopic request carries "nr_topics": 5
 
-  Scenario: The tomoto gem and its LDA and HDP paths are gone
-    Then Gemfile and Gemfile.lock name no tomoto gem
-    And the TopicModeler spec passes with tomoto not installed
+  Scenario: The LDA and HDP topic gem and its paths are gone
+    Then Gemfile and Gemfile.lock name no LDA or HDP topic gem
+    And the TopicModeler spec passes without that gem installed
 
   Scenario: The file-based save and load_model methods are gone
     Then calling save on a TopicModeler raises NoMethodError

@@ -37,19 +37,19 @@ module SFL
 
       # @param pipeline [Core::Pipeline]
       # @param review_queue_repo [Store::PgReviewQueueRepository, nil]
-      # @param topic_modeler_factory [#call] `->(k:) { ... }`, defaults to
-      #   TopicModeler.new(k:) — injectable so specs never pull in the real
-      #   tomoto/pragmatic_tokenizer training cost
+      # @param topic_modeler_factory [#call] `->(k:) { ... }`, where k is nil
+      #   (BERTopic chooses the topic count) or the requested nr_topics. The
+      #   default raises: TopicModeler needs an embedder and a sidecar command
+      #   that only the composition root owns, so the factory must be injected.
       # @param on_progress [#call, nil] see Source classes' docs for the event shape
       # @param on_turn_start [#call, nil]
       # @param stop_requested [#call, nil]
       # @param logger [Core::Ports::Logger] defaults to StderrLogger, NOT to
-      #   Null::Logger as elsewhere in this codebase. The one thing this
-      #   logger reports — that the requested topic count was reduced — must
-      #   never be invisible: a silently-different k is precisely the class of
-      #   bug (see LLM::Engine's fallback) that makes a degraded run
-      #   indistinguishable from a good one. Callers that must not write to
-      #   stderr (the TUI) inject their own adapter.
+      #   Null::Logger as elsewhere in this codebase. The engine reports no
+      #   event through it now that the k clamp is gone; the TopicModeler's
+      #   coverage-gate retry is logged by whichever logger the composition
+      #   root injects into TopicModeler. Callers that must not write to stderr
+      #   (the TUI) inject their own adapter.
       # @param progress_writer [#call] receives the `progress turn=N total=M` line after each
       #   finished turn. Always on and separate from +logger+ so the rake task can count turns
       #   whatever SFL_LOG_TARGET is.
@@ -58,7 +58,7 @@ module SFL
       def initialize(
         pipeline:,
         review_queue_repo: nil,
-        topic_modeler_factory: -> (k:) { TopicModeler.new(k:) },
+        topic_modeler_factory: -> (**_options) { raise Error, "topic_modeler_factory must be injected: TopicModeler needs an embedder and a BERTopic sidecar command" },
         on_progress: nil,
         on_turn_start: nil,
         stop_requested: nil,
@@ -210,7 +210,7 @@ module SFL
         return [nil, nil, nil, []] unless topics && units.size >= 3
 
         stub_turns = units.each_with_index.map { |unit, idx| stub_turn(unit, idx) }
-        modeler = @topic_modeler_factory.call(k: topic_k(topics, units.size))
+        modeler = @topic_modeler_factory.call(k: topic_k(topics))
         modeler.fit(stub_turns)
         [modeler, modeler.turns, modeler.topic_labels, modeler.detect_topic_shifts]
       end
@@ -475,42 +475,13 @@ module SFL
         "Most prominent topic: #{top_words} (#{dominant_topics[top_topic]} turns)"
       end
 
-      # `topics.zero?` still means "no fixed k" — TopicModeler falls through
-      # to HDP, which infers the topic count from the corpus itself and
-      # therefore needs no clamp. A caller-supplied k does get clamped:
-      # LDA's per-topic word distribution is estimated from the documents
-      # assigned to that topic, so once the corpus supplies fewer than a
-      # handful of documents per topic the estimates stop separating and
-      # the model returns near-duplicate topics (this is the finite-corpus
-      # limit Tang et al., ICML 2014, "Understanding the Limiting Factors
-      # of Topic Modeling via Posterior Contraction Analysis" characterize:
-      # posterior contraction needs the document count to grow with k, not
-      # just the document length). The observed failure was k=10 over an
-      # 8-turn conversation producing 10 near-random partitions with two
-      # duplicate topics.
-      #
-      # MIN_DOCS_PER_TOPIC is a floor, not a tuned optimum — it is the
-      # smallest ratio at which a topic is estimated from more than a
-      # single document's vocabulary. MIN_TOPIC_K is 2 because k=1 is
-      # degenerate here: TopicModeler#dominant_topic_id returns nil for any
-      # distribution with fewer than 2 topics, so a clamp to 1 would
-      # silently produce no dominant topics at all.
-      MIN_DOCS_PER_TOPIC = 3
-      MIN_TOPIC_K = 2
-
-      private def topic_k(topics, doc_count)
-        return nil if topics.zero?
-
-        ceiling = [doc_count / MIN_DOCS_PER_TOPIC, MIN_TOPIC_K].max
-        return topics if topics <= ceiling
-
-        warn_topic_k_clamped(topics, ceiling, doc_count)
-        ceiling
-      end
-
-      private def warn_topic_k_clamped(requested, applied, doc_count)
-        @logger.warn("topic count reduced; pass --topics 0 for HDP or analyze a larger corpus", requested:, applied:, doc_count:, min_docs_per_topic: MIN_DOCS_PER_TOPIC)
-      end
+      # `topics.zero?` means "no fixed k": the factory gets k: nil and BERTopic
+      # chooses the topic count. A positive value is passed through as the
+      # sidecar's nr_topics. There is no document-count clamp: BERTopic's
+      # minimum topic size is derived from the turn count inside TopicModeler
+      # (max(2, n / 10)), and TopicModeler's coverage gate retries once with a
+      # smaller nr_topics when too few turns land in a topic.
+      private def topic_k(topics) = topics.zero? ? nil : topics
 
       private def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end

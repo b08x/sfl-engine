@@ -71,7 +71,7 @@ module SFL
       conversation/documentation:
         --pass1-only                 Skip LLM annotation (placeholder values)
         --narrative                  Also generate narrative_report.md (LLM)
-        --topics N                   Number of topics for LDA; 0 = HDP (auto-discover)
+        --topics N                   BERTopic: 0 lets BERTopic choose the topic count; N sets nr_topics
         --resume                     Reuse cached Pass 2 results from previous runs
         --store                      Persist clauses + embeddings for `context`
         --collection NAME            Collection for stored documents
@@ -693,9 +693,28 @@ module SFL
 
       Analysis::Engine.new(
         pipeline:, review_queue_repo:, logger:,
+        topic_modeler_factory: build_topic_modeler_factory(boot_result, logger),
         on_progress: progress.method(:advance), on_turn_start: progress.method(:start),
         stop_requested: -> { stop_flag.stopped? }, **writer
       )
+    end
+
+    # The BERTopic-backed TopicModeler factory Engine calls with k: (nil lets BERTopic choose, else nr_topics).
+    # Engine calls it only when a run asks for topics. The embedder is boot_result.embedder, the adapter
+    # build_pipeline also uses; it is nil under --pass1-only (require_llm: false), so topics need a full run.
+    # No store is passed: Engine does not hand over collection_key or document_key, so fits are not persisted.
+    module_function def build_topic_modeler_factory(boot_result, logger)
+      lambda do |k:|
+        if boot_result.embedder.nil?
+          raise Analysis::Error, "--topics needs the embedding task, so it cannot run with --pass1-only"
+        end
+
+        Analysis::TopicModeler.new(
+          embedder: boot_result.embedder, sidecar_command: boot_result.bertopic_command, k:,
+          speaker_names: boot_result.topic_speaker_names || [], embedder_info: boot_result.embedder_info || {},
+          logger:
+        )
+      end
     end
 
     # Known limitation: --vision-model has no effect. LLM::ChatFactory#for

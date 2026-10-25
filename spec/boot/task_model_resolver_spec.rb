@@ -55,6 +55,13 @@ RSpec.describe SFL::Boot::TaskModelResolver do
     expect(resolutions[:ingest_classification]).to have_attributes(provider: :ollama, model: "embeddinggemma-2:440m")
   end
 
+  it "resolves the embedding default from the Boot provider and the store model constant" do
+    expect(resolved(described_class.new(env: {}))[:embedding]).to eq(
+      [SFL::Boot::DEFAULT_EMBEDDING_PROVIDER, SFL::Store::PgEmbeddingStore::DEFAULT_MODEL, :default, nil]
+    )
+    expect(SFL::Store::PgEmbeddingStore::DEFAULT_MODEL).to eq("embeddinggemma-2:440m")
+  end
+
   it "ignores the legacy EMBEDDING_MODEL and EMBEDDING_PROVIDER names for the embedding task" do
     resolver = described_class.new(env: { "EMBEDDING_MODEL" => "legacy", "EMBEDDING_PROVIDER" => "mistral" })
 
@@ -66,6 +73,26 @@ RSpec.describe SFL::Boot::TaskModelResolver do
     resolver = described_class.new(env: { "SFL_TASK_EMBEDDING_MODEL" => "new-model" })
 
     expect(resolver.resolve[:embedding]).to have_attributes(model: "new-model", source: :env,
+      env_var: "SFL_TASK_EMBEDDING_MODEL")
+  end
+
+  it "keeps the :ollama embedding provider when only SFL_TASK_EMBEDDING_MODEL is set" do
+    resolver = described_class.new(env: { "SFL_TASK_EMBEDDING_MODEL" => "x" })
+
+    expect(resolved(resolver)[:embedding]).to eq([:ollama, "x", :env, "SFL_TASK_EMBEDDING_MODEL"])
+  end
+
+  it "reuses the embedding task config for the topic-model path, with no topic-specific variables" do
+    topic_env = {
+      "SFL_TASK_EMBEDDING_MODEL" => "x",
+      "SFL_TASK_TOPIC_MODEL_MODEL" => "other",
+      "SFL_TASK_TOPIC_MODEL_PROVIDER" => "gemini",
+    }
+    resolutions = described_class.new(env: topic_env).resolve
+
+    expect(resolutions.keys).not_to include(:topic_model)
+    expect(SFL::Boot.resolve_embedding_model(topic_env)).to eq(resolutions[:embedding].model)
+    expect(resolutions[:embedding]).to have_attributes(provider: :ollama, model: "x", source: :env,
       env_var: "SFL_TASK_EMBEDDING_MODEL")
   end
 
