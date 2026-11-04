@@ -1,23 +1,33 @@
 # SFL Engine
 
-SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata and uses that metadata when retrieving text for an LLM. The mechanism fits in one sentence; the convictions behind it take a page, and the page is worth reading first, because they ground the storage and retrieval decisions that shape the operational sections below.
+[![Ruby](https://img.shields.io/badge/Ruby-4.0.4-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![spaCy](https://img.shields.io/badge/spaCy-~3.8-09A3D5)](https://spacy.io/)
+
+SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata and uses that metadata when retrieving text for an LLM. The mechanism fits in one sentence; the convictions behind it take a page.
 
 ## Why this engine exists
 
-The retrieval systems I have used answer *what is this text about?*. None I have tried exposes *how was it said?* as a filterable column — a claim about my inventory, not the field's: name one that does, and this paragraph narrows to an ergonomics argument. And by "how," I mean stance: whether a sentence asserts, hedges, instructs or worries; whether a speaker positions themselves above, below or alongside the listener; whether a claim is presented as a finding or offered as a guess. Vector similarity averages those distinctions away — a single embedding pools a clause's topic and its stance into one point, so a hedging and an asserting paraphrase can land close together — and I find that a real loss, because stance is the dimension I notice first when I read closely — a claim about this reader, not every reader.
+The retrieval systems I have used answer *what is this text about?*. None I have tried exposes *how was it said?* as a filterable column. That claim is scoped to my inventory and my reading; name a tool that does expose it, and the argument below narrows to an ergonomics one and still holds.
 
-The theory that names those distinctions is Systemic Functional Linguistics — Halliday's account of language as choice-in-context, in which one clause simultaneously does several kinds of work, its *metafunctions*: an **ideational** payload (what happened: processes, participants, circumstances) and an **interpersonal** payload (how it is presented: mood, modality, tenor, attitude). Halliday's theory also describes a third, *textual* metafunction; the engine's payload split leads with the two its retrieval hypothesis depends on. ("Metafunction" is a technical term, not a metaphor — it names the different kinds of meaning one clause carries at once.)
+By "how," I mean stance: whether a sentence asserts, hedges, instructs or worries; whether a speaker positions themselves above, below or alongside the listener; whether a claim is presented as a finding or offered as a guess.
 
-SFL has, in its published tradition — Halliday's An Introduction to Functional Grammar and its line of applications — been a close-reading framework for humans. This engine uses it the other way round: as a feature-extraction schema for machines. Annotation turns stance from something a prompt can *ask* a model to respect into something a query can *filter on* — and that difference is structural. A prompt instruction is a suggestion — no code path enforces it; a scalar filter that excludes a clause before the model's context is ever assembled is a guarantee (`pg_hybrid_retriever.rb:64`, `context_synthesizer.rb:46`) — of exclusion, not of annotation truth: the filter enforces what Pass 2 recorded, so a mislabeled clause is excluded by its mislabel, not by its stance. The engine's founding bet is that the second kind of defense is the one worth engineering — a bet with a named promotion condition: the day `rake eval:run_unseen` scores stance-filtered retrieval against prompt-only retrieval on the held-out set, the bet retires into a finding.
+Vector similarity averages those distinctions away. A single embedding pools a clause's topic and its stance into one point, so a hedging and an asserting paraphrase can land close together. Stance is the dimension I notice first when I read closely, and what this engine does is lift it out of that blur and write it down as data in its own right.
 
-Two storage decisions follow from that bet:
+The theory that names those distinctions is Systemic Functional Linguistics — Halliday's account of language as choice-in-context, in which one clause simultaneously does several kinds of work, its *metafunctions*: an **ideational** payload (what happened: processes, participants, circumstances) and an **interpersonal** payload (how it is presented: mood, modality, tenor, attitude). Halliday's theory also describes a third, *textual* metafunction; the engine's payload split leads with the two its retrieval hypothesis depends on.
 
-- **Payload separation.** The ideational and interpersonal payloads do not share a table. Facts live in one table, tone in another — `ideational_payloads` and `interpersonal_payloads` (migrations 002/003). This is not normalization for its own sake; it is what makes "how was this said" a filterable dimension in its own right rather than a paraphrase of "what was said." Retrieval can filter clauses by their interpersonal values before any text reaches the LLM.
-- **Clause-level units.** The unit of storage and retrieval is the clause, not a token-count chunk. A fixed-size chunk is a computational convenience; a clause is a complete unit of meaning — one process, its participants, its circumstances, one stance — so what gets retrieved is whole.
+SFL has, in its published tradition — Halliday's An Introduction to Functional Grammar and its line of applications — been a close-reading framework for humans. This engine uses it the other way round: as a feature-extraction schema for machines. Annotation turns stance from something a prompt can *ask* a model to respect into something a query can *filter on* — and that difference is structural. A prompt instruction is a suggestion — no code path enforces it; a scalar filter that excludes a clause before the model's context is ever assembled is a guarantee (`pg_hybrid_retriever.rb:64`, `context_synthesizer.rb:46`) — of exclusion, not of annotation truth: the filter enforces what Pass 2 recorded, so a mislabeled clause is excluded by its mislabel, not by its stance.
+
+The engine's founding bet is that the second kind of defense is the one worth engineering — a bet with a named promotion condition: the day `rake eval:run_unseen` scores stance-filtered retrieval against prompt-only retrieval on the held-out set, the bet retires into a finding.
+
+The database schema is that theory rendered into queryable form, and two storage decisions are its visible faces:
+
+- **Payload separation.** The ideational and interpersonal payloads do not share a table. Facts live in one table, stance in another — `ideational_payloads` and `interpersonal_payloads` (migrations 002/003). This is not normalization for its own sake; it is what makes "how was this said" a filterable dimension in its own right rather than a paraphrase of "what was said." Retrieval can filter clauses by their interpersonal values before any text reaches the LLM.
+- **Clause-level units.** The unit of storage and retrieval is the clause, not a token-count chunk. A fixed-size chunk is a computational convenience; a clause is a complete unit of meaning — one process, its participants, its circumstances, one stance — so what gets retrieved is whole. (These terms are fixed in the Glossary, below the reference line.)
 
 ## Design principles
 
-Each principle below is enforced somewhere checkable — a spec, a gate or a code path — noted inline.
+Here is what those convictions cost and buy in code. Nine of the ten principles below are enforced somewhere checkable — a spec, a gate, a code path or an audit doc — noted inline; principle 9 is the named exception, held by convention and review.
 
 1. **Defense is structural, not behavioral.** Retrieval filters run against stored metadata, before the model's context is assembled. A clause that fails the filter never enters the context window (`lib/sfl/store/pg_hybrid_retriever.rb:64`, `lib/sfl/retrieval/context_synthesizer.rb:46`).
 2. **LLM output is untrusted data, never code.** When ingest meets a file shape no loader recognizes, the LLM's candidate loader is parsed (never `eval`'d), gated on three gates, and written into a quarantine directory the runtime never loads. Promotion into `lib/` is a human copy, never a code path. Incident `4a53727` — one bad draft dropped into the autoloaded tree, failing the whole test suite — is why this is a permanent constraint rather than a preference.
@@ -32,7 +42,7 @@ Each principle below is enforced somewhere checkable — a spec, a gate or a cod
 
 ## How the engine works
 
-The engine compiles text into annotated clauses in two passes with a hard boundary between them; the clauses then flow through storage, retrieval, analysis and evaluation:
+The boundary between the two passes is deliberate: everything true of Pass 1 — deterministic, exact — is only *claimed* of Pass 2 — model output, provenance-recorded, fallback-marked — and that difference is why principles 2 and 4 exist. Within that frame, the engine compiles text into annotated clauses in two passes with a hard boundary between them; the clauses then flow through storage, retrieval, analysis and evaluation:
 
 - **Pass 1** — deterministic syntactic parsing that finds clauses, process types, participants and circumstances. It runs as a Python spaCy sidecar over NDJSON, behind a typed port, so the rest of the codebase never sees the transport and tests can swap in fakes. The pipeline composes the passes through a Result ladder: a Pass 1 failure short-circuits everything downstream for that unit (`lib/sfl/core/pipeline.rb:83`).
 - **Pass 2** — LLM annotation of mood, modality, tenor and attitude, producing the interpersonal payload. The model is set per task through `SFL_TASK_*` variables. Batches are bounded at 40 (`DEFAULT_BATCH_SIZE`, `lib/sfl/llm/engine.rb:53`), and provider-side failures back off and retry (`lib/sfl/llm/engine.rb:36`) instead of filling the run with placeholders. Annotations are model output: requests can be pinned (temperature, seed, `spec/llm/request_pinning_spec.rb:13`), but a re-run is not promised to reproduce them; each run row records the model per task, so which run produced a stored value is answerable in one query.
@@ -41,11 +51,47 @@ The engine compiles text into annotated clauses in two passes with a hard bounda
 - **Analysis** — the analysis engine and its named scorers and trackers — quality and readability scoring, cohesion, speaker profiles, tenor shifts, topics (`lib/sfl/analysis/`) — over conversations, documentation and knowledge bases.
 - **Eval** — Langfuse datasets and a runner that annotates held-out conversations 11–14 (`rakelib/eval.rake:31`), *unseen* by the narrative dataset, on purpose.
 
+## The bet, shown
+
+The thesis above is easier to judge as a picture than as a paragraph. What follows is an illustration — not CLI output, but the shape the code guarantees.
+
+Take two clauses that differ only in stance — exactly the pair a single embedding would average into one point:
+
+| Clause | Interpersonal payload (illustrative) |
+|---|---|
+| "The migration might be safe." | modality 0.2 — hedging |
+| "The migration is safe." | modality 0.9 — asserting |
+
+A retrieval request that admits only clauses at or above modality 0.8 excludes the hedging clause and keeps the asserting one — before any text reaches the model's context window (`lib/sfl/store/pg_hybrid_retriever.rb:64`, `lib/sfl/retrieval/context_synthesizer.rb:46`). A prompt instruction can only ask a model to prefer assertions; the filter enforces the exclusion. The values here obey the type contract that constrains modality to 0.0–1.0 (`lib/sfl/core/types/modality_weight.rb:11`), and the guarantee is of exclusion, not annotation truth: the filter enforces what Pass 2 recorded, so a mislabeled clause is excluded by its mislabel, not by its stance.
+
+## Setup
+
+Prerequisites: Ruby 4.0.4 (pinned in `.ruby-version`), Bundler, Docker with the compose plugin, and an LLM provider configured in `.env` — Pass 2 and `context` need one, and per-task models resolve through the `SFL_TASK_*` variables.
+
+1. Install gems with `bundle install`.
+2. Start Postgres and Redis with `docker compose up -d` — Postgres carries the entire store; Redis (redis-stack, RedisInsight on 8001) is provisioned by the compose file and no application code consumes it yet.
+3. Copy `.env.example` to `.env` and set the values you need.
+4. Apply migrations with `bundle exec rake db:migrate`. `sfl-tui`, `sfl-analyze ingest` and `--store` runs exit with the current and latest schema versions when this step is missing.
+
+`SFL::Boot` loads `.env`. With `SFL_AUTO_START_DOCKER=1` in the shell environment, the `exe/` scripts start the Docker services when they are not running.
+
+For container-based development, a devcontainer definition — the `mcr.microsoft.com/devcontainers/ruby:2-3.4-trixie` image, RubyMine backend — lives at `docker/.devcontainer/devcontainer.json`. VS Code and JetBrains IDEs look for devcontainer configs under `.devcontainer/` at the repository root (VS Code also reads a root-level `.devcontainer.json`), so open this one explicitly, or move it there to make it discoverable.
+
+## Test
+
+```
+bundle exec rake
+```
+
+The default task runs RSpec, RuboCop and the Zeitwerk check.
+
 Everything below this line is operational reference.
 
 ---
 
 ## Glossary
+
+These four terms are the engine's fixed vocabulary — the same words in code, specs, CLI output and docs — and each maps to its stored counterpart:
 
 - Collection: a named group of documents.
 - Document: one whole item, such as a paper, a transcript or one chat conversation.
@@ -57,7 +103,9 @@ Everything below this line is operational reference.
 Storage is four nested records — collections hold documents, documents hold sections, sections hold clauses — and one `runs` row watches every write; the bullets below give that model in command order.
 
 - `sfl-analyze ingest <path> --collection NAME` stores clauses and records each document and section in collection NAME. The collection is created when it does not exist. Without `--collection`, the name is the basename of `<path>`. `conversation --store` and `documentation --store` take the same option.
-- **Section ids and conflicts.** A file loader's prefix before `#` is the basename plus the first 8 hex digits of the SHA-256 of the file path (`Core::Loaders::FileId`), so two files with the same basename get different section ids and re-ingesting a file keeps its ids. A section id that is already stored under another document is refused with `SectionRegistry::ConflictError`. In a knowledge-base ingest, `KnowledgeBaseSource` skips only the conflicting unit, prints a warning, and stores the file's other units. In a conversation or documentation ingest, the error stops that file and ingest records it as a `draft_failed` review entry; units stored before the conflict stay stored. `ingest` expands `<path>` to an absolute path, so `notes`, `./notes` and `/abs/notes` give the same document key and section ids, and re-ingesting under any spelling replaces the document's sections and clauses.
+- **Section ids and their stability.** A file loader's prefix before `#` is the basename plus the first 8 hex digits of the SHA-256 of the file path (`Core::Loaders::FileId`), so two files with the same basename get different section ids and re-ingesting a file keeps its ids.
+- **Conflicts, per ingest type.** A section id that is already stored under another document is refused with `SectionRegistry::ConflictError`. In a knowledge-base ingest, `KnowledgeBaseSource` skips only the conflicting unit, prints a warning, and stores the file's other units. In a conversation or documentation ingest, the error stops that file and ingest records it as a `draft_failed` review entry; units stored before the conflict stay stored.
+- **Paths and re-ingest.** `ingest` expands `<path>` to an absolute path, so `notes`, `./notes` and `/abs/notes` give the same document key and section ids, and re-ingesting under any spelling replaces the document's sections and clauses.
 - A file shape no loader recognizes is drafted: the review queue records `loader_drafted` with a candidate loader `.rb` in `docs/ingest-review/candidates/` (a quarantine outside the autoloaded `lib/` tree) and a review doc in `docs/ingest-review/`. Nothing is registered automatically; promoting a draft is a manual review (see the recipe in the draft's review doc). A draft must pass three gates before it is written — class-name pattern, `RubyVM::AbstractSyntaxTree.parse` (parse, never `eval`) and a declared class under `SFL::Core::Loaders`. A gate failure records `draft_failed` and raises; the ingest loop catches it per file and the run continues (`lib/sfl/ingest/orchestrator.rb:96`); the syntax-parse and declared-class gates also leave a `<stem>-invalid.md` evidence doc naming the gate.
 - Collection names are trimmed, keep their case and are unique ignoring case. An empty name is rejected.
 - Tables: `collections`, `documents` (one row per `document_key`), `sections` (one row per `section_id`, nested through `parent_section_id`) and `runs`.
@@ -81,7 +129,23 @@ Run `exe/sfl-analyze --help` for options.
 
 ## Terminal UI
 
-`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models. Runs lists the 50 newest runs in the `runs` table (ingest, annotate, export, recompile), newest first, re-read every 2 seconds; stalled and dead runs are marked. Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model is the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable), else its `task_models` row, else the default. `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back; `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`. Each run row records the effective model per task in its `models` column. `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
+`exe/sfl-tui` is built on `ratatui_ruby`. It has four tabs, switched with `1` to `4`: Browse, Search, Runs and Models.
+
+Runs lists the 50 newest runs in the `runs` table (ingest, annotate, export, recompile), newest first, re-read every 2 seconds; stalled and dead runs are marked.
+
+Models lists each task with its effective provider and model and the source: `env`, `db` or `default`. A task's model resolves in order:
+
+- the `SFL_TASK_<TASK>_MODEL` variable when set (the row is locked and names the variable)
+- else its `task_models` row
+- else the default
+
+Keys on the Models tab:
+
+- `Enter` on a task lists the models that have the capability the task needs (embedding for `embedding`, chat for the rest); `Enter` on a model saves it to `task_models`; `Esc` goes back.
+- `r` refreshes the `models` table. A task whose assigned model is unavailable is marked `! unavailable`.
+- `q` or Ctrl-C quits. The bottom line lists the keys of the current tab.
+
+Each run row records the effective model per task in its `models` column.
 
 Browse shows collections, documents and nested sections on the left, the focused section's clauses in the middle and detail on the right.
 
@@ -100,29 +164,17 @@ Search (`/` to type, `Enter` to run) uses the stored-clause retrieval and shows 
 - Collection: an existing collection, chosen with `↑`/`↓`, or a new name. When it is empty, the collection is the path's base name.
 - Flags: other `ingest` flags, `--output-dir DIR` and `--disable-tracing`. Unknown flags are refused.
 
-`Enter` runs `exe/sfl-analyze ingest PATH --collection NAME [flags]` under a new `SFL_RUN_ID`; `Esc` closes the launcher. Inside kitty (`KITTY_WINDOW_ID` set and `KITTY_LISTEN_ON` reachable, which needs `allow_remote_control yes` and `listen_on` in `kitty.conf`) the ingest opens in a new kitty tab, where it draws its dashboard, and the tab stays open after it exits. Outside kitty, or when kitty refuses, the ingest runs as a detached child with its output in `SFL_INGEST_LOG_DIR/ingest-<run id>.log` (default `./output/logs`), and the TUI moves to the Runs tab, where the run appears.
+`Enter` runs `exe/sfl-analyze ingest PATH --collection NAME [flags]` under a new `SFL_RUN_ID`; `Esc` closes the launcher.
+
+Inside kitty (`KITTY_WINDOW_ID` set and `KITTY_LISTEN_ON` reachable, which needs `allow_remote_control yes` and `listen_on` in `kitty.conf`) the ingest opens in a new kitty tab, where it draws its dashboard, and the tab stays open after it exits.
+
+Outside kitty, or when kitty refuses, the ingest runs as a detached child with its output in `SFL_INGEST_LOG_DIR/ingest-<run id>.log` (default `./output/logs`), and the TUI moves to the Runs tab, where the run appears.
 
 The TUI is a pure update over immutable state — a deliberate design, kept simple on purpose: there is no desktop GUI, and review happens here, in the Browse tab.
 
-## Setup
-
-1. Start Postgres and Redis with `docker compose up -d` — Postgres carries the entire store; Redis (redis-stack, RedisInsight on 8001) is provisioned by the compose file and no application code consumes it yet.
-2. Copy `.env.example` to `.env` and set the values you need.
-3. Apply migrations with `bundle exec rake db:migrate`. `sfl-tui`, `sfl-analyze ingest` and `--store` runs exit with the current and latest schema versions when this step is missing.
-
-`SFL::Boot` loads `.env`. With `SFL_AUTO_START_DOCKER=1` in the shell environment, the `exe/` scripts start the Docker services when they are not running.
-
-For container-based development, a devcontainer definition — the `mcr.microsoft.com/devcontainers/ruby:2-3.4-trixie` image, RubyMine backend — lives at `docker/.devcontainer/devcontainer.json`. VS Code and JetBrains IDEs look for devcontainer configs under `.devcontainer/` at the repository root (VS Code also reads a root-level `.devcontainer.json`), so open this one explicitly, or move it there to make it discoverable.
-
-## Test
-
-```
-bundle exec rake
-```
-
-The default task runs RSpec, RuboCop and the Zeitwerk check.
-
 ## Logging
+
+The provenance discipline applied to annotations is applied to the engine's own operation as well: every write is annotated by a run, every run by its models, every decision by a named reviewer.
 
 Logging is configured with environment variables. See `.env.example`.
 
@@ -147,20 +199,11 @@ journalctl SFL_RUN_ID=<id>
 
 ## Eval tasks
 
-Eval runs on unseen conversations deliberately — a held-out set, so the score is evidence rather than rehearsal. Three tasks build and run it:
+Eval runs on unseen conversations deliberately — a held-out set, so the score is evidence rather than rehearsal. This is also where the founding bet from the opening section is waiting to be settled: its promotion condition — the scored stance-filtered-against-prompt-only comparison — will be scored here once that comparison runs; today the runner annotates the held-out set and nothing more. Three tasks build and run it:
 
 - `rake eval:build_narrative_dataset` loads the narrative digests into Langfuse.
 - `rake eval:setup_langfuse` creates score configs and annotation queues.
 - `rake eval:run_unseen` runs Pass 2 on unseen conversations and writes `output/eval/nd-<n>/`.
-
-## Where the reasoning lives
-
-The README carries the summary; the design record lives where it can be checked:
-
-- `goals/` — feature goals, fact lists, and per-goal `decisions.md` rationale files.
-- `features/` — the Gherkin acceptance scenarios and `features/qa-procedure.md`, the manual QA procedure that verifies them.
-- `docs/ingest-review/` — the loader-draft review trail: each draft's provenance, gates and supersession record.
-- `docs/gem-inventory.md` — the dependency audit.
 
 ## Directory layout
 
@@ -183,3 +226,16 @@ rakelib/         rake tasks
 spec/            RSpec specs
 docker/          Dockerfile and database init script
 ```
+
+## Where to go from here
+
+With the engine installed and the suite green, three next steps:
+
+- Run `rake eval:run_unseen` — the founding bet's promotion condition will be scored there once the stance-filtered-against-prompt-only comparison runs.
+- Read `goals/` — feature goals, fact lists, and per-goal `decisions.md` rationale files.
+- Walk `features/qa-procedure.md` — the manual QA procedure that verifies the Gherkin acceptance scenarios in `features/`.
+
+The README carries the summary; the design record lives where it can be checked:
+
+- `docs/ingest-review/` — the loader-draft review trail: each draft's provenance, gates and supersession record.
+- `docs/gem-inventory.md` — the dependency audit.
