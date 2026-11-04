@@ -4,7 +4,6 @@ notebooks/
 .pi/
 .vibe/
 .graphifyignore
-.agents/skills/trackboi
 .mcp.json
 graphify-out/
 output/
@@ -37,7 +36,6 @@ cost.json
 .claude/worktrees/
 scratch/
 tui-implementation-plan.md
-.trackboi/
 drafts/
 session-ses_*
 .specs/scratchpad/

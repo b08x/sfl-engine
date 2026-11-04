@@ -107,6 +107,8 @@ The TUI is a pure update over immutable state — a deliberate design, kept simp
 
 `SFL::Boot` loads `.env`. With `SFL_AUTO_START_DOCKER=1` in the shell environment, the `exe/` scripts start the Docker services when they are not running.
 
+For container-based development, a devcontainer definition — the `mcr.microsoft.com/devcontainers/ruby:2-3.4-trixie` image, RubyMine backend — lives at `docker/.devcontainer/devcontainer.json`. Editors auto-discover devcontainer configs only under `.devcontainer/` at the repository root, so open this one explicitly, or move it there to make it discoverable.
+
 ## Test
 
 ```

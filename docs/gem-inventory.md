@@ -14,6 +14,12 @@ codebase plus two follow-up greps for the TTY trio. The `Gemfile`'s own
 section comments were treated as claims to check, not facts to copy;
 where a comment and the code disagree, the table says so.
 
+Updated against `fbb5ed0` (2026-10-24): the `dspy`, `dspy-o11y-langfuse`,
+`ruby_llm` and `ruby_llm-template` rows now track the RubyLLM narrator
+migration (`52ed0ac`), and the `docker-api`, `bake`, `decode` and
+`rubydex` rows — four `Gemfile` entries the `d974b45` pass left
+uncovered — were added in the same update.
+
 ## The table
 
 ### Core infrastructure
@@ -33,13 +39,14 @@ where a comment and the code disagree, the table says so.
 
 | Gem | What it does here | Evidence |
 |---|---|---|
-| `dspy` | The LLM framework: Predict/ChainOfThought programs over the signatures in `lib/sfl/llm/signatures/`, including the loader-drafting predictor | `lib/sfl/ingest/loader_drafter.rb:2` |
+| `dspy` | The LLM framework for Pass 2 annotation and the loader-drafting predictor: Predict/ChainOfThought programs over `lib/sfl/llm/signatures/` (the narrative signatures are no longer run as DSPy programs — the RubyLLM narrator reuses only their description text) | `lib/sfl/ingest/loader_drafter.rb:4` |
 | `dspy-anthropic` | Provider integration for DSPy (Anthropic) | `Gemfile` section; DSPy provider setup |
 | `dspy-openai` | Provider integration for DSPy (OpenAI-compatible) | `Gemfile` section; DSPy provider setup |
 | `dspy-o11y` | Observability layer for DSPy | `lib/sfl/llm/tracing.rb` |
-| `dspy-o11y-langfuse` | Langfuse tracing of every LLM call (`DSPy::Observability.configure!(adapter: :langfuse)`) | `lib/sfl/llm/tracing.rb:18` |
+| `dspy-o11y-langfuse` | Langfuse tracing of every LLM call through DSPy (`DSPy::Observability.configure!(adapter: :langfuse)`) — the RubyLLM narrator is outside this path | `lib/sfl/llm/tracing.rb:18` |
+| `ruby_llm` | First-class LLM client for the narrative narrator — one chat call per narrative, sections parsed from plain text by `SectionParser`; the model catalog also reads its registry | `lib/sfl/llm/narrators/narrative_generator.rb:3`; `lib/sfl/llm/catalogs/ruby_llm_catalog.rb:17` |
 | `ruby_llm-docker` | *Not used.* Docker orchestration shells out to `docker compose` directly | no call site |
-| `ruby_llm-template` | *Not used.* The base `ruby_llm` gem **is** used — the model catalog reads its registry — but not through this wrapper | no call site; `lib/sfl/llm/catalogs/ruby_llm_catalog.rb:17` |
+| `ruby_llm-template` | *Not used.* The base `ruby_llm` gem **is** used — the narrator calls it directly and the model catalog reads its registry — but not through this wrapper | no call site; `lib/sfl/llm/narrators/narrative_generator.rb:3`; `lib/sfl/llm/catalogs/ruby_llm_catalog.rb:17` |
 
 ### Observability & logging
 
@@ -134,6 +141,10 @@ where a comment and the code disagree, the table says so.
 | `rubocop` (+ performance, rake, rspec, sequel, shopify, thread_safety plugins) | Lint gate over the codebase; excludes the draft quarantine on purpose | `.rubocop.yml`; `AGENTS.md` |
 | `ruby-lsp` | Editor language-server tooling | convention |
 | `solargraph` | Editor language-server tooling | convention |
+| `docker-api` (~> 2.4) | Drives the docker socket through the gem's `Docker::` API to build and smoke-test the spaCy sidecar image — `bin/build-sidecar` runs no docker CLI commands | `bin/build-sidecar:16` (`require "docker"`); `Docker::Image.build_from_dir` at `bin/build-sidecar:72`; `Docker::Container.create` at `bin/build-sidecar:102` |
+| `bake` (~> 0.25.0) | *Not used.* No require, no `Bake` constant, no `Bakefile`, no bake task in any tree; the introducing commit `0d7532a` calls it a "bake task runner", a claim the working tree does not support | no call site; `Gemfile:258` |
+| `decode` (~> 0.30.0) | *Not used.* No require and no decode or `.yardopts` config; every code-tree `decode` hit is unrelated prose or the pgvector gem's own `Pgvector.decode` | no call site; `Gemfile:259` |
+| `rubydex` (~> 0.4.2) | *Not used.* No require, no `Rubydex` constant, no `rdx` invocation in any quality gate, and no MCP launch config anywhere in the repo — the gem exists here as a `Gemfile` entry and a lockfile checksum | no call site; `Gemfile:260` |
 
 ### Quality
 
@@ -153,22 +164,24 @@ where a comment and the code disagree, the table says so.
 
 ## Findings
 
-**18 direct dependencies have no call site.** Of roughly 60 direct gems,
-these exist only in the `Gemfile`'s section comments and `Gemfile.lock`:
+**21 direct dependencies have no call site.** Of the 55 direct gems the
+`Gemfile` declares, these exist only as `Gemfile` entries and
+`Gemfile.lock` rows:
 
 `bm25f`, `tf-idf-similarity`, `schematist`, `image_processing`,
 `algorithms`, `terrapin`, `informers`, `jsonl`, `pycall`, `ruby-spacy`,
 `tree_sitter_language_pack`, `rllama`, `tty-progressbar`, `tty-which`,
-`ruby_llm-docker`, `ruby_llm-template` — and, by their nature, the
-`opentelemetry-*` pair, which is indirect *by design* and documented as
-such.
+`ruby_llm-docker`, `ruby_llm-template`, `bake`, `decode`, `rubydex` —
+and, by their nature, the `opentelemetry-*` pair, which is indirect
+*by design* and documented as such.
 
 Two complications for anyone pruning:
 
-- `schematist` rides in as a dependency of `ruby_llm`, which **is**
-  used (`lib/sfl/llm/catalogs/ruby_llm_catalog.rb:17`) — removing
-  `ruby_llm-template` from the `Gemfile` does not necessarily remove
-  `ruby_llm` or `schematist` from the bundle.
+- `schematist` rides in as a dependency of `ruby_llm`, itself a direct
+  `Gemfile` entry with two call sites — the narrator
+  (`lib/sfl/llm/narrators/narrative_generator.rb:3`) and the model
+  catalog (`lib/sfl/llm/catalogs/ruby_llm_catalog.rb:17`) — so removing
+  `ruby_llm-template` from the `Gemfile` removes nothing either needs.
 - `fiddle` stays in the lockfile only as a dependency of `pycall` and
   `ruby-spacy` (`spec/tui/consolidation_spec.rb:29`); removing those two
   gems changes what that spec asserts.
@@ -179,6 +192,12 @@ ETA) replacing the old plain print/puts pair." No require of it exists;
 the CLI's progress output is the `progress turn=N total=M` stderr line
 and the full-screen dashboard. As far as the code shows, the comment
 describes an intention the code never implemented.
+
+Commit `0d7532a`'s message makes the same move for three more gems: it
+introduces `bake` as a "bake task runner", `decode` for "decode-style
+doc coverage" and `rubydex` for "rdx semantic lint / dead-code scans
+used by the quality gates". The tree supports none of the three — no
+require, no task, no gate touches them.
 
 ## Method
 
