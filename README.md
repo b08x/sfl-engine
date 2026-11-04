@@ -8,11 +8,11 @@ SFL Engine annotates text with Systemic Functional Linguistics (SFL) metadata an
 
 ## Why this engine exists
 
-The retrieval systems I have used answer *what is this text about?*. None I have tried exposes *how was it said?* as a filterable column. That claim is scoped to my inventory and my reading; name a tool that does expose it, and the argument below narrows to an ergonomics one and still holds.
+This engine exists to serve intentions I could not act on before building it: to store what a text says and how it says it as two separate, queryable facts, and to retrieve on either. The "how" is not decoration; it is often the thing I am actually looking for.
 
 By "how," I mean stance: whether a sentence asserts, hedges, instructs or worries; whether a speaker positions themselves above, below or alongside the listener; whether a claim is presented as a finding or offered as a guess.
 
-Vector similarity averages those distinctions away. A single embedding pools a clause's topic and its stance into one point, so a hedging and an asserting paraphrase can land close together. Stance is the dimension I notice first when I read closely, and what this engine does is lift it out of that blur and write it down as data in its own right.
+Vector similarity alone cannot serve the second intention. A single embedding pools a clause's topic and its stance into one point, so a hedging and an asserting paraphrase can land close together — and what I needed was the difference between them, kept as data in its own right. Stance is the dimension I notice first when I read closely; this engine exists to lift it out of that blur.
 
 The theory that names those distinctions is Systemic Functional Linguistics — Halliday's account of language as choice-in-context, in which one clause simultaneously does several kinds of work, its *metafunctions*: an **ideational** payload (what happened: processes, participants, circumstances) and an **interpersonal** payload (how it is presented: mood, modality, tenor, attitude). Halliday's theory also describes a third, *textual* metafunction; the engine's payload split leads with the two its retrieval hypothesis depends on.
 
